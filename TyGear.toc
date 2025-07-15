@@ -1,0 +1,15 @@
+## Interface: 30300
+## Title: TyGear
+## Notes: Automatically chooses loot and equips gear
+## Author: Ty
+## RequiredDeps: Pawn
+## SavedVariables: TyGearDB
+## SavedVariablesPerCharacter: TyGearDB
+
+core.lua
+find.lua
+trigger.lua
+evaluate.lua
+equip.lua
+options.lua
+vendor.lua
