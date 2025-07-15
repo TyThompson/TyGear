@@ -2,6 +2,6 @@
 
 Compatible with 3.3.5 private servers
 
-Currently the only working feature is auto vendoring junk and telling you the total it sold for.
+At present, only auto-vendoring junk and showing the total gold earned is functional.
 
-Future plan is to auto roll and equip upgrades based on your Pawn scales.
+Planned features: auto-roll and equip upgrades based on your Pawn scales.
