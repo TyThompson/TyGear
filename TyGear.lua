@@ -6236,6 +6236,9 @@ function TyGearSettleGreySales()
 				else
 					greySelling.soldGreyCount = greySelling.soldGreyCount + 1
 				end
+				if sale.link then
+					table.insert(greySelling.soldLinks, sale.link)
+				end
 			elseif locked then
 				isAnySalePending = true
 			end
@@ -6279,17 +6282,21 @@ function TyGearVendorShiftSkipMessage()
 	return "TyGear: Not selling greys this time because Shift was held while opening the vendor."
 end
 
-function TyGearFormatVendorSaleSummary(greyCount, whiteCount, soldValue)
-	local cash = TyGearCashToString(soldValue)
-	local greyText = greyCount.." grey item"..((greyCount == 1) and "" or "s")
-	local whiteText = whiteCount.." white item"..((whiteCount == 1) and "" or "s")
-	if (greyCount > 0) and (whiteCount > 0) then
-		return "TyGear: Sold "..greyText.." and "..whiteText.." for "..cash.."."
-	elseif greyCount > 0 then
-		return "TyGear: Sold "..greyText.." for "..cash.."."
-	elseif whiteCount > 0 then
-		return "TyGear: Sold "..whiteText.." for "..cash.."."
+function TyGearFormatSoldItemList(soldLinks)
+	if (not soldLinks) or (#soldLinks == 0) then return end
+	if #soldLinks == 1 then
+		return soldLinks[1]
 	end
+	if #soldLinks == 2 then
+		return soldLinks[1].." and "..soldLinks[2]
+	end
+	return table.concat(soldLinks, ", ", 1, #soldLinks - 1)..", and "..soldLinks[#soldLinks]
+end
+
+function TyGearFormatVendorSaleSummary(soldLinks, soldValue)
+	local list = TyGearFormatSoldItemList(soldLinks)
+	if not list then return end
+	return "TyGear: Sold "..list.." for "..TyGearCashToString(soldValue).."."
 end
 
 function TyGearStartSellingGreys()
@@ -6306,6 +6313,7 @@ function TyGearStartSellingGreys()
 	greySelling.soldCount = 0
 	greySelling.soldGreyCount = 0
 	greySelling.soldWhiteCount = 0
+	greySelling.soldLinks = {}
 	greySelling.sellsGreys = (TyGearDB.AutoSellGreys == true)
 	greySelling.sellsWhites = (TyGearDB.AutoSellUnsuitableWhites == true) or (TyGearDB.AutoSellAllWhiteGear == true)
 	greySelling.ignoreLocked = nil
@@ -6319,7 +6327,7 @@ function TyGearStopSellingGreys(reason)
 	TyGearSettleGreySales()
 	TyGearFrame:UnregisterEvent("UI_ERROR_MESSAGE")
 	if greySelling.soldCount > 0 then
-		TyGearPrint(TyGearFormatVendorSaleSummary(greySelling.soldGreyCount, greySelling.soldWhiteCount, greySelling.soldValue), 1)
+		TyGearPrint(TyGearFormatVendorSaleSummary(greySelling.soldLinks, greySelling.soldValue), 1)
 	end
 	if reason then
 		local what = "greys"
