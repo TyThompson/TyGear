@@ -2432,6 +2432,63 @@ local TyGearClassesHiddenOnForever = {
 	["MONK"] = true,
 }
 
+-- Weapon subclasses each Forever class can learn (including skills not yet trained).
+-- Untrained-but-learnable weapons still get tooltip scores; class-incompatible ones are skipped.
+-- Built lazily so Enum.ItemWeaponSubclass is available when first needed.
+local TyGearForeverClassWeapons
+local TyGearForeverKnownWeaponSubclasses
+
+local function TyGearAddForeverWeapon(allowed, known, subclassID)
+	if not subclassID then return end
+	allowed[subclassID] = true
+	known[subclassID] = true
+end
+
+local function TyGearEnsureForeverWeaponTables()
+	if TyGearForeverClassWeapons then return true end
+	local W = Enum and Enum.ItemWeaponSubclass
+	if not W then return false end
+	-- Fist weapons use Unarmed in the item subclass enum
+	local fist = W.Unarmed or W.FistWeapon
+	local known = {}
+	local function weapons(...)
+		local allowed = {}
+		for i = 1, select("#", ...) do
+			TyGearAddForeverWeapon(allowed, known, select(i, ...))
+		end
+		return allowed
+	end
+	TyGearForeverClassWeapons = {
+		["DRUID"] = weapons(W.Dagger, fist, W.Mace1H, W.Polearm, W.Staff, W.Mace2H),
+		["HUNTER"] = weapons(W.Bows, W.Crossbow, W.Dagger, fist, W.Guns, W.Axe1H, W.Sword1H, W.Polearm, W.Staff, W.Thrown, W.Axe2H, W.Sword2H),
+		["MAGE"] = weapons(W.Dagger, W.Sword1H, W.Staff, W.Wand),
+		["PALADIN"] = weapons(W.Axe1H, W.Mace1H, W.Sword1H, W.Polearm, W.Axe2H, W.Mace2H, W.Sword2H),
+		["PRIEST"] = weapons(W.Dagger, W.Mace1H, W.Staff, W.Wand),
+		["ROGUE"] = weapons(W.Bows, W.Crossbow, W.Dagger, fist, W.Guns, W.Axe1H, W.Mace1H, W.Sword1H, W.Thrown),
+		["SHAMAN"] = weapons(W.Dagger, fist, W.Axe1H, W.Mace1H, W.Staff, W.Axe2H, W.Mace2H),
+		["WARLOCK"] = weapons(W.Dagger, W.Sword1H, W.Staff, W.Wand),
+		["WARRIOR"] = weapons(W.Bows, W.Crossbow, W.Dagger, fist, W.Guns, W.Axe1H, W.Mace1H, W.Sword1H, W.Polearm, W.Staff, W.Thrown, W.Axe2H, W.Mace2H, W.Sword2H),
+	}
+	if W.Fishingpole then known[W.Fishingpole] = true end
+	TyGearForeverKnownWeaponSubclasses = known
+	return true
+end
+
+--true when this Forever class can learn the weapon subclass (trained or not).
+--nil when the client/tables can't answer; false when the class can never use it.
+--Fishing poles are usable by every class. Uses the real player class, not override weights.
+function TyGearForeverClassCanUseWeapon(subclassID)
+	if not IS_WOW_FOREVER or not subclassID then return nil end
+	if not TyGearEnsureForeverWeaponTables() then return nil end
+	local W = Enum.ItemWeaponSubclass
+	if W.Fishingpole and subclassID == W.Fishingpole then return true end
+	if not TyGearForeverKnownWeaponSubclasses[subclassID] then return nil end
+	local class = UnitClassBase("player")
+	local allowed = TyGearForeverClassWeapons[class]
+	if not allowed then return nil end
+	return allowed[subclassID] and true or false
+end
+
 local function TyGearWrapRGB(text, r, g, b)
 	if CreateColor then
 		return CreateColor(r, g, b):WrapTextInColorCode(text)
@@ -5982,6 +6039,21 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 		return info
 	end
 
+	-- Forever: weapons this class can never learn are not evaluated (no score, no upgrade/roll consideration).
+	-- Weapons the class can learn but has not trained still go through scoring so tooltips can show the score with "(won't equip)".
+	if IS_WOW_FOREVER and info.classID == Enum.ItemClass.Weapon
+	and TyGearForeverClassCanUseWeapon(info.subclassID) == false then
+		if not info.link then
+			info.link = info.item:GetItemLink()
+		end
+		info.unusable = 1
+		info.classCannotUseWeapon = 1
+		local realLocalizedClass, realClass = TyGearDetectClassAndSpec()
+		local coloredClass = (RAID_CLASS_COLORS[realClass] and RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realLocalizedClass)) or realLocalizedClass
+		info.reason = "("..coloredClass.." can't use this weapon)"
+		return info
+	end
+
 	-- Deferred tooltip fill: only gear reaches here
 	if needsTooltip then
 		TyGearTooltip:SetOwner(UIParent, "ANCHOR_NONE")
@@ -6401,7 +6473,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 
 	info.equipped = not not inventoryID
 
-	if info.isGear then
+	-- Class-incompatible Forever weapons return earlier without a score. Learnable weapons that
+	-- currently can't be equipped (untrained skill, level, and so on) still show a score here.
+	if info.isGear and not info.classCannotUseWeapon then
 		info.shouldShowScoreInTooltip = 1
 	end
 	if (not info.unusable) and info.isGear then

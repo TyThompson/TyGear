@@ -28,6 +28,7 @@ TyGear also runs on WoW Forever (interface 16001).
 - Forever's combined hit and critical strike, expertise, and armor/spell penetration are read from item tooltips.
 - On Forever, **Use Pawn** and **Roll on non-gear loot** default to off; Pawn has no Forever scales yet.
 - Forever gear with only effects TyGear cannot score (no measurable stats) is always ignored. The **Ignored gear** options tab lists those items.
+- Forever weapons the player's class can never learn are not scored or considered for upgrades. Weapons the class can learn but has not trained still show a TyGear score in the tooltip with "(won't equip)".
 - Loot messages and tooltip text can be restricted (secret values) in dungeons and during encounters. TyGear then scans your bags instead of reading the loot message, and treats items it can't read as not evaluable.
 
 Chat commands (`/tygear` is the same as `/tg`):
