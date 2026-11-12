@@ -8,6 +8,9 @@
 	<Binding name="TYGEAR_TOGGLE_VENDOR_KEEP" header="TYGEAR">
 		TyGearBindingToggleVendorKeep();
 	</Binding>
+	<Binding name="TYGEAR_TOGGLE_NEED">
+		TyGearBindingToggleNeed();
+	</Binding>
 	<Binding name="TYGEAR_TOGGLE_IGNORE">
 		TyGearBindingToggleIgnore();
 	</Binding>
