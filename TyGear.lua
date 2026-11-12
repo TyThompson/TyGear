@@ -950,6 +950,38 @@ function TyGearIsEquipmentItemID(itemID)
 	return classID == Enum.ItemClass.Weapon or classID == Enum.ItemClass.Armor
 end
 
+function TyGearGetIgnoredItemIDOrder()
+	if not TyGearCharDB then TyGearCharDB = {} end
+	TyGearCharDB.IgnoredItemIDs = TyGearCharDB.IgnoredItemIDs or {}
+	local order = TyGearCharDB.IgnoredItemIDOrder
+	if type(order) ~= "table" then
+		order = {}
+		TyGearCharDB.IgnoredItemIDOrder = order
+	end
+	--drop stale IDs and append any set members missing from the order
+	local seen, cleaned = {}, {}
+	for _, itemID in ipairs(order) do
+		itemID = tonumber(itemID)
+		if itemID and TyGearCharDB.IgnoredItemIDs[itemID] and not seen[itemID] then
+			seen[itemID] = true
+			table.insert(cleaned, itemID)
+		end
+	end
+	local missing = {}
+	for itemID, ignored in pairs(TyGearCharDB.IgnoredItemIDs) do
+		itemID = tonumber(itemID)
+		if ignored and itemID and not seen[itemID] then
+			table.insert(missing, itemID)
+		end
+	end
+	table.sort(missing)
+	for _, itemID in ipairs(missing) do
+		table.insert(cleaned, itemID)
+	end
+	TyGearCharDB.IgnoredItemIDOrder = cleaned
+	return cleaned
+end
+
 function TyGearSetItemIgnored(itemID, shouldIgnore)
 	itemID = tonumber(itemID)
 	if not itemID then return end
@@ -957,8 +989,15 @@ function TyGearSetItemIgnored(itemID, shouldIgnore)
 	if TyGearIsAutoUnmeasurable(itemID) then return end
 	if not TyGearCharDB then TyGearCharDB = {} end
 	TyGearCharDB.IgnoredItemIDs = TyGearCharDB.IgnoredItemIDs or {}
+	local order = TyGearGetIgnoredItemIDOrder()
+	for index = #order, 1, -1 do
+		if order[index] == itemID then
+			table.remove(order, index)
+		end
+	end
 	if shouldIgnore then
 		TyGearCharDB.IgnoredItemIDs[itemID] = true
+		table.insert(order, 1, itemID)
 	else
 		TyGearCharDB.IgnoredItemIDs[itemID] = nil
 	end
@@ -1062,7 +1101,8 @@ function TyGearSetVendorKeepListItem(itemID, shouldKeep)
 		end
 	end
 	if shouldKeep then
-		table.insert(ordered, itemID)
+		--newest entries stay near the top of the saved list
+		table.insert(ordered, 1, itemID)
 	end
 	TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 	TyGearRefreshVendorKeepListEditBox()
@@ -3166,30 +3206,40 @@ local function buildIgnoreSection(optionsPage)
 		container.appliedHeight = height
 	end
 
+	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons. New items are added near the top of the list."]
+
 	local function manualIDText()
-		local ids = {}
-		for itemID, ignored in pairs(TyGearCharDB.IgnoredItemIDs or {}) do
-			local numericID = tonumber(itemID)
-			if ignored and numericID then
-				table.insert(ids, numericID)
-			end
-		end
-		table.sort(ids)
 		local parts = {}
-		for _, itemID in ipairs(ids) do
+		for _, itemID in ipairs(TyGearGetIgnoredItemIDOrder()) do
 			table.insert(parts, tostring(itemID))
 		end
 		return table.concat(parts, ", ")
 	end
 
 	local function saveManualIDs(text)
-		local nextIDs = {}
-		for _, itemID in ipairs(TyGearParseItemIDList(text)) do
-			if not TyGearIsAutoUnmeasurable(itemID) and TyGearIsEquipmentItemID(itemID) then
+		local previous = TyGearCharDB.IgnoredItemIDs or {}
+		local parsed = TyGearParseItemIDList(text)
+		local nextIDs, seen, newOnes, rest = {}, {}, {}, {}
+		for _, itemID in ipairs(parsed) do
+			if not seen[itemID] and not TyGearIsAutoUnmeasurable(itemID) and TyGearIsEquipmentItemID(itemID) then
+				seen[itemID] = true
 				nextIDs[itemID] = true
+				if previous[itemID] then
+					table.insert(rest, itemID)
+				else
+					table.insert(newOnes, itemID)
+				end
 			end
 		end
+		local ordered = {}
+		for _, itemID in ipairs(newOnes) do
+			table.insert(ordered, itemID)
+		end
+		for _, itemID in ipairs(rest) do
+			table.insert(ordered, itemID)
+		end
 		TyGearCharDB.IgnoredItemIDs = nextIDs
+		TyGearCharDB.IgnoredItemIDOrder = ordered
 		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 	end
 
@@ -3337,8 +3387,8 @@ local function buildIgnoreSection(optionsPage)
 	editBox:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(L["Item IDs"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Add items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(addItemsHelp, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 		GameTooltip:Show()
 	end)
 	editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3363,13 +3413,13 @@ local function buildIgnoreSection(optionsPage)
 
 	rebuildEquipped()
 	optionsPage:AddRow(equippedContainer)
-	addSubheader(L["Item IDs"])
-	addNote(L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons."])
+	addSubheader(L["Add items"])
+	addNote(addItemsHelp)
 	optionsPage:AddRow(editRow)
 	showManualIDs()
 end
 
---Ignore controls for the Forever Ignored gear Settings tab (slots, equipped, manual IDs)
+--Ignore controls for the Forever Ignored List Settings tab (slots, equipped, manual IDs)
 local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 	local function addNote(anchor, text)
 		local holder = CreateFrame("Frame", nil, listMenu)
@@ -3377,12 +3427,12 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 		holder:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 		local font = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 		font:SetPoint("TOPLEFT", 0, 0)
-		font:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, 0)
+		font:SetWidth(480)
 		font:SetJustifyH("LEFT")
+		font:SetWordWrap(true)
 		font:SetText(text)
 		local height = font:GetStringHeight() or 14
-		local estimate = math.ceil(math.max(#text, 1) / 80) * 14
-		if height < estimate then height = estimate end
+		if height < 14 then height = 14 end
 		holder:SetHeight(height + 2)
 		return holder
 	end
@@ -3513,37 +3563,47 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 		equippedContainer:SetHeight(shown == 0 and 20 or (shown * 28))
 	end
 
+	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons. New items are added near the top of the list."]
+
 	local function manualIDText()
-		local ids = {}
-		for itemID, ignored in pairs(TyGearCharDB.IgnoredItemIDs or {}) do
-			local numericID = tonumber(itemID)
-			if ignored and numericID then
-				table.insert(ids, numericID)
-			end
-		end
-		table.sort(ids)
 		local parts = {}
-		for _, itemID in ipairs(ids) do
+		for _, itemID in ipairs(TyGearGetIgnoredItemIDOrder()) do
 			table.insert(parts, tostring(itemID))
 		end
 		return table.concat(parts, ", ")
 	end
 
 	local function saveManualIDs(text)
-		local nextIDs = {}
-		for _, itemID in ipairs(TyGearParseItemIDList(text)) do
-			if not TyGearIsAutoUnmeasurable(itemID) and TyGearIsEquipmentItemID(itemID) then
+		local previous = TyGearCharDB.IgnoredItemIDs or {}
+		local parsed = TyGearParseItemIDList(text)
+		local nextIDs, seen, newOnes, rest = {}, {}, {}, {}
+		for _, itemID in ipairs(parsed) do
+			if not seen[itemID] and not TyGearIsAutoUnmeasurable(itemID) and TyGearIsEquipmentItemID(itemID) then
+				seen[itemID] = true
 				nextIDs[itemID] = true
+				if previous[itemID] then
+					table.insert(rest, itemID)
+				else
+					table.insert(newOnes, itemID)
+				end
 			end
 		end
+		local ordered = {}
+		for _, itemID in ipairs(newOnes) do
+			table.insert(ordered, itemID)
+		end
+		for _, itemID in ipairs(rest) do
+			table.insert(ordered, itemID)
+		end
 		TyGearCharDB.IgnoredItemIDs = nextIDs
+		TyGearCharDB.IgnoredItemIDOrder = ordered
 		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 	end
 
-	local idsHeader = addSubheader(equippedContainer, L["Item IDs"], 14)
-	local idsNote = addNote(idsHeader, L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons."])
+	local idsHeader = addSubheader(equippedContainer, L["Add items"], 14)
+	local idsNote = addNote(idsHeader, addItemsHelp)
 	local editRow = CreateFrame("Frame", nil, listMenu)
-	editRow:SetPoint("TOPLEFT", idsNote, "BOTTOMLEFT", 0, -8)
+	editRow:SetPoint("TOPLEFT", idsNote, "BOTTOMLEFT", 0, -2)
 	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	editRow:SetHeight(24)
 	local editBox = CreateFrame("EditBox", "TyGearIgnoredItemIDsEditBox", editRow, "InputBoxTemplate")
@@ -3571,8 +3631,8 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 	editBox:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(L["Item IDs"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Add items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(addItemsHelp, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 		GameTooltip:Show()
 	end)
 	editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3605,28 +3665,16 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 	return editRow
 end
 
---Forever Ignored gear tab: Ignore controls, then built-in and discovered unmeasurable gear
+--Forever Ignored List tab: Ignore controls, user-added ignored items, and an unmeasurable disclaimer
 local function buildIgnoredGearListPage(listMenu)
 	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 8, -8)
-	title:SetText(L["Ignored gear"])
+	title:SetText(L["Ignored List"])
 
 	local ignoreBottom = buildIgnoreSectionOntoListMenu(listMenu, title)
 
-	local unmeasurableHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	unmeasurableHeader:SetPoint("TOPLEFT", ignoreBottom, "BOTTOMLEFT", 0, -18)
-	unmeasurableHeader:SetText(L["Unmeasurable gear"])
-
-	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	note:SetPoint("TOPLEFT", unmeasurableHeader, "BOTTOMLEFT", 0, -6)
-	note:SetWidth(480)
-	note:SetJustifyH("LEFT")
-	note:SetText(L["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."])
-	listMenu.ignoredGearNote = note
-
-	--one Item IDs box lives in the Ignore section above; unmeasurable gear is listed here only
 	local listHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	listHeader:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -14)
+	listHeader:SetPoint("TOPLEFT", ignoreBottom, "BOTTOMLEFT", 0, -14)
 	listHeader:SetText(L["Ignored items"])
 
 	local listContainer = CreateFrame("Frame", "TyGearIgnoredGearListContainer", listMenu)
@@ -3636,26 +3684,18 @@ local function buildIgnoredGearListPage(listMenu)
 
 	local emptyText = listContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
 	emptyText:SetPoint("TOPLEFT", 0, 0)
-	emptyText:SetText(L["No unmeasurable gear has been found yet."])
+	emptyText:SetText(L["No items are on the ignored list."])
+
+	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -14)
+	note:SetWidth(480)
+	note:SetJustifyH("LEFT")
+	note:SetText(L["Disclaimer: gear TyGear cannot score (for example a 4% chance for Fear to miss) is always ignored automatically. Gear that also has a scored stat stays in normal evaluation. Use Add items above for anything else you want ignored."])
+	listMenu.ignoredGearNote = note
 
 	local rows = {}
 	local rowHeight = 28
 	local rowSerial = 0
-
-	local function setDiscoveredIgnored(itemID, keep)
-		if not itemID then return end
-		if TyGearUnmeasurableGear and TyGearUnmeasurableGear[itemID] then return end
-		if not TyGearCharDB then TyGearCharDB = {} end
-		TyGearCharDB.DiscoveredUnmeasurableGear = TyGearCharDB.DiscoveredUnmeasurableGear or {}
-		if keep then
-			TyGearCharDB.DiscoveredUnmeasurableGear[itemID] = true
-		else
-			TyGearCharDB.DiscoveredUnmeasurableGear[itemID] = nil
-		end
-		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
-		if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
-		if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
-	end
 
 	local function acquireRow()
 		rowSerial = rowSerial + 1
@@ -3664,35 +3704,32 @@ local function buildIgnoredGearListPage(listMenu)
 		row.icon = row:CreateTexture(nil, "ARTWORK")
 		row.icon:SetSize(24, 24)
 		row.icon:SetPoint("LEFT", 0, 0)
-		--checkbox only for user-added items; built-in unmeasurable gear stays listed without a toggle
 		row.check = CreateFrame("CheckButton", "TyGearIgnoredGearRow"..rowSerial.."CheckButton", row, "InterfaceOptionsCheckButtonTemplate")
 		row.check:SetPoint("LEFT", row.icon, "RIGHT", 2, 0)
 		local templateText = _G[row.check:GetName().."Text"]
 		if templateText then templateText:SetText("") end
 		row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
+		row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
 		row.name:SetJustifyH("LEFT")
 		row.name:SetWordWrap(false)
 		row.check:SetScript("OnClick", function(self)
-			local parent = self:GetParent()
-			local itemID = parent.itemID
-			if parent.builtIn then
-				self:SetChecked(true)
-				return
-			end
+			local itemID = self:GetParent().itemID
 			local keep = self:GetChecked() and true or false
-			setDiscoveredIgnored(itemID, keep)
+			TyGearSetItemIgnored(itemID, keep)
 			if keep then
 				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
 			else
 				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
 			end
+			if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
 		end)
 		row.check:SetScript("OnEnter", function(self)
 			local parent = self:GetParent()
 			if not parent.itemID then return end
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetHyperlink("item:"..parent.itemID)
-			GameTooltip:AddLine(L["Uncheck to remove this item from the ignored gear list."], 1, 0.82, 0, true)
+			GameTooltip:AddLine(L["Uncheck to remove this item from the ignored list."], 1, 0.82, 0, true)
 			GameTooltip:Show()
 		end)
 		row.check:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3701,11 +3738,7 @@ local function buildIgnoredGearListPage(listMenu)
 			if not self.itemID then return end
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetHyperlink("item:"..self.itemID)
-			if self.builtIn then
-				GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
-			else
-				GameTooltip:AddLine(L["Uncheck to remove this item from the ignored gear list."], 1, 0.82, 0, true)
-			end
+			GameTooltip:AddLine(L["Uncheck to remove this item from the ignored list."], 1, 0.82, 0, true)
 			GameTooltip:Show()
 		end)
 		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3714,25 +3747,12 @@ local function buildIgnoredGearListPage(listMenu)
 
 	local function collectEntries()
 		local entries = {}
-		local seen = {}
-		if TyGearUnmeasurableGearList then
-			for _, entry in ipairs(TyGearUnmeasurableGearList) do
-				seen[entry.id] = true
-				table.insert(entries, { id = entry.id, icon = entry.icon, name = entry.name, builtIn = true })
-			end
+		--preserve newest-first order from the ignore list
+		for _, itemID in ipairs(TyGearGetIgnoredItemIDOrder()) do
+			local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
+			local name = GetItemInfo and GetItemInfo(itemID)
+			table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID) })
 		end
-		if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear then
-			for itemID in pairs(TyGearCharDB.DiscoveredUnmeasurableGear) do
-				if not seen[itemID] then
-					local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
-					local name = GetItemInfo and GetItemInfo(itemID)
-					table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID), builtIn = false })
-				end
-			end
-		end
-		table.sort(entries, function(a, b)
-			return (a.name or "") < (b.name or "")
-		end)
 		return entries
 	end
 
@@ -3746,11 +3766,9 @@ local function buildIgnoredGearListPage(listMenu)
 		local top = listMenu:GetTop()
 		local listTop = listHeader:GetTop()
 		if top and listTop then
-			--ignore section + unmeasurable header/note above the item list
 			return (top - listTop) + 8
 		end
-		--fallback before frames are sized
-		return 28 + 200 + measured(note, 40) + 14 + 16 + 8
+		return 28 + 200 + 14 + 16 + 8
 	end
 
 	function TyGearRefreshIgnoredGearList()
@@ -3760,6 +3778,304 @@ local function buildIgnoredGearListPage(listMenu)
 		end
 		listContainer.builtOnce = true
 		listContainer.needsRefresh = false
+		local entries = collectEntries()
+		for index, entry in ipairs(entries) do
+			local row = rows[index]
+			if not row then
+				row = acquireRow()
+				rows[index] = row
+			end
+			row.itemID = entry.id
+			row:ClearAllPoints()
+			row:SetPoint("TOPLEFT", listContainer, "TOPLEFT", 0, -((index - 1) * rowHeight))
+			row:SetPoint("TOPRIGHT", listContainer, "TOPRIGHT", 0, -((index - 1) * rowHeight))
+			row.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+			row.check:SetChecked(true)
+			row.name:SetText(entry.name or ("item "..entry.id))
+			row:Show()
+			if Item and Item.CreateFromItemID then
+				local itemID = entry.id
+				local item = Item:CreateFromItemID(itemID)
+				item:ContinueOnItemLoad(function()
+					if row.itemID ~= itemID or not row:IsShown() then return end
+					local icon = item.GetItemIcon and item:GetItemIcon()
+					local name = item.GetItemName and item:GetItemName()
+					if icon then row.icon:SetTexture(icon) end
+					if name then row.name:SetText(name) end
+				end)
+			end
+		end
+		for index = #entries + 1, #rows do
+			rows[index]:Hide()
+		end
+		emptyText:SetShown(#entries == 0)
+		local height = #entries == 0 and 20 or (#entries * rowHeight)
+		listContainer:SetHeight(height)
+		note:ClearAllPoints()
+		note:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -14)
+		local noteHeight = note:GetStringHeight() or 40
+		local noteEstimate = math.ceil(math.max(#(note:GetText() or ""), 1) / 80) * 14
+		if noteHeight < noteEstimate then noteHeight = noteEstimate end
+		listMenu:SetHeight(headerHeight() + height + 14 + noteHeight + 16)
+		local scrollFrame = listMenu:GetParent()
+		if scrollFrame and scrollFrame.UpdateScrollChildRect then
+			scrollFrame:UpdateScrollChildRect()
+		end
+	end
+
+	listMenu:HookScript("OnShow", function()
+		if listContainer.needsRefresh or not listContainer.builtOnce then
+			TyGearRefreshIgnoredGearList()
+		end
+	end)
+	TyGearRefreshIgnoredGearList()
+end
+
+--Forever Keep List tab: unbound-grey option, add box near the top, then kept greys and whites
+local function buildKeepListPage(listMenu)
+	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", 8, -8)
+	title:SetText(L["Keep List"])
+
+	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", 8, -28)
+	note:SetWidth(480)
+	note:SetJustifyH("LEFT")
+	note:SetText(L["Greys and common (white) items listed here are kept when selling. The list starts with crafting tools that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, and enchanting rods. Every fishing pole is kept even if its item ID is removed from this list."])
+	listMenu.keepListNote = note
+
+	local unboundCheck = newCheckbox(
+		"KeepUnboundGreyGear",
+		L["Keep unbound grey gear"],
+		L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
+		function(_, value)
+			if not TyGearDB then TyGearDB = {} end
+			TyGearDB.KeepUnboundGreyGear = value and true or false
+			TyGearPrint("TyGear: "..(TyGearDB.KeepUnboundGreyGear and L["Keeping unbound grey gear is now enabled."] or L["Keeping unbound grey gear is now disabled."]), 0)
+			if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
+		end,
+		listMenu
+	)
+	unboundCheck:SetPoint("TOPLEFT", note, "BOTTOMLEFT", -2, -10)
+	unboundCheck:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
+	unboundCheck:SetHitRectInsets(0, -280, 0, 0)
+	listMenu.keepUnboundCheck = unboundCheck
+
+	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
+
+	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	addHeader:SetPoint("TOPLEFT", unboundCheck, "BOTTOMLEFT", 2, -14)
+	addHeader:SetText(L["Add items"])
+
+	local addNote = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	addNote:SetPoint("TOPLEFT", addHeader, "BOTTOMLEFT", 0, -6)
+	addNote:SetWidth(480)
+	addNote:SetJustifyH("LEFT")
+	addNote:SetText(addItemsHelp)
+	listMenu.keepListAddNote = addNote
+
+	local editRow = CreateFrame("Frame", nil, listMenu)
+	editRow:SetPoint("TOPLEFT", addNote, "BOTTOMLEFT", 0, -2)
+	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+	editRow:SetHeight(24)
+	local editBox = CreateFrame("EditBox", "TyGearVendorKeepListEditBox", editRow, "InputBoxTemplate")
+	editBox:SetAutoFocus(false)
+	editBox:SetHeight(20)
+	editBox:SetPoint("LEFT", 4, 0)
+	editBox:SetPoint("RIGHT", editRow, "RIGHT", -4, 0)
+	local suppressEditBoxSave = false
+	local function showKeepListText()
+		suppressEditBoxSave = true
+		editBox:SetText((TyGearDB and TyGearDB.VendorKeepList) or "")
+		editBox:SetCursorPosition(0)
+		suppressEditBoxSave = false
+	end
+	local function saveKeepListText(text)
+		if not TyGearDB then TyGearDB = {} end
+		local previous = {}
+		for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
+			previous[itemID] = true
+		end
+		local parsed = TyGearParseItemIDList(text or "")
+		local seen, newOnes, rest = {}, {}, {}
+		for _, itemID in ipairs(parsed) do
+			if not seen[itemID] then
+				seen[itemID] = true
+				if previous[itemID] then
+					table.insert(rest, itemID)
+				else
+					table.insert(newOnes, itemID)
+				end
+			end
+		end
+		local ordered = {}
+		for _, itemID in ipairs(newOnes) do
+			table.insert(ordered, itemID)
+		end
+		for _, itemID in ipairs(rest) do
+			table.insert(ordered, itemID)
+		end
+		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
+		showKeepListText()
+		if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
+		if TyGearRefreshKeepList then TyGearRefreshKeepList() end
+	end
+	editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	editBox:SetScript("OnEscapePressed", function(self)
+		showKeepListText()
+		self:ClearFocus()
+	end)
+	editBox:SetScript("OnEditFocusLost", function(self)
+		if suppressEditBoxSave then return end
+		saveKeepListText(self:GetText())
+	end)
+	editBox:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_NONE")
+		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+		GameTooltip:AddLine(L["Add items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(addItemsHelp, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:Show()
+	end)
+	editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	local function insertItemLink(text)
+		if editBox:HasFocus() and text and string.find(text, "item:%d+") then
+			editBox:Insert(" "..text)
+		end
+	end
+	if ChatFrameUtil and ChatFrameUtil.InsertLink then
+		hooksecurefunc(ChatFrameUtil, "InsertLink", insertItemLink)
+	elseif ChatEdit_InsertLink then
+		hooksecurefunc("ChatEdit_InsertLink", insertItemLink)
+	end
+	showKeepListText()
+
+	local keptHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	keptHeader:SetPoint("TOPLEFT", editRow, "BOTTOMLEFT", 0, -14)
+	keptHeader:SetText(L["Kept items"])
+
+	local listContainer = CreateFrame("Frame", "TyGearKeepListContainer", listMenu)
+	listContainer:SetPoint("TOPLEFT", keptHeader, "BOTTOMLEFT", 0, -8)
+	listContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+	listContainer:SetHeight(20)
+
+	local emptyText = listContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+	emptyText:SetPoint("TOPLEFT", 0, 0)
+	emptyText:SetText(L["No items are on the keep list."])
+
+	local rows = {}
+	local rowHeight = 28
+	local rowSerial = 0
+
+	local function defaultKeepSet()
+		local set = {}
+		for _, itemID in ipairs(TyGearCraftingToolItemIDs or {}) do
+			set[itemID] = true
+		end
+		return set
+	end
+
+	local function acquireRow()
+		rowSerial = rowSerial + 1
+		local row = CreateFrame("Frame", nil, listContainer)
+		row:SetSize(500, rowHeight)
+		row.icon = row:CreateTexture(nil, "ARTWORK")
+		row.icon:SetSize(24, 24)
+		row.icon:SetPoint("LEFT", 0, 0)
+		--checkbox only for user-added items; out-of-the-box crafting tools stay listed without a toggle
+		row.check = CreateFrame("CheckButton", "TyGearKeepListRow"..rowSerial.."CheckButton", row, "InterfaceOptionsCheckButtonTemplate")
+		row.check:SetPoint("LEFT", row.icon, "RIGHT", 2, 0)
+		local templateText = _G[row.check:GetName().."Text"]
+		if templateText then templateText:SetText("") end
+		row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		row.name:SetJustifyH("LEFT")
+		row.name:SetWordWrap(false)
+		row.check:SetScript("OnClick", function(self)
+			local parent = self:GetParent()
+			if parent.builtIn then
+				self:SetChecked(true)
+				return
+			end
+			local itemID = parent.itemID
+			local keep = self:GetChecked() and true or false
+			TyGearSetVendorKeepListItem(itemID, keep)
+			if keep then
+				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+			else
+				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+			end
+		end)
+		row.check:SetScript("OnEnter", function(self)
+			local parent = self:GetParent()
+			if not parent.itemID then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetHyperlink("item:"..parent.itemID)
+			GameTooltip:AddLine(L["Uncheck to remove this item from the keep list."], 1, 0.82, 0, true)
+			GameTooltip:Show()
+		end)
+		row.check:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		row:EnableMouse(true)
+		row:SetScript("OnEnter", function(self)
+			if not self.itemID then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetHyperlink("item:"..self.itemID)
+			if self.builtIn then
+				GameTooltip:AddLine(L["Included with TyGear's default keep list."], 1, 0.82, 0, true)
+			else
+				GameTooltip:AddLine(L["Uncheck to remove this item from the keep list."], 1, 0.82, 0, true)
+			end
+			GameTooltip:Show()
+		end)
+		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		return row
+	end
+
+	local function collectEntries()
+		local defaults = defaultKeepSet()
+		local user, builtin = {}, {}
+		--preserve newest-first order for user-added items; defaults stay below without checkboxes
+		for _, itemID in ipairs(TyGearParseItemIDList((TyGearDB and TyGearDB.VendorKeepList) or "")) do
+			local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
+			local name = GetItemInfo and GetItemInfo(itemID)
+			local entry = { id = itemID, icon = icon, name = name or ("item "..itemID), builtIn = defaults[itemID] and true or false }
+			if entry.builtIn then
+				table.insert(builtin, entry)
+			else
+				table.insert(user, entry)
+			end
+		end
+		table.sort(builtin, function(a, b)
+			return (a.name or "") < (b.name or "")
+		end)
+		for _, entry in ipairs(builtin) do
+			table.insert(user, entry)
+		end
+		return user
+	end
+
+	local function headerHeight()
+		local function measured(fontString, fallback)
+			local height = fontString:GetStringHeight() or fallback
+			local estimate = math.ceil(math.max(#(fontString:GetText() or ""), 1) / 80) * 14
+			if height < estimate then height = estimate end
+			return height
+		end
+		--title + note + unbound checkbox + add header + add note + edit row + kept header + spacings
+		return 28 + measured(note, 40) + 10 + 26 + 14 + 16 + 6 + measured(addNote, 28) + 2 + 24 + 14 + 16 + 8
+	end
+
+	function TyGearRefreshKeepList()
+		if not listMenu:IsShown() and listContainer.builtOnce then
+			listContainer.needsRefresh = true
+			return
+		end
+		listContainer.builtOnce = true
+		listContainer.needsRefresh = false
+		if unboundCheck and unboundCheck.SetChecked then
+			unboundCheck:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
+		end
+		if not editBox:HasFocus() then
+			showKeepListText()
+		end
 		local entries = collectEntries()
 		for index, entry in ipairs(entries) do
 			local row = rows[index]
@@ -3812,259 +4128,17 @@ local function buildIgnoredGearListPage(listMenu)
 
 	listMenu:HookScript("OnShow", function()
 		if listContainer.needsRefresh or not listContainer.builtOnce then
-			TyGearRefreshIgnoredGearList()
-		end
-	end)
-	TyGearRefreshIgnoredGearList()
-end
-
---Forever Keep list tab: unbound-grey option, add box near the top, then kept greys and whites
-local function buildKeepListPage(listMenu)
-	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", 8, -8)
-	title:SetText(L["Keep list"])
-
-	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	note:SetPoint("TOPLEFT", 8, -28)
-	note:SetWidth(480)
-	note:SetJustifyH("LEFT")
-	note:SetText(L["Greys and common (white) items listed here are kept when selling. The list starts with crafting tools that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, and enchanting rods. Every fishing pole is kept even if its item ID is removed from this list."])
-	listMenu.keepListNote = note
-
-	local unboundCheck = newCheckbox(
-		"KeepUnboundGreyGear",
-		L["Keep unbound grey gear"],
-		L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
-		function(_, value)
-			if not TyGearDB then TyGearDB = {} end
-			TyGearDB.KeepUnboundGreyGear = value and true or false
-			TyGearPrint("TyGear: "..(TyGearDB.KeepUnboundGreyGear and L["Keeping unbound grey gear is now enabled."] or L["Keeping unbound grey gear is now disabled."]), 0)
-			if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
-		end,
-		listMenu
-	)
-	unboundCheck:SetPoint("TOPLEFT", note, "BOTTOMLEFT", -2, -10)
-	unboundCheck:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
-	unboundCheck:SetHitRectInsets(0, -280, 0, 0)
-	listMenu.keepUnboundCheck = unboundCheck
-
-	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	addHeader:SetPoint("TOPLEFT", unboundCheck, "BOTTOMLEFT", 2, -14)
-	addHeader:SetText(L["Add items"])
-
-	local addNote = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	addNote:SetPoint("TOPLEFT", addHeader, "BOTTOMLEFT", 0, -6)
-	addNote:SetWidth(480)
-	addNote:SetJustifyH("LEFT")
-	addNote:SetText(L["Item IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item."])
-	listMenu.keepListAddNote = addNote
-
-	local editRow = CreateFrame("Frame", nil, listMenu)
-	editRow:SetPoint("TOPLEFT", addNote, "BOTTOMLEFT", 0, -8)
-	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
-	editRow:SetHeight(24)
-	local editBox = CreateFrame("EditBox", "TyGearVendorKeepListEditBox", editRow, "InputBoxTemplate")
-	editBox:SetAutoFocus(false)
-	editBox:SetHeight(20)
-	editBox:SetPoint("LEFT", 4, 0)
-	editBox:SetPoint("RIGHT", editRow, "RIGHT", -4, 0)
-	local suppressEditBoxSave = false
-	local function showKeepListText()
-		suppressEditBoxSave = true
-		editBox:SetText((TyGearDB and TyGearDB.VendorKeepList) or "")
-		editBox:SetCursorPosition(0)
-		suppressEditBoxSave = false
-	end
-	local function saveKeepListText(text)
-		if not TyGearDB then TyGearDB = {} end
-		TyGearDB.VendorKeepList = table.concat(TyGearParseItemIDList(text or ""), ", ")
-		showKeepListText()
-		if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
-		if TyGearRefreshKeepList then TyGearRefreshKeepList() end
-	end
-	editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-	editBox:SetScript("OnEscapePressed", function(self)
-		showKeepListText()
-		self:ClearFocus()
-	end)
-	editBox:SetScript("OnEditFocusLost", function(self)
-		if suppressEditBoxSave then return end
-		saveKeepListText(self:GetText())
-	end)
-	editBox:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_NONE")
-		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(L["Add items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Item IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-		GameTooltip:Show()
-	end)
-	editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	local function insertItemLink(text)
-		if editBox:HasFocus() and text and string.find(text, "item:%d+") then
-			editBox:Insert(" "..text)
-		end
-	end
-	if ChatFrameUtil and ChatFrameUtil.InsertLink then
-		hooksecurefunc(ChatFrameUtil, "InsertLink", insertItemLink)
-	elseif ChatEdit_InsertLink then
-		hooksecurefunc("ChatEdit_InsertLink", insertItemLink)
-	end
-	showKeepListText()
-
-	local keptHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	keptHeader:SetPoint("TOPLEFT", editRow, "BOTTOMLEFT", 0, -14)
-	keptHeader:SetText(L["Kept items"])
-
-	local listContainer = CreateFrame("Frame", "TyGearKeepListContainer", listMenu)
-	listContainer:SetPoint("TOPLEFT", keptHeader, "BOTTOMLEFT", 0, -8)
-	listContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
-	listContainer:SetHeight(20)
-
-	local emptyText = listContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-	emptyText:SetPoint("TOPLEFT", 0, 0)
-	emptyText:SetText(L["No items are on the keep list."])
-
-	local rows = {}
-	local rowHeight = 28
-	local rowSerial = 0
-
-	local function acquireRow()
-		rowSerial = rowSerial + 1
-		local row = CreateFrame("Frame", nil, listContainer)
-		row:SetSize(500, rowHeight)
-		row.icon = row:CreateTexture(nil, "ARTWORK")
-		row.icon:SetSize(24, 24)
-		row.icon:SetPoint("LEFT", 0, 0)
-		row.check = CreateFrame("CheckButton", "TyGearKeepListRow"..rowSerial.."CheckButton", row, "InterfaceOptionsCheckButtonTemplate")
-		row.check:SetPoint("LEFT", row.icon, "RIGHT", 2, 0)
-		local templateText = _G[row.check:GetName().."Text"]
-		if templateText then templateText:SetText("") end
-		row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-		row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
-		row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-		row.name:SetJustifyH("LEFT")
-		row.name:SetWordWrap(false)
-		row.check:SetScript("OnClick", function(self)
-			local itemID = self:GetParent().itemID
-			local keep = self:GetChecked() and true or false
-			TyGearSetVendorKeepListItem(itemID, keep)
-			if keep then
-				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-			else
-				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-			end
-		end)
-		row.check:SetScript("OnEnter", function(self)
-			local parent = self:GetParent()
-			if not parent.itemID then return end
-			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-			GameTooltip:SetHyperlink("item:"..parent.itemID)
-			GameTooltip:AddLine(L["Uncheck to remove this item from the keep list."], 1, 0.82, 0, true)
-			GameTooltip:Show()
-		end)
-		row.check:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		row:EnableMouse(true)
-		row:SetScript("OnEnter", function(self)
-			if not self.itemID then return end
-			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-			GameTooltip:SetHyperlink("item:"..self.itemID)
-			GameTooltip:AddLine(L["Uncheck to remove this item from the keep list."], 1, 0.82, 0, true)
-			GameTooltip:Show()
-		end)
-		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		return row
-	end
-
-	local function collectEntries()
-		local entries = {}
-		for _, itemID in ipairs(TyGearParseItemIDList((TyGearDB and TyGearDB.VendorKeepList) or "")) do
-			local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
-			local name = GetItemInfo and GetItemInfo(itemID)
-			table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID) })
-		end
-		table.sort(entries, function(a, b)
-			return (a.name or "") < (b.name or "")
-		end)
-		return entries
-	end
-
-	local function headerHeight()
-		local function measured(fontString, fallback)
-			local height = fontString:GetStringHeight() or fallback
-			local estimate = math.ceil(math.max(#(fontString:GetText() or ""), 1) / 80) * 14
-			if height < estimate then height = estimate end
-			return height
-		end
-		--title + note + unbound checkbox + add header + add note + edit row + kept header + spacings
-		return 28 + measured(note, 40) + 10 + 26 + 14 + 16 + 6 + measured(addNote, 28) + 8 + 24 + 14 + 16 + 8
-	end
-
-	function TyGearRefreshKeepList()
-		if not listMenu:IsShown() and listContainer.builtOnce then
-			listContainer.needsRefresh = true
-			return
-		end
-		listContainer.builtOnce = true
-		listContainer.needsRefresh = false
-		if unboundCheck and unboundCheck.SetChecked then
-			unboundCheck:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
-		end
-		if not editBox:HasFocus() then
-			showKeepListText()
-		end
-		local entries = collectEntries()
-		for index, entry in ipairs(entries) do
-			local row = rows[index]
-			if not row then
-				row = acquireRow()
-				rows[index] = row
-			end
-			row.itemID = entry.id
-			row:ClearAllPoints()
-			row:SetPoint("TOPLEFT", listContainer, "TOPLEFT", 0, -((index - 1) * rowHeight))
-			row:SetPoint("TOPRIGHT", listContainer, "TOPRIGHT", 0, -((index - 1) * rowHeight))
-			row.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-			row.name:SetText(entry.name or ("item "..entry.id))
-			row.check:SetChecked(true)
-			row:Show()
-			if Item and Item.CreateFromItemID then
-				local itemID = entry.id
-				local item = Item:CreateFromItemID(itemID)
-				item:ContinueOnItemLoad(function()
-					if row.itemID ~= itemID or not row:IsShown() then return end
-					local icon = item.GetItemIcon and item:GetItemIcon()
-					local name = item.GetItemName and item:GetItemName()
-					if icon then row.icon:SetTexture(icon) end
-					if name then row.name:SetText(name) end
-				end)
-			end
-		end
-		for index = #entries + 1, #rows do
-			rows[index]:Hide()
-		end
-		emptyText:SetShown(#entries == 0)
-		local height = #entries == 0 and 20 or (#entries * rowHeight)
-		listContainer:SetHeight(height)
-		listMenu:SetHeight(headerHeight() + height + 16)
-		local scrollFrame = listMenu:GetParent()
-		if scrollFrame and scrollFrame.UpdateScrollChildRect then
-			scrollFrame:UpdateScrollChildRect()
-		end
-	end
-
-	listMenu:HookScript("OnShow", function()
-		if listContainer.needsRefresh or not listContainer.builtOnce then
 			TyGearRefreshKeepList()
 		end
 	end)
 	TyGearRefreshKeepList()
 end
 
---Forever Need list tab: add box near the top, then items TyGear should always NEED on
+--Forever Need List tab: add box near the top, then items TyGear should always NEED on
 local function buildNeedListPage(listMenu)
 	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 8, -8)
-	title:SetText(L["Need list"])
+	title:SetText(L["Need List"])
 
 	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 	note:SetPoint("TOPLEFT", 8, -28)
@@ -4072,6 +4146,8 @@ local function buildNeedListPage(listMenu)
 	note:SetJustifyH("LEFT")
 	note:SetText(L["Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon. Mounts and ignored items are still skipped."])
 	listMenu.needListNote = note
+
+	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 
 	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	addHeader:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -14)
@@ -4081,11 +4157,11 @@ local function buildNeedListPage(listMenu)
 	addNote:SetPoint("TOPLEFT", addHeader, "BOTTOMLEFT", 0, -6)
 	addNote:SetWidth(480)
 	addNote:SetJustifyH("LEFT")
-	addNote:SetText(L["Item IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."])
+	addNote:SetText(addItemsHelp)
 	listMenu.needListAddNote = addNote
 
 	local editRow = CreateFrame("Frame", nil, listMenu)
-	editRow:SetPoint("TOPLEFT", addNote, "BOTTOMLEFT", 0, -8)
+	editRow:SetPoint("TOPLEFT", addNote, "BOTTOMLEFT", 0, -2)
 	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	editRow:SetHeight(24)
 	local editBox = CreateFrame("EditBox", "TyGearNeedListEditBox", editRow, "InputBoxTemplate")
@@ -4102,7 +4178,30 @@ local function buildNeedListPage(listMenu)
 	end
 	local function saveNeedListText(text)
 		if not TyGearDB then TyGearDB = {} end
-		TyGearDB.NeedList = table.concat(TyGearParseItemIDList(text or ""), ", ")
+		local previous = {}
+		for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.NeedList or "")) do
+			previous[itemID] = true
+		end
+		local parsed = TyGearParseItemIDList(text or "")
+		local seen, newOnes, rest = {}, {}, {}
+		for _, itemID in ipairs(parsed) do
+			if not seen[itemID] then
+				seen[itemID] = true
+				if previous[itemID] then
+					table.insert(rest, itemID)
+				else
+					table.insert(newOnes, itemID)
+				end
+			end
+		end
+		local ordered = {}
+		for _, itemID in ipairs(newOnes) do
+			table.insert(ordered, itemID)
+		end
+		for _, itemID in ipairs(rest) do
+			table.insert(ordered, itemID)
+		end
+		TyGearDB.NeedList = table.concat(ordered, ", ")
 		showNeedListText()
 		if TyGearRefreshNeedList then TyGearRefreshNeedList() end
 	end
@@ -4119,7 +4218,7 @@ local function buildNeedListPage(listMenu)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
 		GameTooltip:AddLine(L["Add items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Item IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:AddLine(addItemsHelp, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 		GameTooltip:Show()
 	end)
 	editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -4218,7 +4317,7 @@ local function buildNeedListPage(listMenu)
 			return height
 		end
 		--title + note + add header + add note + edit row + needed header + spacings
-		return 28 + measured(note, 40) + 14 + 16 + 6 + measured(addNote, 28) + 8 + 24 + 14 + 16 + 8
+		return 28 + measured(note, 40) + 14 + 16 + 6 + measured(addNote, 28) + 2 + 24 + 14 + 16 + 8
 	end
 
 	function TyGearRefreshNeedList()
@@ -4726,7 +4825,7 @@ local function optionsSetup(optionsMenu)
 			shouldPrintHelp = false
 		end
 	end)
-	--Forever hosts Ignore on the Ignored gear Settings tab instead of the main page
+	--Forever hosts Ignore on the Ignored List Settings tab instead of the main page
 	if not IS_WOW_FOREVER then
 		buildIgnoreSection(optionsPage)
 	end
@@ -4754,7 +4853,7 @@ if IS_WOW_FOREVER then
 	ignoredGearListMenu:SetWidth(1)
 	ignoredGearListMenu:SetHeight(1)
 	ignoredGearListMenuParent = CreateFrame("ScrollFrame", "TyGearIgnoredGearListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
-	ignoredGearListMenuParent.name = L["Ignored gear"]
+	ignoredGearListMenuParent.name = L["Ignored List"]
 	ignoredGearListMenuParent:SetScrollChild(ignoredGearListMenu)
 	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
 		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, ignoredGearListMenuParent, ignoredGearListMenuParent.name)
@@ -4767,7 +4866,7 @@ if IS_WOW_FOREVER then
 	needListMenu:SetWidth(1)
 	needListMenu:SetHeight(1)
 	needListMenuParent = CreateFrame("ScrollFrame", "TyGearNeedListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
-	needListMenuParent.name = L["Need list"]
+	needListMenuParent.name = L["Need List"]
 	needListMenuParent:SetScrollChild(needListMenu)
 	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
 		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, needListMenuParent, needListMenuParent.name)
@@ -4780,7 +4879,7 @@ if IS_WOW_FOREVER then
 	keepListMenu:SetWidth(1)
 	keepListMenu:SetHeight(1)
 	keepListMenuParent = CreateFrame("ScrollFrame", "TyGearKeepListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
-	keepListMenuParent.name = L["Keep list"]
+	keepListMenuParent.name = L["Keep List"]
 	keepListMenuParent:SetScrollChild(keepListMenu)
 	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
 		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, keepListMenuParent, keepListMenuParent.name)
@@ -5079,10 +5178,10 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["option"] = "VendorKeepList",
 				["tab"] = L["Vendor"],
 				["section"] = L["Keep"],
-				["shouldUse"] = not IS_WOW_FOREVER, --Forever uses the Keep list Settings tab instead
+				["shouldUse"] = not IS_WOW_FOREVER, --Forever uses the Keep List Settings tab instead
 				["editBox"] = true,
-				["label"] = L["Keep list"],
-				["description"] = L["Item IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item."],
+				["label"] = L["Keep List"],
+				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."],
 				["editBoxPostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
@@ -5100,7 +5199,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["option"] = "KeepUnboundGreyGear",
 				["tab"] = L["Vendor"],
 				["section"] = L["Keep"],
-				["shouldUse"] = not IS_WOW_FOREVER, --Forever hosts this on the Keep list Settings tab
+				["shouldUse"] = not IS_WOW_FOREVER, --Forever hosts this on the Keep List Settings tab
 				["label"] = L["Keep unbound grey gear"],
 				["description"] = L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
 				["toggleDescriptionTrue"] = L["Keeping unbound grey gear is now enabled."],
@@ -5110,11 +5209,11 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			{
 				["option"] = "NeedList",
 				["tab"] = L["Loot"],
-				["section"] = L["Need list"],
-				["shouldUse"] = not IS_WOW_FOREVER, --Forever uses the Need list Settings tab instead
+				["section"] = L["Need List"],
+				["shouldUse"] = not IS_WOW_FOREVER, --Forever uses the Need List Settings tab instead
 				["editBox"] = true,
-				["label"] = L["Need list"],
-				["description"] = L["Item IDs separated by commas. Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
+				["label"] = L["Need List"],
+				["description"] = L["Item names or IDs separated by commas. Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 			},
 			{
 				["option"] = "Override",
@@ -5406,7 +5505,7 @@ end
 
 function TyGearPrintHelp()
 	TyGearPrint("TyGear: "..((param1 == "help") and "" or "Unrecognized command.  ").."Recognized commands (also /tygear):", 0)
-	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", the Ignored gear tab for ignore settings and unmeasurable gear, the Need list tab for forced NEED rolls, and the Keep list tab for vendor keep items") or ""), 0)
+	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", the Ignored List tab for ignore settings, the Need List tab for forced NEED rolls, and the Keep List tab for vendor keep items") or ""), 0)
 	TyGearPrint("TyGear:    '/tg help': command line help", 0)
 	TyGearPrint("TyGear:    '/tg scan': scan all bags for gear upgrades", 0)
 	TyGearPrint("TyGear:    '/tg spec': get name of current talent specialization", 0)
@@ -5677,17 +5776,90 @@ function TyGearCashToString(cash)
 	return gold..silver..copper
 end
 
---reads item IDs from text containing item IDs and item links, in order and without duplicates
+--resolve an item name to an item ID using the client cache, bags, equipped gear, and known lists
+function TyGearFindItemIDByName(name)
+	if not name or name == "" then return end
+	name = string.gsub(name, "^%s*(.-)%s*$", "%1")
+	if name == "" or tonumber(name) then return end
+	local lower = string.lower(name)
+
+	if GetItemInfoInstant then
+		local itemID = GetItemInfoInstant(name)
+		itemID = tonumber(itemID)
+		if itemID and itemID > 0 then return itemID end
+	end
+	if GetItemInfo then
+		local _, itemLink = GetItemInfo(name)
+		if itemLink then
+			local itemID = tonumber(string.match(itemLink, "item:(%d+)"))
+			if itemID and itemID > 0 then return itemID end
+		end
+	end
+
+	local function nameMatches(itemID)
+		if not itemID or not GetItemInfo then return false end
+		local itemName = GetItemInfo(itemID)
+		return itemName and string.lower(itemName) == lower
+	end
+
+	for slot = INVSLOT_FIRST_EQUIPPED, INVSLOT_LAST_EQUIPPED do
+		local itemID = GetInventoryItemID("player", slot)
+		if nameMatches(itemID) then return itemID end
+	end
+
+	local lastBag = NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4
+	for bag = 0, lastBag do
+		for slot = 1, GetContainerNumSlots(bag) or 0 do
+			local itemID = GetContainerItemID(bag, slot)
+			if nameMatches(itemID) then return itemID end
+		end
+	end
+
+	if TyGearUnmeasurableGearList then
+		for _, entry in ipairs(TyGearUnmeasurableGearList) do
+			if entry.name and string.lower(entry.name) == lower then
+				return entry.id
+			end
+		end
+	end
+
+	if TyGearCraftingToolItemIDs then
+		for _, itemID in ipairs(TyGearCraftingToolItemIDs) do
+			if nameMatches(itemID) then return itemID end
+		end
+	end
+end
+
+--reads item IDs from text containing item IDs, item names, and item links, in order and without duplicates
 function TyGearParseItemIDList(text)
 	--item links hold other numbers too (enchants, bonus IDs, digits in item names), so reduce each link to its item ID first
-	text = string.gsub(text, "|c[^|]*|Hitem:(%d+)[^|]*|h.-|h|r", " %1 ")
+	text = string.gsub(text or "", "|c[^|]*|Hitem:(%d+)[^|]*|h.-|h|r", " %1 ")
 	text = string.gsub(text, "|Hitem:(%d+)[^|]*|h.-|h", " %1 ")
 	local itemIDs, isListed = {}, {}
-	for itemIDText in string.gmatch(text, "%d+") do
-		local itemID = tonumber(itemIDText)
-		if (itemID > 0) and (not isListed[itemID]) then
+	local function addID(itemID)
+		itemID = tonumber(itemID)
+		if itemID and itemID > 0 and not isListed[itemID] then
 			isListed[itemID] = true
 			table.insert(itemIDs, itemID)
+		end
+	end
+	for segment in string.gmatch(text..",", "([^,]*),") do
+		segment = string.gsub(segment, "^%s*(.-)%s*$", "%1")
+		if segment ~= "" then
+			local asNumber = tonumber(segment)
+			if asNumber then
+				addID(asNumber)
+			else
+				local byName = TyGearFindItemIDByName(segment)
+				if byName then
+					addID(byName)
+				else
+					--bare numeric lists without commas still work
+					for itemIDText in string.gmatch(segment, "%d+") do
+						addID(itemIDText)
+					end
+				end
+			end
 		end
 	end
 	return itemIDs
