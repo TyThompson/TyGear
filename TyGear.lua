@@ -2892,9 +2892,7 @@ local function closeDropdownMenu(dropdown)
 end
 
 --options window layout in pixels
-local OPTIONS_JUMP_TOP = -46 --below the TyGear title and the AutoGear credit line
-local OPTIONS_JUMP_BUTTON_HEIGHT = 22
-local OPTIONS_JUMP_BUTTON_GAP = 4
+local OPTIONS_CONTAINER_TOP = -46 --below the TyGear title and the AutoGear credit line
 local OPTIONS_CONTAINER_LEFT_OFFSET = 8
 local OPTIONS_CONTAINER_RIGHT_MARGIN = 30 --room for the scroll bar
 local OPTIONS_CONTAINER_BOTTOM_MARGIN = 16
@@ -2904,17 +2902,13 @@ local OPTIONS_SECTION_SPACING = 12
 local OPTIONS_SECTION_HEADER_HEIGHT = 20
 local OPTIONS_BUTTON_SPACING = 10
 
----One scrolling options page. Section buttons jump down the page; the mouse wheel
----moves through every section because they are all on this page.
+---One scrolling options page. The mouse wheel moves through every section
+---because they are all on this page.
 ---@param optionsMenu table the scroll child of the options scroll frame
 ---@return table optionsPage with BeginOption, AddRow, AddScanButton and Finish
 local function newOptionsPage(optionsMenu)
 	local scrollFrame = optionsMenu:GetParent()
-	local optionsPage = { jumps = {} }
-
-	local jumpBar = CreateFrame("Frame", nil, optionsMenu)
-	jumpBar:SetPoint("TOPLEFT", optionsMenu, "TOPLEFT", OPTIONS_CONTAINER_LEFT_OFFSET, OPTIONS_JUMP_TOP)
-	jumpBar:SetHeight(OPTIONS_JUMP_BUTTON_HEIGHT)
+	local optionsPage = {}
 
 	local container = CreateFrame("Frame", "TyGearOptionsContainer", optionsMenu, "BackdropTemplate")
 	container:SetBackdrop({
@@ -2925,7 +2919,7 @@ local function newOptionsPage(optionsMenu)
 	})
 	container:SetBackdropColor(0.1, 0.1, 0.1, 0.3)
 	container:SetBackdropBorderColor(0.5, 0.5, 0.5)
-	container:SetPoint("TOPLEFT", jumpBar, "BOTTOMLEFT", 0, -8)
+	container:SetPoint("TOPLEFT", optionsMenu, "TOPLEFT", OPTIONS_CONTAINER_LEFT_OFFSET, OPTIONS_CONTAINER_TOP)
 
 	local page = CreateFrame("Frame", nil, container)
 	page:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
@@ -2991,20 +2985,8 @@ local function newOptionsPage(optionsMenu)
 	end
 	enableWheel(optionsMenu)
 	enableWheel(scrollFrame)
-	enableWheel(jumpBar)
 	enableWheel(container)
 	enableWheel(page)
-
-	local function scrollToWidget(widget)
-		local menuTop = optionsMenu:GetTop()
-		local widgetTop = widget:GetTop()
-		if not menuTop or not widgetTop then return end
-		local offset = menuTop - widgetTop
-		local range = scrollRange()
-		if offset < 0 then offset = 0 end
-		if offset > range then offset = range end
-		scrollFrame:SetVerticalScroll(offset)
-	end
 
 	function optionsPage:AddRow(row, spacing, offsetX)
 		spacing = page.lastRow and (spacing or OPTIONS_ROW_SPACING) or 0
@@ -3031,21 +3013,6 @@ local function newOptionsPage(optionsMenu)
 		headerText:SetPoint("BOTTOMLEFT", 4, 2)
 		headerText:SetText(TyGearColorize(label))
 		self:AddRow(header, isMajor and OPTIONS_SECTION_SPACING or 6)
-		local button = CreateFrame("Button", nil, jumpBar, "UIPanelButtonTemplate")
-		button:SetText(TyGearColorize(label))
-		button:SetHeight(OPTIONS_JUMP_BUTTON_HEIGHT)
-		local fontString = button.GetFontString and button:GetFontString()
-		local textWidth = fontString and fontString:GetStringWidth() or 0
-		if not textWidth or textWidth < 8 then
-			textWidth = #label * 7
-		end
-		button:SetWidth(math.max(48, textWidth + 28))
-		button:SetScript("OnClick", function()
-			PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
-			scrollToWidget(header)
-		end)
-		enableWheel(button)
-		table.insert(self.jumps, button)
 	end
 
 	---Groups options that share a tab onto this page and adds a header when the group changes.
@@ -3089,28 +3056,13 @@ local function newOptionsPage(optionsMenu)
 	function optionsPage:Finish()
 		local function layout()
 			local width = math.max((scrollFrame:GetWidth() or 0) - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
-			jumpBar:SetWidth(width)
 			container:SetWidth(width)
 			page:SetWidth(width)
 			optionsMenu:SetWidth(width + OPTIONS_CONTAINER_LEFT_OFFSET)
-			local x, y = 0, 0
-			local rowStep = OPTIONS_JUMP_BUTTON_HEIGHT + OPTIONS_JUMP_BUTTON_GAP
-			for _, button in ipairs(self.jumps) do
-				local buttonWidth = button:GetWidth()
-				if x > 0 and (x + buttonWidth) > width then
-					x = 0
-					y = y + rowStep
-				end
-				button:ClearAllPoints()
-				button:SetPoint("TOPLEFT", jumpBar, "TOPLEFT", x, -y)
-				x = x + buttonWidth + OPTIONS_JUMP_BUTTON_GAP
-			end
-			local jumpHeight = y + OPTIONS_JUMP_BUTTON_HEIGHT
-			jumpBar:SetHeight(jumpHeight)
 			local pageHeight = page.height + OPTIONS_PAGE_PADDING
 			container:SetHeight(pageHeight)
 			page:SetHeight(pageHeight)
-			optionsMenu:SetHeight(-OPTIONS_JUMP_TOP + jumpHeight + 8 + pageHeight + OPTIONS_CONTAINER_BOTTOM_MARGIN)
+			optionsMenu:SetHeight(-OPTIONS_CONTAINER_TOP + pageHeight + OPTIONS_CONTAINER_BOTTOM_MARGIN)
 			if scrollFrame.UpdateScrollChildRect then
 				scrollFrame:UpdateScrollChildRect()
 			end
