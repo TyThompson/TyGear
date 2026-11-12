@@ -188,7 +188,6 @@ if GetLocale() == "deDE" then
 	T.Localization["Ignored gear"] = "Ignorierte Ausrüstung"
 	T.Localization["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."] = "Diese Gegenstände haben nur Effekte, die TyGear nicht bewerten kann, etwa 4% Chance, dass Furcht verfehlt. Ausrüstung mit einem zusätzlich bewertbaren Wert bleibt in der normalen Bewertung. Sie bleiben ignoriert, weil TyGear sie nicht messen kann."
 	T.Localization["Add items"] = "Gegenstände hinzufügen"
-	T.Localization["Item IDs separated by commas. Shift-click equipment while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open. Built-in unmeasurable gear stays listed below and is not edited here."] = "Gegenstands-IDs, durch Kommas getrennt. Umschalt-Klick auf Ausrüstung fügt sie hinzu, solange dieses Feld den Fokus hat, oder schlage Gegenstands-IDs in Tooltips nach, während die TyGear-Optionen offen sind. Eingebaute nicht messbare Ausrüstung bleibt unten gelistet und wird hier nicht bearbeitet."
 	T.Localization["Ignored items"] = "Ignorierte Gegenstände"
 	T.Localization["No unmeasurable gear has been found yet."] = "Noch keine nicht messbare Ausrüstung gefunden."
 	T.Localization["TyGear cannot score this item, so it stays ignored."] = "TyGear kann diesen Gegenstand nicht bewerten, daher bleibt er ignoriert."
