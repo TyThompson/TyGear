@@ -39,6 +39,8 @@ Chat commands (`/tygear` is the same as `/tg`):
 /tg verbosity [0/1/2]: set allowed verbosity level; valid levels are: 0 (errors), 1 (info), 2 (details)
 ```
 
+Key Bindings (Esc → Key Bindings → TyGear): assign keys to toggle the hovered item on the vendor **keep list** or the gear **ignore list**. Hover a bag, character, or chat item tooltip and press the key.
+
 Warning: TyGear currently automatically rolls "greed" on everything that isn't a gear upgrade for the current spec, including mounts and crafting reagents. It works quite well for leveling quickly and conveniently, but you should disable it before loot rolls you want control over. To do so, simply run "/tg toggle" or toggle it from the options menu.
 
 Warning: TyGear is not recommended for use at max level. Its weights are not optimal, nor are stat weights ideal for determining upgrades in end-game content. TyGear is meant primarily as a convenience for leveling quickly. Using it at max level, especially in team PvE or PvP, is likely to get you kicked from various groups and guilds. Calculating proper upgrades using [SimulationCraft](https://www.simulationcraft.org/) is preferable. This will be very time-consuming, but worth it for your powerful max-level character.
