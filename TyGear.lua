@@ -731,6 +731,8 @@ end
 function TyGearGetGearSlotShortLabel(slot)
 	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
 		return TyGearSlotNames[slot] or GetItemInventorySlotInfo(slot) or tostring(slot)
+	elseif TyGearReagentBagSlot and slot == TyGearReagentBagSlot then
+		return TyGearGetReagentBagSlotName()
 	elseif slot >= TyGearFirstEquippableBagSlot and slot <= TyGearLastEquippableBagSlot then
 		local slotNumber = slot - TyGearFirstEquippableBagSlot + 1
 		return (BAGSLOT or "Bag").." "..tostring(slotNumber)
@@ -2673,6 +2675,64 @@ local function newCheckbox(dbname, label, description, onClick, optionsMenu)
 	return check
 end
 
+--compact multi-column gear-slot checkbox grid (Ignore and Lock slots)
+local function createGearSlotCheckboxGrid(parent, frameName, checkNamePrefix, slotList, isChecked, setChecked, description, enableWheel)
+	local columns = 4
+	local cellWidth = 118
+	local cellHeight = 20
+	local padX, padY = 10, 8
+	local rows = math.max(math.ceil(#slotList / columns), 1)
+	local slotGrid = CreateFrame("Frame", frameName, parent, "BackdropTemplate")
+	slotGrid:SetSize(padX * 2 + columns * cellWidth, padY * 2 + rows * cellHeight)
+	slotGrid:SetBackdrop({
+		bgFile = "Interface/ChatFrame/ChatFrameBackground",
+		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+		tile = true, tileSize = 16, edgeSize = 12,
+		insets = { left = 3, right = 3, top = 3, bottom = 3 },
+	})
+	slotGrid:SetBackdropColor(0.08, 0.08, 0.08, 0.45)
+	slotGrid:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+	for index, gearSlot in ipairs(slotList) do
+		local column = (index - 1) % columns
+		local rowIndex = math.floor((index - 1) / columns)
+		local shortLabel = TyGearGetGearSlotShortLabel(gearSlot)
+		local check = CreateFrame("CheckButton", checkNamePrefix..gearSlot.."CheckButton", slotGrid, "UICheckButtonTemplate")
+		check:SetSize(20, 20)
+		check:SetPoint("TOPLEFT", slotGrid, "TOPLEFT", padX + column * cellWidth, -(padY + rowIndex * cellHeight))
+		local label = _G[check:GetName().."Text"]
+		if label then
+			label:SetFontObject(GameFontHighlightSmall)
+			label:SetText(shortLabel)
+			label:SetWordWrap(false)
+			label:ClearAllPoints()
+			label:SetPoint("LEFT", check, "RIGHT", 2, 0)
+			label:SetWidth(cellWidth - 26)
+			label:SetJustifyH("LEFT")
+		end
+		check:SetHitRectInsets(0, -(cellWidth - 24), 2, 2)
+		check:SetChecked(isChecked(gearSlot) and true or false)
+		check:SetScript("OnClick", function(self)
+			local tick = self:GetChecked() and true or false
+			setChecked(gearSlot, tick)
+			if tick then
+				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+			else
+				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+			end
+		end)
+		check:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_NONE")
+			GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+			GameTooltip:AddLine(shortLabel, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+			GameTooltip:AddLine(description, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+			GameTooltip:Show()
+		end)
+		check:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		if enableWheel then enableWheel(check) end
+	end
+	return slotGrid
+end
+
 --all modern clients have the modern menu system (Blizzard_Menu); older clients only have UIDropDownMenu, which taints the default UI in Classic without TaintLess
 local useModernDropdowns = (MenuUtil ~= nil) and (WowStyle1DropdownMixin ~= nil)
 
@@ -3008,7 +3068,6 @@ local function buildIgnoreSection(optionsPage)
 	addSubheader(L["Gear slots"])
 	addNote(L["Ignored slots are left out of rolling, scoring, and equipping."])
 	do
-		--compact multi-column grid instead of a tall full-width checkbox stack
 		local slotList = {}
 		for slot = INVSLOT_FIRST_EQUIPPED, INVSLOT_LAST_EQUIPPED do
 			--the tabard id is the virtual slot for two-hand weapons, so it is not listed here
@@ -3016,61 +3075,21 @@ local function buildIgnoreSection(optionsPage)
 				table.insert(slotList, slot)
 			end
 		end
-		local columns = 4
-		local cellWidth = 118
-		local cellHeight = 20
-		local padX, padY = 10, 8
-		local rows = math.max(math.ceil(#slotList / columns), 1)
-		local slotGrid = CreateFrame("Frame", "TyGearIgnoredGearSlotsGrid", page, "BackdropTemplate")
-		slotGrid:SetSize(padX * 2 + columns * cellWidth, padY * 2 + rows * cellHeight)
-		slotGrid:SetBackdrop({
-			bgFile = "Interface/ChatFrame/ChatFrameBackground",
-			edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-			tile = true, tileSize = 16, edgeSize = 12,
-			insets = { left = 3, right = 3, top = 3, bottom = 3 },
-		})
-		slotGrid:SetBackdropColor(0.08, 0.08, 0.08, 0.45)
-		slotGrid:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
-		local slotDescription = L["Ignored slots are left out of rolling, scoring, and equipping."]
-		for index, gearSlot in ipairs(slotList) do
-			local column = (index - 1) % columns
-			local rowIndex = math.floor((index - 1) / columns)
-			local shortLabel = TyGearGetGearSlotShortLabel(gearSlot)
-			local check = CreateFrame("CheckButton", "TyGearIgnoreSlot"..gearSlot.."CheckButton", slotGrid, "UICheckButtonTemplate")
-			check:SetSize(20, 20)
-			check:SetPoint("TOPLEFT", slotGrid, "TOPLEFT", padX + column * cellWidth, -(padY + rowIndex * cellHeight))
-			local label = _G[check:GetName().."Text"]
-			if label then
-				label:SetFontObject(GameFontHighlightSmall)
-				label:SetText(shortLabel)
-				label:SetWordWrap(false)
-				label:ClearAllPoints()
-				label:SetPoint("LEFT", check, "RIGHT", 2, 0)
-				label:SetWidth(cellWidth - 26)
-				label:SetJustifyH("LEFT")
-			end
-			check:SetHitRectInsets(0, -(cellWidth - 24), 2, 2)
-			check:SetChecked(TyGearCharDB.IgnoredGearSlots[gearSlot] and true or false)
-			check:SetScript("OnClick", function(self)
-				local tick = self:GetChecked() and true or false
+		local slotGrid = createGearSlotCheckboxGrid(
+			page,
+			"TyGearIgnoredGearSlotsGrid",
+			"TyGearIgnoreSlot",
+			slotList,
+			function(gearSlot)
+				return TyGearCharDB.IgnoredGearSlots[gearSlot]
+			end,
+			function(gearSlot, tick)
 				TyGearCharDB.IgnoredGearSlots[gearSlot] = tick
-				if tick then
-					PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-				else
-					PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-				end
 				if TyGearUpdateBestItems then TyGearUpdateBestItems() end
-			end)
-			check:SetScript("OnEnter", function(self)
-				GameTooltip:SetOwner(self, "ANCHOR_NONE")
-				GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-				GameTooltip:AddLine(shortLabel, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-				GameTooltip:AddLine(slotDescription, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-				GameTooltip:Show()
-			end)
-			check:SetScript("OnLeave", function() GameTooltip:Hide() end)
-			optionsPage:EnableWheel(check)
-		end
+			end,
+			L["Ignored slots are left out of rolling, scoring, and equipping."],
+			function(frame) optionsPage:EnableWheel(frame) end
+		)
 		optionsPage:AddRow(slotGrid, 4, 4)
 	end
 
@@ -3514,8 +3533,41 @@ local function optionsSetup(optionsMenu)
 		--if this has a child defined and it should be used, build its child
 		if v["child"] and ((v["child"]["shouldUse"] == nil) or (v["child"]["shouldUse"] and (v["child"]["shouldUse"] ~= false))) then
 
+			--compact multi-column gear-slot grid, matching the Ignore tab
+			if v["child"]["slotGrid"] then
+				local lockedSlots = TyGearGetLockedGearSlots()
+				local slotList = {}
+				for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+					if TyGearIsManagedGearSlot(slot) then
+						table.insert(slotList, slot)
+					end
+				end
+				local slotGrid = createGearSlotCheckboxGrid(
+					page,
+					"TyGear"..v["child"]["option"].."Grid",
+					"TyGearLockSlot",
+					slotList,
+					function(gearSlot)
+						return lockedSlots[gearSlot] and lockedSlots[gearSlot].enabled
+					end,
+					function(gearSlot, tick)
+						if not lockedSlots[gearSlot] then
+							lockedSlots[gearSlot] = {
+								["label"] = TyGearGetLockedGearSlotLabel(gearSlot),
+								["enabled"] = false
+							}
+						end
+						lockedSlots[gearSlot].enabled = tick
+						if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+					end,
+					TyGearColorize(v["child"]["description"] or v["description"] or ""),
+					function(frame) optionsPage:EnableWheel(frame) end
+				)
+				frame[i].slotGrid = slotGrid
+				optionsPage:AddRow(slotGrid, 4, 20)
+
 			--if the child is a dropdown, build it that way
-			if v["child"]["options"] then
+			elseif v["child"]["options"] then
 
 				local width = 250
 				if useModernDropdowns then
@@ -4157,9 +4209,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["togglePostHook"] = function() TyGearUpdateBestItems() end,
 				["child"] = {
 					["option"] = "LockedGearSlots",
-					["options"] = TyGearGetLockedGearSlots(),
-					["label"] = "Gear slots to lock",
-					["description"] = "Choose which gear slots to lock in this dropdown."
+					["slotGrid"] = true,
+					["label"] = L["Gear slots to lock"],
+					["description"] = L["Choose which gear slots TyGear should leave alone while locking is enabled."]
 				}
 			},
 			{
