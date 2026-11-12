@@ -192,16 +192,181 @@ function TyGearGetAllowedVerbosityName(allowedverbosity)
 	return verbosityNames[allowedverbosity]
 end
 
+local QUALITY_COLOR_HEX = {
+	[0] = "9d9d9d", -- poor
+	[1] = "ffffff", -- common
+	[2] = "1eff00", -- uncommon
+	[3] = "0070dd", -- rare
+	[4] = "a335ee", -- epic
+	[5] = "ff8000", -- legendary
+	[6] = "e6cc80", -- artifact
+	[7] = "00ccff", -- heirloom
+}
+
+local ENGLISH_CLASS_NAMES = {
+	WARRIOR = "Warrior",
+	PALADIN = "Paladin",
+	HUNTER = "Hunter",
+	ROGUE = "Rogue",
+	PRIEST = "Priest",
+	DEATHKNIGHT = "Death Knight",
+	SHAMAN = "Shaman",
+	MAGE = "Mage",
+	WARLOCK = "Warlock",
+	MONK = "Monk",
+	DRUID = "Druid",
+	DEMONHUNTER = "Demon Hunter",
+	EVOKER = "Evoker",
+}
+
+--longer rarity words first so "greens" is not split into a colored "green"
+local QUALITY_WORDS = {
+	{ quality = 2, words = { "greens", "green", "grüne", "gruene", "grün", "gruen" } },
+	{ quality = 3, words = { "blues", "blue", "blaue", "blau" } },
+	{ quality = 4, words = { "epics", "epic", "epische", "episch" } },
+	{ quality = 0, words = { "greys", "grey", "gray", "graue", "grau" } },
+	{ quality = 1, words = { "whites", "white", "weiße", "weisse", "weiß", "weiss" } },
+	{ gold = true, words = { "golds", "gold" } },
+}
+
+local function colorMarkup(color, fallbackHex)
+	if color then
+		if color.GenerateHexColorMarkup then
+			return color:GenerateHexColorMarkup()
+		end
+		if type(color.colorStr) == "string" then
+			local hex = color.colorStr
+			if hex:sub(1, 2) == "|c" then return hex end
+			if #hex == 6 then hex = "ff"..hex end
+			return "|c"..hex
+		end
+		if color.r ~= nil and color.g ~= nil and color.b ~= nil then
+			return string.format("|cff%02x%02x%02x", math.floor(color.r * 255 + 0.5), math.floor(color.g * 255 + 0.5), math.floor(color.b * 255 + 0.5))
+		end
+	end
+	if fallbackHex then
+		return "|cff"..fallbackHex
+	end
+end
+
+local function qualityMarkup(quality)
+	local entry = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+	local color = entry and (entry.color or entry) or nil
+	if entry and entry.hex then return entry.hex end
+	return colorMarkup(color, QUALITY_COLOR_HEX[quality] or "ffffff")
+end
+
+local function asciiLetterAt(text, index)
+	if index < 1 or index > #text then return false end
+	local byte = text:byte(index)
+	return (byte >= 65 and byte <= 90) or (byte >= 97 and byte <= 122)
+end
+
+local function insideColorCode(text, position)
+	local last = nil
+	local i = 1
+	while i < position do
+		local colorStart = text:find("|c", i, true)
+		local colorEnd = text:find("|r", i, true)
+		if colorStart and colorStart < position and (not colorEnd or colorStart < colorEnd) then
+			last = "c"
+			i = colorStart + 2
+		elseif colorEnd and colorEnd < position then
+			last = "r"
+			i = colorEnd + 2
+		else
+			break
+		end
+	end
+	return last == "c"
+end
+
+local function colorizeWord(text, word, markup)
+	if not text or text == "" or not word or word == "" then return text end
+	local lowerText = text:lower()
+	local lowerWord = word:lower()
+	local parts = {}
+	local i = 1
+	while i <= #text do
+		local startAt, endAt = lowerText:find(lowerWord, i, true)
+		if not startAt then
+			parts[#parts + 1] = text:sub(i)
+			break
+		end
+		if not asciiLetterAt(text, startAt - 1) and not asciiLetterAt(text, endAt + 1) and not insideColorCode(text, startAt) then
+			parts[#parts + 1] = text:sub(i, startAt - 1)
+			parts[#parts + 1] = markup
+			parts[#parts + 1] = text:sub(startAt, endAt)
+			parts[#parts + 1] = "|r"
+			i = endAt + 1
+		else
+			parts[#parts + 1] = text:sub(i, endAt)
+			i = endAt + 1
+		end
+	end
+	return table.concat(parts)
+end
+
+---Colors class names and item-quality words the way the WoW UI does.
+function TyGearColorize(text)
+	if type(text) ~= "string" or text == "" then return text end
+	local classNames = {}
+	for token, english in pairs(ENGLISH_CLASS_NAMES) do
+		classNames[#classNames + 1] = { token = token, name = english }
+		local localized = TyGearClassList and TyGearClassList[token]
+		if localized and localized ~= english then
+			classNames[#classNames + 1] = { token = token, name = localized }
+		end
+	end
+	table.sort(classNames, function(a, b) return #a.name > #b.name end)
+	for _, entry in ipairs(classNames) do
+		local markup = colorMarkup(RAID_CLASS_COLORS and RAID_CLASS_COLORS[entry.token], nil)
+		if markup then
+			text = colorizeWord(text, entry.name, markup)
+		end
+	end
+	for _, group in ipairs(QUALITY_WORDS) do
+		local markup = group.gold and "|cffffd100" or qualityMarkup(group.quality)
+		for _, word in ipairs(group.words) do
+			text = colorizeWord(text, word, markup)
+		end
+	end
+	return text
+end
+
 --printing function to check allowed verbosity level
 function TyGearPrint(text, verbosity)
 	if verbosity == nil then verbosity = 0 end
 	if (TyGearDB.AllowedVerbosity == nil) or (verbosity <= TyGearDB.AllowedVerbosity) then
-		print(text)
+		print(TyGearColorize(text))
 	end
 end
 
 --initialize table for storing saved variables
+--TyGearDB is shared by every character. Specialization override is stored separately
+--in TyGearCharDB so an alt does not inherit the main's spec.
 if (not TyGearDB) then TyGearDB = {} end
+if (not TyGearCharDB) then TyGearCharDB = {} end
+
+function TyGearSettingsTable(optionName)
+	if optionName == "Override" or optionName == "OverrideSpec" then
+		return TyGearCharDB
+	end
+	return TyGearDB
+end
+
+function TyGearInitializeCharacterSettings()
+	if not TyGearCharDB then TyGearCharDB = {} end
+	if TyGearCharDB.Override == nil then
+		TyGearCharDB.Override = false
+	end
+	if TyGearCharDB.OverrideSpec == nil or TyGearCharDB.OverrideSpec == "" then
+		TyGearCharDB.OverrideSpec = TyGearGetDefaultOverrideSpec()
+	end
+	--drop any copy that older builds saved in the shared table
+	TyGearDB["Override"] = nil
+	TyGearDB["OverrideSpec"] = nil
+end
 
 --initialize item info cache for quicker repeat lookups
 -- TyGearItemInfoCache = {}
@@ -1734,9 +1899,9 @@ function TyGearGetClassAndSpec()
 	local localizedClass, class, spec, classID
 
 	-- Override가 켜져 있고 저장된 OverrideSpec 이 있으면 거기서 먼저 시도
-	if TyGearDB.Override and TyGearDB.OverrideSpec then
+	if TyGearCharDB.Override and TyGearCharDB.OverrideSpec then
 		-- "죽음의 기사: Blood" / "악마사냥꾼: Havoc" 같은 형식 가정
-		local overrideLocalizedClass, overrideSpec = string.match(TyGearDB.OverrideSpec, "(.+): ?(.+)")
+		local overrideLocalizedClass, overrideSpec = string.match(TyGearCharDB.OverrideSpec, "(.+): ?(.+)")
 		if overrideLocalizedClass and overrideSpec then
 			-- 로컬 직업명 -> 영문 직업 토큰 (예: "악마사냥꾼" -> "DEMONHUNTER")
 			local overrideClassToken = TyGearReverseClassList[overrideLocalizedClass]
@@ -1786,6 +1951,8 @@ function TyGearSetStatWeights()
 end
 
 local function newCheckbox(dbname, label, description, onClick, optionsMenu)
+	label = TyGearColorize(label)
+	description = TyGearColorize(description)
 	local check = CreateFrame("CheckButton", "TyGear"..dbname.."CheckButton", optionsMenu, "InterfaceOptionsCheckButtonTemplate")
 	check:SetScript("OnClick", function(self)
 		local tick = self:GetChecked()
@@ -1815,6 +1982,7 @@ end
 local useModernDropdowns = (MenuUtil ~= nil) and (WowStyle1DropdownMixin ~= nil)
 
 local function setDropdownText(dropdown, text)
+	text = TyGearColorize(text)
 	if useModernDropdowns then
 		--OverrideText ignores nil, and it stops the menu from replacing the text with its own selection text
 		dropdown:OverrideText(text or "")
@@ -1832,8 +2000,9 @@ local function closeDropdownMenu(dropdown)
 end
 
 --options window layout in pixels
-local OPTIONS_TABS_TOP_OFFSET = -56 --below the TyGear title and the AutoGear credit line
-local OPTIONS_TAB_HEIGHT = 32 --height of PanelTopTabButtonTemplate
+local OPTIONS_JUMP_TOP = -46 --below the TyGear title and the AutoGear credit line
+local OPTIONS_JUMP_BUTTON_HEIGHT = 22
+local OPTIONS_JUMP_BUTTON_GAP = 4
 local OPTIONS_CONTAINER_LEFT_OFFSET = 8
 local OPTIONS_CONTAINER_RIGHT_MARGIN = 30 --room for the scroll bar
 local OPTIONS_CONTAINER_BOTTOM_MARGIN = 16
@@ -1843,17 +2012,19 @@ local OPTIONS_SECTION_SPACING = 12
 local OPTIONS_SECTION_HEADER_HEIGHT = 20
 local OPTIONS_BUTTON_SPACING = 10
 
----Creates the tabbed container of the options menu.  Each tab owns a page; rows are stacked
----vertically on their page and only the selected page is shown.
+---One scrolling options page. Section buttons jump down the page; the mouse wheel
+---moves through every section because they are all on this page.
 ---@param optionsMenu table the scroll child of the options scroll frame
----@return table optionsTabs with GetPage(label), AddSectionHeader(page, label), AddRow(page, row, spacing, offsetX) and Finish()
-local function newOptionsTabs(optionsMenu)
-	local optionsTabs = { pages = {}, pagesByLabel = {} }
+---@return table optionsPage with BeginOption, AddRow, AddScanButton and Finish
+local function newOptionsPage(optionsMenu)
 	local scrollFrame = optionsMenu:GetParent()
+	local optionsPage = { jumps = {} }
 
-	--bordered container below the tab buttons; it is named because PanelTemplates finds the tabs of
-	--clients without the "Tabs" parentArray (e.g. Classic Era) by the name "<container>Tab<index>"
-	local container = CreateFrame("Frame", "TyGearOptionsTabContainer", optionsMenu, "BackdropTemplate")
+	local jumpBar = CreateFrame("Frame", nil, optionsMenu)
+	jumpBar:SetPoint("TOPLEFT", optionsMenu, "TOPLEFT", OPTIONS_CONTAINER_LEFT_OFFSET, OPTIONS_JUMP_TOP)
+	jumpBar:SetHeight(OPTIONS_JUMP_BUTTON_HEIGHT)
+
+	local container = CreateFrame("Frame", "TyGearOptionsContainer", optionsMenu, "BackdropTemplate")
 	container:SetBackdrop({
 		bgFile = "Interface/ChatFrame/ChatFrameBackground",
 		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
@@ -1862,45 +2033,65 @@ local function newOptionsTabs(optionsMenu)
 	})
 	container:SetBackdropColor(0.1, 0.1, 0.1, 0.3)
 	container:SetBackdropBorderColor(0.5, 0.5, 0.5)
-	container:SetPoint("TOPLEFT", optionsMenu, "TOPLEFT", OPTIONS_CONTAINER_LEFT_OFFSET, OPTIONS_TABS_TOP_OFFSET - OPTIONS_TAB_HEIGHT)
+	container:SetPoint("TOPLEFT", jumpBar, "BOTTOMLEFT", 0, -8)
 
-	--shows the page of the given tab index and resizes the container and scroll child to fit it
-	local function selectTab(tabIndex)
-		PanelTemplates_SetTab(container, tabIndex)
-		for pageIndex, page in ipairs(optionsTabs.pages) do
-			page:SetShown(pageIndex == tabIndex)
+	local page = CreateFrame("Frame", nil, container)
+	page:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
+	page:SetPoint("TOPRIGHT", container, "TOPRIGHT", 0, 0)
+	page.height = OPTIONS_PAGE_PADDING
+	optionsPage.page = page
+
+	local function scrollRange()
+		if scrollFrame.GetVerticalScrollRange then
+			local range = scrollFrame:GetVerticalScrollRange()
+			if range and range > 0 then return range end
 		end
-		local pageHeight = optionsTabs.pages[tabIndex].height + OPTIONS_PAGE_PADDING
-		container:SetHeight(pageHeight)
-		optionsMenu:SetHeight(-OPTIONS_TABS_TOP_OFFSET + OPTIONS_TAB_HEIGHT + pageHeight + OPTIONS_CONTAINER_BOTTOM_MARGIN)
-		scrollFrame:SetVerticalScroll(0)
+		return math.max(0, (optionsMenu:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
 	end
 
-	---Returns the page for a tab label, creating the page and its tab button on first use.
-	function optionsTabs:GetPage(label)
-		if self.pagesByLabel[label] then return self.pagesByLabel[label] end
-		local tabIndex = #self.pages + 1
-		local page = CreateFrame("Frame", nil, container)
-		page:SetAllPoints(container)
-		page:Hide()
-		page.height = OPTIONS_PAGE_PADDING
-		local tab = CreateFrame("Button", container:GetName().."Tab"..tabIndex, container, "PanelTopTabButtonTemplate")
-		tab:SetID(tabIndex)
-		tab:SetText(label)
-		tab:SetScript("OnClick", function(clickedTab)
-			PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
-			selectTab(clickedTab:GetID())
-		end)
-		if tabIndex == 1 then
-			tab:SetPoint("BOTTOMLEFT", container, "TOPLEFT", 6, -2)
+	local function onWheel(_, delta)
+		if ScrollFrameTemplate_OnMouseWheel then
+			ScrollFrameTemplate_OnMouseWheel(scrollFrame, delta)
+			return
 		end
-		self.pages[tabIndex] = page
-		self.pagesByLabel[label] = page
-		return page
+		local range = scrollRange()
+		local nextScroll = (scrollFrame:GetVerticalScroll() or 0) - (delta * 60)
+		if nextScroll < 0 then nextScroll = 0 end
+		if nextScroll > range then nextScroll = range end
+		scrollFrame:SetVerticalScroll(nextScroll)
 	end
 
-	---Adds a row (checkbox, button, header) below the previous row of the page.
-	function optionsTabs:AddRow(page, row, spacing, offsetX)
+	local function enableWheel(frame)
+		if not frame or frame.tyGearWheel or not frame.EnableMouseWheel then return end
+		frame.tyGearWheel = true
+		if frame.EnableMouse and not frame:IsMouseEnabled() then
+			frame:EnableMouse(true)
+		end
+		frame:EnableMouseWheel(true)
+		frame:SetScript("OnMouseWheel", onWheel)
+	end
+
+	function optionsPage:EnableWheel(frame)
+		enableWheel(frame)
+	end
+	enableWheel(optionsMenu)
+	enableWheel(scrollFrame)
+	enableWheel(jumpBar)
+	enableWheel(container)
+	enableWheel(page)
+
+	local function scrollToWidget(widget)
+		local menuTop = optionsMenu:GetTop()
+		local widgetTop = widget:GetTop()
+		if not menuTop or not widgetTop then return end
+		local offset = menuTop - widgetTop
+		local range = scrollRange()
+		if offset < 0 then offset = 0 end
+		if offset > range then offset = range end
+		scrollFrame:SetVerticalScroll(offset)
+	end
+
+	function optionsPage:AddRow(row, spacing, offsetX)
 		spacing = page.lastRow and (spacing or OPTIONS_ROW_SPACING) or 0
 		offsetX = offsetX or 0
 		row:SetParent(page)
@@ -1912,33 +2103,108 @@ local function newOptionsTabs(optionsMenu)
 		end
 		page.height = page.height + spacing + row:GetHeight()
 		page.lastRow = row
+		enableWheel(row)
 	end
 
-	---Adds a section header row to the page and remembers it as the page's current section.
-	function optionsTabs:AddSectionHeader(page, label)
+	function optionsPage:AddHeader(label, isMajor)
 		local header = CreateFrame("Frame", nil, page)
-		header:SetSize(300, OPTIONS_SECTION_HEADER_HEIGHT)
-		local headerText = header:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+		header:SetSize(400, isMajor and 26 or OPTIONS_SECTION_HEADER_HEIGHT)
+		local headerText = header:CreateFontString(nil, "ARTWORK", isMajor and "GameFontNormalLarge" or "GameFontNormal")
 		headerText:SetPoint("BOTTOMLEFT", 4, 2)
-		headerText:SetText(label)
-		self:AddRow(page, header, OPTIONS_SECTION_SPACING)
-		page.section = label
-	end
-
-	---Anchors the tab buttons, sizes the container to the scroll frame and shows the first tab.
-	function optionsTabs:Finish()
-		PanelTemplates_SetNumTabs(container, #self.pages)
-		local function updateWidth()
-			local width = math.max(scrollFrame:GetWidth() - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
-			container:SetWidth(width)
-			optionsMenu:SetWidth(width + OPTIONS_CONTAINER_LEFT_OFFSET)
+		headerText:SetText(TyGearColorize(label))
+		self:AddRow(header, isMajor and OPTIONS_SECTION_SPACING or 6)
+		local button = CreateFrame("Button", nil, jumpBar, "UIPanelButtonTemplate")
+		button:SetText(TyGearColorize(label))
+		button:SetHeight(OPTIONS_JUMP_BUTTON_HEIGHT)
+		local fontString = button.GetFontString and button:GetFontString()
+		local textWidth = fontString and fontString:GetStringWidth() or 0
+		if not textWidth or textWidth < 8 then
+			textWidth = #label * 7
 		end
-		scrollFrame:HookScript("OnSizeChanged", updateWidth)
-		updateWidth()
-		selectTab(1)
+		button:SetWidth(math.max(48, textWidth + 28))
+		button:SetScript("OnClick", function()
+			PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
+			scrollToWidget(header)
+		end)
+		enableWheel(button)
+		table.insert(self.jumps, button)
 	end
 
-	return optionsTabs
+	---Groups options that share a tab onto this page and adds a header when the group changes.
+	function optionsPage:BeginOption(tabLabel, sectionLabel)
+		if tabLabel ~= page.tab then
+			if page.tab == L["Evaluation"] then
+				self:AddScanButton()
+			end
+			page.tab = tabLabel
+			page.section = nil
+			self:AddHeader(tabLabel, true)
+		end
+		if sectionLabel and sectionLabel ~= page.section then
+			page.section = sectionLabel
+			self:AddHeader(sectionLabel, false)
+		end
+		return page
+	end
+
+	function optionsPage:AddScanButton()
+		if self.scanAdded then return end
+		self.scanAdded = true
+		local button = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+		button:SetSize(100, 30)
+		button:SetText(L["Scan"])
+		button:SetScript("OnClick", function() TyGearScan() end)
+		button:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_NONE")
+			GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+			GameTooltip:AddLine(TyGearColorize(L["Click this button to force a scan, the same way that TyGear scans for gear upgrades in your bags whenever new gear is looted.\n\nTip: By equipping your old item, you can use this to help determine how TyGear decided an item was an upgrade."]), nil, nil, nil, true)
+			GameTooltip:Show()
+		end)
+		button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		enableWheel(button)
+		self:AddRow(button, OPTIONS_BUTTON_SPACING, 4)
+	end
+
+	function optionsPage:Finish()
+		if not self.scanAdded then
+			self:AddScanButton()
+		end
+		local function layout()
+			local width = math.max((scrollFrame:GetWidth() or 0) - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
+			jumpBar:SetWidth(width)
+			container:SetWidth(width)
+			page:SetWidth(width)
+			optionsMenu:SetWidth(width + OPTIONS_CONTAINER_LEFT_OFFSET)
+			local x, y = 0, 0
+			local rowStep = OPTIONS_JUMP_BUTTON_HEIGHT + OPTIONS_JUMP_BUTTON_GAP
+			for _, button in ipairs(self.jumps) do
+				local buttonWidth = button:GetWidth()
+				if x > 0 and (x + buttonWidth) > width then
+					x = 0
+					y = y + rowStep
+				end
+				button:ClearAllPoints()
+				button:SetPoint("TOPLEFT", jumpBar, "TOPLEFT", x, -y)
+				x = x + buttonWidth + OPTIONS_JUMP_BUTTON_GAP
+			end
+			local jumpHeight = y + OPTIONS_JUMP_BUTTON_HEIGHT
+			jumpBar:SetHeight(jumpHeight)
+			local pageHeight = page.height + OPTIONS_PAGE_PADDING
+			container:SetHeight(pageHeight)
+			page:SetHeight(pageHeight)
+			optionsMenu:SetHeight(-OPTIONS_JUMP_TOP + jumpHeight + 8 + pageHeight + OPTIONS_CONTAINER_BOTTOM_MARGIN)
+			if scrollFrame.UpdateScrollChildRect then
+				scrollFrame:UpdateScrollChildRect()
+			end
+		end
+		if not self.layoutHooked then
+			self.layoutHooked = true
+			scrollFrame:HookScript("OnSizeChanged", layout)
+		end
+		layout()
+	end
+
+	return optionsPage
 end
 
 local function optionsSetup(optionsMenu)
@@ -1952,7 +2218,24 @@ local function optionsSetup(optionsMenu)
 	frame[i]:SetPoint("TOPLEFT", 8, -28)
 	frame[i]:SetJustifyH("LEFT")
 	frame[i]:SetText(L["Fork of AutoGear by Synthetikaryote and BujuArena."])
-	local optionsTabs = newOptionsTabs(optionsMenu)
+	local optionsPage = newOptionsPage(optionsMenu)
+	--keep each former tab's options together, in the order those tabs first appear
+	local tabOrder, buckets = {}, {}
+	for _, option in ipairs(TyGearOptions) do
+		local tab = option["tab"] or L["Other"]
+		if not buckets[tab] then
+			buckets[tab] = {}
+			table.insert(tabOrder, tab)
+		end
+		table.insert(buckets[tab], option)
+	end
+	local orderedOptions = {}
+	for _, tab in ipairs(tabOrder) do
+		for _, option in ipairs(buckets[tab]) do
+			table.insert(orderedOptions, option)
+		end
+	end
+	TyGearOptions = orderedOptions
 
 	--loop through options table to build our options menu programmatically
 	for _, v in ipairs(TyGearOptions) do (function()
@@ -1965,23 +2248,23 @@ local function optionsSetup(optionsMenu)
 			if v["cvar"] then
 				SetCVar(v["cvar"], value and 1 or 0)
 			end
-			TyGearDB[v["option"]] = value
-			TyGearPrint("TyGear: "..(TyGearDB[v["option"]] and v["toggleDescriptionTrue"] or v["toggleDescriptionFalse"]), 3)
-			TyGearPrint("TyGear: TyGearDB."..v["option"].." is "..(TyGearDB[v["option"]] and "true" or "false")..".",3)
+			TyGearSettingsTable(v["option"])[v["option"]] = value
+			TyGearPrint("TyGear: "..(TyGearSettingsTable(v["option"])[v["option"]] and v["toggleDescriptionTrue"] or v["toggleDescriptionFalse"]), 3)
+			TyGearPrint("TyGear: TyGearDB."..v["option"].." is "..(TyGearSettingsTable(v["option"])[v["option"]] and "true" or "false")..".",3)
 		end
 
 		--function to run when toggling this option via command-line interface
 		_G["TyGearToggle"..v["option"]] = function(force)
-			if TyGearDB[v["option"]] == nil then return end
+			if TyGearSettingsTable(v["option"])[v["option"]] == nil then return end
 			if force ~= nil then
-				TyGearDB[v["option"]] = force
+				TyGearSettingsTable(v["option"])[v["option"]] = force
 			else
-				TyGearDB[v["option"]] = (not TyGearDB[v["option"]])
+				TyGearSettingsTable(v["option"])[v["option"]] = (not TyGearSettingsTable(v["option"])[v["option"]])
 			end
 			if v["cvar"] then SetCVar(v["cvar"], force or (GetCVarBool(v["cvar"]) and 0 or 1)) end
-			TyGearPrint("TyGear: "..(TyGearDB[v["option"]] and v["toggleDescriptionTrue"] or v["toggleDescriptionFalse"]), 0)
+			TyGearPrint("TyGear: "..(TyGearSettingsTable(v["option"])[v["option"]] and v["toggleDescriptionTrue"] or v["toggleDescriptionFalse"]), 0)
 			if _G["TyGear"..v["option"].."CheckButton"] == nil then return end
-			_G["TyGear"..v["option"].."CheckButton"]:SetChecked(v["cvar"] and GetCVarBool(v["cvar"]) or TyGearDB[v["option"]])
+			_G["TyGear"..v["option"].."CheckButton"]:SetChecked(v["cvar"] and GetCVarBool(v["cvar"]) or TyGearSettingsTable(v["option"])[v["option"]])
 		end
 
 		if v["togglePostHook"] then
@@ -1992,16 +2275,12 @@ local function optionsSetup(optionsMenu)
 		--set description, and if this option is a cvar shortcut, add explanation of cvars to description
 		local description = v["description"]..(v["cvar"] and "\n\n"..L["This is a shortcut for the \"%s\" CVar provided by Blizzard.  Toggling this will toggle that CVar."]:format(v["cvar"]) or "")
 
-		--make a checkbox for this option
-		--put it on the page of its tab (options without a tab go to "Other"), starting a new section if needed
-		local page = optionsTabs:GetPage(v["tab"] or L["Other"])
-		if v["section"] and (v["section"] ~= page.section) then
-			optionsTabs:AddSectionHeader(page, v["section"])
-		end
+		--make a checkbox for this option on the single scrolling page
+		local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
 		frame[i] = newCheckbox(v["option"], v["label"], description, _G["TyGearSimpleToggle"..v["option"]], page)
-		optionsTabs:AddRow(page, frame[i])
+		optionsPage:AddRow(frame[i])
 		frame[i]:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
-		frame[i]:SetChecked(TyGearDB[v["option"]]) --set initial checked state based on db
+		frame[i]:SetChecked(TyGearSettingsTable(v["option"])[v["option"]]) --set initial checked state based on db
 
 		--if this has a child defined and it should be used, build its child
 		if v["child"] and ((v["child"]["shouldUse"] == nil) or (v["child"]["shouldUse"] and (v["child"]["shouldUse"] ~= false))) then
@@ -2020,11 +2299,12 @@ local function optionsSetup(optionsMenu)
 					frame[i].dropDown:SetPoint("TOPLEFT", frame[i], "TOPRIGHT", width, 0) --attach to parent
 					UIDropDownMenu_SetWidth(frame[i].dropDown, width)
 				end
+				optionsPage:EnableWheel(frame[i].dropDown)
 				--newDropdown(v["child"]["option"], v["child"]["label"], v["child"]["description"], _G["TyGearSelectFrom"..v["child"]["option"].."Dropdown"], v["child"]["options"], optionsMenu)
 				--frame[i].dropDown:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
-				if type(TyGearDB[v["child"]["option"]]) == 'string' then
-					setDropdownText(frame[i].dropDown, TyGearDB[v["child"]["option"]])
-				elseif type(TyGearDB[v["child"]["option"]]) == 'table' then
+				if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
+					setDropdownText(frame[i].dropDown, TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]])
+				elseif type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'table' then
 					local label
 					for _, l in pairs(v["child"]["options"]) do
 						if l["enabled"] then
@@ -2040,9 +2320,9 @@ local function optionsSetup(optionsMenu)
 
 				--function to run when using this dropdown
 				_G["TyGear"..v["child"]["option"].."Dropdown"].SetValue = function(self, value)
-					if type(TyGearDB[v["child"]["option"]]) == 'string' then
-						TyGearDB[v["child"]["option"]] = value
-						setDropdownText(_G["TyGear"..v["child"]["option"].."Dropdown"], TyGearDB[v["child"]["option"]])
+					if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
+						TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] = value
+						setDropdownText(_G["TyGear"..v["child"]["option"].."Dropdown"], TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]])
 						closeDropdownMenu(_G["TyGear"..v["child"]["option"].."Dropdown"])
 					end
 				end
@@ -2054,25 +2334,25 @@ local function optionsSetup(optionsMenu)
 				if useModernDropdowns then
 					--same menu as the UIDropDownMenu version below, built with the modern menu system
 					frame[i].dropDown:SetupMenu(function(dropdown, rootDescription)
-						if type(TyGearDB[v["child"]["option"]]) == 'string' then
+						if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
 							for _, j in ipairs(v["child"]["options"]) do
 								--the label is selected when the stored value is one of its subLabels; it only opens its submenu, so its responder does nothing
-								local labelDescription = rootDescription:CreateRadio(j["label"], function()
-									return (TyGearDB[v["child"]["option"]] and string.match(TyGearDB[v["child"]["option"]], "^"..j["label"]..":")) and true or false
+								local labelDescription = rootDescription:CreateRadio(TyGearColorize(j["label"]), function()
+									return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":")) and true or false
 								end, function() end)
 								for _, z in ipairs(j["subLabels"] or {}) do
 									local value = j["label"]..": "..z
 									labelDescription:CreateRadio(z, function()
-										return (TyGearDB[v["child"]["option"]] == value) or (TyGearDB[v["child"]["option"]] == z)
+										return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == value) or (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == z)
 									end, function()
 										dropdown:SetValue(value)
 									end)
 								end
 							end
-						elseif type(TyGearDB[v["child"]["option"]]) == 'table' then
+						elseif type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'table' then
 							for _, j in pairs(v["child"]["options"]) do
 								--checkboxes keep the menu open, like keepShownOnClick
-								rootDescription:CreateCheckbox(j["label"], function()
+								rootDescription:CreateCheckbox(TyGearColorize(j["label"]), function()
 									return j["enabled"] and true or false
 								end, function()
 									j["enabled"] = not j["enabled"]
@@ -2096,17 +2376,17 @@ local function optionsSetup(optionsMenu)
 						local info = UIDropDownMenu_CreateInfo()
 						if (level or 1) == 1 then
 							--display the labels
-							if type(TyGearDB[v["child"]["option"]]) == 'string' then
+							if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
 								for _, j in ipairs(v["child"]["options"]) do
-									info.text = j["label"]
-									info.checked = (TyGearDB[v["child"]["option"]] and (string.match(TyGearDB[v["child"]["option"]], "^"..j["label"]..":") and true or false) or false)
+									info.text = TyGearColorize(j["label"])
+									info.checked = (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and (string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":") and true or false) or false)
 									info.menuList = j
 									info.hasArrow = (j["subLabels"] and true or false)
 									UIDropDownMenu_AddButton(info)
 								end
-							elseif type(TyGearDB[v["child"]["option"]]) == 'table' then
+							elseif type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'table' then
 								for _, j in pairs(v["child"]["options"]) do
-									info.text = j["label"]
+									info.text = TyGearColorize(j["label"])
 									info.keepShownOnClick = true
 									info.isNotRadio = true
 									info.checked = j["enabled"]
@@ -2121,7 +2401,7 @@ local function optionsSetup(optionsMenu)
 												end
 											end
 										end
-										UIDropDownMenu_SetText(_G["TyGear"..v["child"]["option"].."Dropdown"], label)
+										setDropdownText(_G["TyGear"..v["child"]["option"].."Dropdown"], label)
 									end
 									info.menuList = j
 									info.hasArrow = (j["subLabels"] and true or false)
@@ -2135,7 +2415,7 @@ local function optionsSetup(optionsMenu)
 								for _, z in ipairs(menuList["subLabels"]) do
 									info.text = z
 									info.arg1 = menuList["label"]..": "..z
-									info.checked = ((TyGearDB[v["child"]["option"]] == info.arg1) or (TyGearDB[v["child"]["option"]] == z))
+									info.checked = ((TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == info.arg1) or (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == z))
 									UIDropDownMenu_AddButton(info, level)
 								end
 							end
@@ -2152,8 +2432,9 @@ local function optionsSetup(optionsMenu)
 				editBox:SetPoint("LEFT", frame[i], "RIGHT", width + 32, 0)
 				editBox:SetSize(width, 20)
 				editBox:SetAutoFocus(false)
+				optionsPage:EnableWheel(editBox)
 				local function showSavedText()
-					editBox:SetText(TyGearDB[v["child"]["option"]])
+					editBox:SetText(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]])
 					editBox:SetCursorPosition(0)
 				end
 				showSavedText()
@@ -2163,15 +2444,15 @@ local function optionsSetup(optionsMenu)
 					self:ClearFocus()
 				end)
 				editBox:SetScript("OnEditFocusLost", function(self)
-					TyGearDB[v["child"]["option"]] = table.concat(TyGearParseItemIDList(self:GetText()), ", ")
+					TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] = table.concat(TyGearParseItemIDList(self:GetText()), ", ")
 					showSavedText()
 				end)
 				editBox:SetScript("OnEnter", function(self)
 					GameTooltip:SetOwner(self, "ANCHOR_NONE")
 					GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-					GameTooltip:AddLine(v["child"]["label"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-					GameTooltip:AddLine(v["child"]["description"], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-					local itemIDs = TyGearParseItemIDList(TyGearDB[v["child"]["option"]])
+					GameTooltip:AddLine(TyGearColorize(v["child"]["label"]), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+					GameTooltip:AddLine(TyGearColorize(v["child"]["description"]), HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+					local itemIDs = TyGearParseItemIDList(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]])
 					if #itemIDs > 0 then
 						GameTooltip:AddLine(" ")
 						for _, itemID in ipairs(itemIDs) do
@@ -2241,22 +2522,7 @@ local function optionsSetup(optionsMenu)
 			shouldPrintHelp = false
 		end
 	end)
-	--the scan button goes at the bottom of the first tab
-	i = i + 1
-	frame[i] = CreateFrame("Button", nil, optionsTabs.pages[1], "UIPanelButtonTemplate")
-	frame[i]:SetWidth(100)
-	frame[i]:SetHeight(30)
-	frame[i]:SetScript("OnClick", function() TyGearScan() end)
-	frame[i]:SetText(L["Scan"])
-	optionsTabs:AddRow(optionsTabs.pages[1], frame[i], OPTIONS_BUTTON_SPACING, 4)
-	frame[i]:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_NONE")
-		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(L["Click this button to force a scan, the same way that TyGear scans for gear upgrades in your bags whenever new gear is looted.\n\nTip: By equipping your old item, you can use this to help determine how TyGear decided an item was an upgrade."],nil,nil,nil,true)
-		GameTooltip:Show()
-	end)
-	frame[i]:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	optionsTabs:Finish()
+	optionsPage:Finish()
 end
 
 local optionsMenu = CreateFrame("Frame", "TyGearOptionsMenu")
@@ -2298,8 +2564,6 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			KeepKeeperTahultPetItems = true,
 			KeepUnboundGreyGear = false,
 			AutoRepair = false,
-			Override = false,
-			OverrideSpec = TyGearGetDefaultOverrideSpec(),
 			UsePawn = not IS_WOW_FOREVER, --TyGear built-in weights are deprecated.  We're using Pawn mainly now, so default true.  Pawn has no WoW Forever scales yet, so Forever uses the built-in class profiles.
 			OverridePawnScale = false,
 			PawnScale = "",
@@ -2310,6 +2574,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		}
 
 		TyGearInitializeDB(TyGearDBDefaults)
+		TyGearInitializeCharacterSettings()
 		TyGearFixLockedGearSlots()
 
 		--initialize options menu variables
@@ -2566,7 +2831,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Override specialization"],
-				["description"] = L["Override specialization with the specialization chosen in this dropdown.  If this is enabled, TyGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the spec detected automatically."],
+				["description"] = L["Override specialization with the specialization chosen in this dropdown.  If this is enabled, TyGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the spec detected automatically.  This choice is saved for this character, so alts keep their own spec."],
 				["toggleDescriptionTrue"] = L["Specialization overriding is now enabled.  TyGear will use the specialization selected in the dropdown for evaluating gear."],
 				["toggleDescriptionFalse"] = L["Specialization overriding is now disabled.  TyGear will use your class and its detected specialization for evaluating gear.  Type \"/tg spec\" to check what specialization TyGear detects for your character."],
 				["togglePostHook"] = function() TyGearUpdateBestItems() end,
@@ -2574,7 +2839,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 					["option"] = "OverrideSpec",
 					["options"] = TyGearGetOverrideSpecs(),
 					["label"] = "Override specialization",
-					["description"] = "Override specialization with the spec chosen in this dropdown.  If this is enabled, TyGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the specialization detected automatically.",
+					["description"] = "Override specialization with the spec chosen in this dropdown.  If this is enabled, TyGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the specialization detected automatically.  This choice is saved for this character, so alts keep their own spec.",
 					["dropdownPostHook"] = function() TyGearSetStatWeights() end
 				}
 			},
@@ -2650,9 +2915,6 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			}
 		}
 
-		if TyGearDB.OverrideSpec == nil then
-			TyGearDB.OverrideSpec = TyGearGetDefaultOverrideSpec()
-		end
 		if (not TyGearDB.LockedGearSlots) or (#TyGearDB.LockedGearSlots == 0) then
 			TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots()
 		end
@@ -2727,8 +2989,8 @@ SlashCmdList["TyGear"] = function(msg)
 		if usingPawn then
 			pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
 		end
-		TyGearPrint("TyGear: Looks like you are a"..(realSpec:find("^[AEIOUaeiou]") and "n " or " ")..RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass).."."..((usingPawn or (TyGearDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec)))) and ("  However, TyGear is using "..(usingPawn and ("Pawn scale \""..PawnGetScaleColor(pawnScaleName)..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass).." weights")).." for gear evaluation due to the \""..(usingPawn and "Use Pawn to evaluate upgrades" or "Override specialization").."\" option.") or "").."  TyGear is using weapons value \""..weapons.."\" from \""..((TyGearDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec))) and (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass)) or (RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass))).."\" to determine which weapons are valid.  CanDualWield() returns \""..(CanDualWield() and "true" or "false").."\".", 0) 
-		if IS_WOW_FOREVER and (not TyGearDB.Override) then
+		TyGearPrint("TyGear: Looks like you are a"..(realSpec:find("^[AEIOUaeiou]") and "n " or " ")..RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass).."."..((usingPawn or (TyGearCharDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec)))) and ("  However, TyGear is using "..(usingPawn and ("Pawn scale \""..PawnGetScaleColor(pawnScaleName)..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass).." weights")).." for gear evaluation due to the \""..(usingPawn and "Use Pawn to evaluate upgrades" or "Override specialization").."\" option.") or "").."  TyGear is using weapons value \""..weapons.."\" from \""..((TyGearCharDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec))) and (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass)) or (RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass))).."\" to determine which weapons are valid.  CanDualWield() returns \""..(CanDualWield() and "true" or "false").."\".", 0) 
+		if IS_WOW_FOREVER and (not TyGearCharDB.Override) then
 			TyGearPrint("TyGear: WoW Forever has one specialization per class, so TyGear uses the general class profile.  Enable \"Override specialization\" in \"/tg\" to use a healer, tank, or focused damage profile.", 0)
 		end
 	elseif (param1 == "verbosity") or (param1 == "allowedverbosity") then
@@ -2742,11 +3004,11 @@ SlashCmdList["TyGear"] = function(msg)
 		local class = TyGearReverseClassList[localizedClassName]
 		if class and TyGearDefaultWeights[class][spec] then
 			local overridespec = localizedClassName..": "..spec
-			TyGearDB.OverrideSpec = overridespec
+			TyGearCharDB.OverrideSpec = overridespec
 			if TyGearOverrideSpecDropdown then
 				TyGearOverrideSpecDropdown:SetValue(overridespec)
 			end
-			TyGearPrint("TyGear: "..(TyGearDB.Override and "" or "While \"Override specialization\" is enabled, ").."TyGear will now use "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(overridespec).." weights to evaluate gear.",0)
+			TyGearPrint("TyGear: "..(TyGearCharDB.Override and "" or "While \"Override specialization\" is enabled, ").."TyGear will now use "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(overridespec).." weights to evaluate gear.",0)
 		else
 			TyGearPrint("TyGear: Unrecognized command. Usage: \"/tg overridespec [class]: [spec]\" (example: \"/tg overridespec Hunter: Beast Mastery\")",0)
 		end
@@ -4614,24 +4876,24 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		end
 	end
 
-	if TyGearDB.Override then
+	if TyGearCharDB.Override then
 
-		-- Try to find a visible scale with name matching the full TyGearDB.OverrideSpec string (example: "Paladin: Protection")
+		-- Try to find a visible scale with name matching the full TyGearCharDB.OverrideSpec string (example: "Paladin: Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
 			if PawnIsScaleVisible(scaleName)
-			and TyGearDB.OverrideSpec
-			and TyGearDB.OverrideSpec == scaleName
+			and TyGearCharDB.OverrideSpec
+			and TyGearCharDB.OverrideSpec == scaleName
 			and scale.Values
 			and next(scale.Values) then
 				return scaleName, scale.LocalizedName
 			end
 		end
 
-		-- Try to find a visible scale with localized name matching the full TyGearDB.OverrideSpec string (example: "Paladin: Protection")
+		-- Try to find a visible scale with localized name matching the full TyGearCharDB.OverrideSpec string (example: "Paladin: Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
 			if PawnIsScaleVisible(scaleName)
-			and TyGearDB.OverrideSpec
-			and TyGearDB.OverrideSpec == scale.LocalizedName
+			and TyGearCharDB.OverrideSpec
+			and TyGearCharDB.OverrideSpec == scale.LocalizedName
 			and scale.Values
 			and next(scale.Values) then
 				return scaleName, scale.LocalizedName
@@ -4641,7 +4903,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		-- Try to find a visible scale with class ID matching the override class ID and override spec name found in the localized scale name (example: "Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
 			if PawnIsScaleVisible(scaleName)
-			and TyGearDB.OverrideSpec
+			and TyGearCharDB.OverrideSpec
 			and overrideClassID == scale.ClassID
 			and scale.LocalizedName
 			and string.find(scale.LocalizedName, overrideSpec)
@@ -4670,20 +4932,20 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			end
 		end
 
-		-- Try to find any scale matching the full TyGearDB.OverrideSpec string (example: "Paladin: Protection")
+		-- Try to find any scale matching the full TyGearCharDB.OverrideSpec string (example: "Paladin: Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
-			if TyGearDB.OverrideSpec
-			and TyGearDB.OverrideSpec == scaleName
+			if TyGearCharDB.OverrideSpec
+			and TyGearCharDB.OverrideSpec == scaleName
 			and scale.Values
 			and next(scale.Values) then
 				return scaleName, scale.LocalizedName
 			end
 		end
 
-		-- Try to find any scale with localized name matching the full TyGearDB.OverrideSpec string (example: "Paladin: Protection")
+		-- Try to find any scale with localized name matching the full TyGearCharDB.OverrideSpec string (example: "Paladin: Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
-			if TyGearDB.OverrideSpec
-			and TyGearDB.OverrideSpec == scale.LocalizedName
+			if TyGearCharDB.OverrideSpec
+			and TyGearCharDB.OverrideSpec == scale.LocalizedName
 			and scale.Values
 			and next(scale.Values) then
 				return scaleName, scale.LocalizedName
