@@ -4878,16 +4878,13 @@ if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 --Post-vanilla tools are omitted on WoW Forever, which does not have those professions or items.
 local TyGearCraftingToolItemIDsClassic = {
 	2901, --Mining Pick
-	3567, --Dwarven Fishing Pole
 	4471, --Flint and Tinder
-	4598, --Goblin Fishing Pole
 	5956, --Blacksmith Hammer
 	6218, --Runed Copper Rod
 	6219, --Arclight Spanner
 	6256, --Fishing Pole
 	6339, --Runed Silver Rod
 	6365, --Strong Fishing Pole
-	6366, --Darkwood Fishing Pole
 	6367, --Big Iron Fishing Pole
 	7005, --Skinning Knife
 	10498, --Gyromatic Micro-Adjustor
@@ -4895,6 +4892,12 @@ local TyGearCraftingToolItemIDsClassic = {
 	11145, --Runed Truesilver Rod
 	12225, --Blump Family Fishing Pole
 	16207, --Runed Arcanite Rod
+}
+--removed from the default keep list (still kept by fishing-pole weapon subclass)
+local TyGearRemovedDefaultKeepListItemIDs = {
+	[3567] = true, --Dwarven Fishing Pole
+	[4598] = true, --Goblin Fishing Pole
+	[6366] = true, --Darkwood Fishing Pole
 }
 local TyGearCraftingToolItemIDsPostClassic = {
 	20815, --Jeweler's Kit
@@ -4954,6 +4957,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		TyGearInitializeDB(TyGearDBDefaults)
 		TyGearMigrateVendorKeepList()
 		TyGearPruneForeverVendorKeepList()
+		TyGearPruneRemovedDefaultKeepListItems()
 		TyGearInitializeCharacterSettings()
 		TyGearFixLockedGearSlots()
 		TyGearMigrateLockGearSlots()
@@ -5809,6 +5813,26 @@ function TyGearPruneForeverVendorKeepList()
 	local removed = false
 	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
 		if TyGearCraftingToolItemIDsMissingOnForever[itemID] then
+			removed = true
+		else
+			table.insert(ordered, itemID)
+		end
+	end
+	if removed then
+		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
+	end
+end
+
+--drop fishing poles that were removed from the default keep list (kept by weapon subclass instead)
+function TyGearPruneRemovedDefaultKeepListItems()
+	if not TyGearDB or TyGearDB.VendorKeepList == nil then
+		return
+	end
+	if not TyGearRemovedDefaultKeepListItemIDs then return end
+	local ordered = {}
+	local removed = false
+	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
+		if TyGearRemovedDefaultKeepListItemIDs[itemID] then
 			removed = true
 		else
 			table.insert(ordered, itemID)
