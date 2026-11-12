@@ -163,12 +163,12 @@ if GetLocale() == "deDE" then
 	T.Localization["Nothing is equipped."] = "Nichts ist angelegt."
 	T.Localization["Item IDs"] = "Gegenstands-IDs"
 	T.Localization["Also ignore these item IDs. Shift-click equipment while this box is focused to add it. Armor and weapons are accepted."] = "Diese Gegenstands-IDs zusätzlich ignorieren. Umschalt-Klick auf Ausrüstung fügt sie hinzu, solange dieses Feld den Fokus hat. Rüstung und Waffen werden übernommen."
-	T.Localization["No measurable stats"] = "Keine messbaren Werte"
-	T.Localization["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. Click an icon to toggle it."] = "Diese Gegenstände haben nur Effekte, die TyGear nicht bewerten kann, etwa 4% Chance, dass Furcht verfehlt. Ausrüstung mit einem zusätzlich bewertbaren Wert bleibt in der normalen Bewertung. Ein Klick auf ein Symbol schaltet es um."
+	T.Localization["Ignored gear"] = "Ignorierte Ausrüstung"
+	T.Localization["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."] = "Diese Gegenstände haben nur Effekte, die TyGear nicht bewerten kann, etwa 4% Chance, dass Furcht verfehlt. Ausrüstung mit einem zusätzlich bewertbaren Wert bleibt in der normalen Bewertung. Sie bleiben ignoriert, weil TyGear sie nicht messen kann."
+	T.Localization["No unmeasurable gear has been found yet."] = "Noch keine nicht messbare Ausrüstung gefunden."
+	T.Localization["TyGear cannot score this item, so it stays ignored."] = "TyGear kann diesen Gegenstand nicht bewerten, daher bleibt er ignoriert."
 	T.Localization["ignored"] = "ignoriert"
 	T.Localization["every slot this item can use is ignored"] = "jeder Platz, den dieser Gegenstand nutzen kann, ist ignoriert"
-	T.Localization["Ignored. Click to evaluate this item."] = "Ignoriert. Klicken, um diesen Gegenstand zu bewerten."
-	T.Localization["Click to ignore this item."] = "Klicken, um diesen Gegenstand zu ignorieren."
 
 	-- option: DebugInfoInTooltips
 	T.Localization["Show debug info in item tooltips (%swarning%s: laggy!)"] = "Debug-Infos in Gegenstands-Tooltips anzeigen (%sWarnung%s: verursacht Ruckler!)"

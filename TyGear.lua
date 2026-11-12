@@ -369,7 +369,8 @@ function TyGearInitializeCharacterSettings()
 		TyGearCharDB.IgnoredGearSlots = TyGearGetDefaultIgnoredGearSlots()
 	end
 	if not TyGearCharDB.IgnoredItemIDs then TyGearCharDB.IgnoredItemIDs = {} end
-	if not TyGearCharDB.UnmeasurableGearDisabled then TyGearCharDB.UnmeasurableGearDisabled = {} end
+	--older builds could opt unmeasurable Forever gear back into evaluation; that toggle is gone
+	TyGearCharDB.UnmeasurableGearDisabled = nil
 	if not TyGearCharDB.DiscoveredUnmeasurableGear then TyGearCharDB.DiscoveredUnmeasurableGear = {} end
 end
 
@@ -641,7 +642,6 @@ end
 
 function TyGearIsKnownUnmeasurableGear(itemID)
 	return IS_WOW_FOREVER and itemID and TyGearUnmeasurableGear and TyGearUnmeasurableGear[itemID]
-		and not (TyGearCharDB and TyGearCharDB.UnmeasurableGearDisabled and TyGearCharDB.UnmeasurableGearDisabled[itemID])
 end
 
 --true when this equipment should be left out of rolling, scoring, and equipping
@@ -654,14 +654,14 @@ function TyGearIsItemIgnored(info)
 		itemID = tonumber(info.id)
 	end
 	if not itemID then return false end
-	local disabled = TyGearCharDB and TyGearCharDB.UnmeasurableGearDisabled and TyGearCharDB.UnmeasurableGearDisabled[itemID]
+	--gear TyGear cannot score is always ignored; there is no toggle to evaluate it
 	if TyGearIsKnownUnmeasurableGear(itemID) then
 		return true
 	end
-	if IS_WOW_FOREVER and TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear and TyGearCharDB.DiscoveredUnmeasurableGear[itemID] and not disabled then
+	if IS_WOW_FOREVER and TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear and TyGearCharDB.DiscoveredUnmeasurableGear[itemID] then
 		return true
 	end
-	if type(info) == "table" and info.unmeasurableOnly and not disabled then
+	if type(info) == "table" and info.unmeasurableOnly then
 		return true
 	end
 	if TyGearCharDB and TyGearCharDB.IgnoredItemIDs and TyGearCharDB.IgnoredItemIDs[itemID] then
@@ -723,19 +723,14 @@ end
 function TyGearSetItemIgnored(itemID, shouldIgnore)
 	itemID = tonumber(itemID)
 	if not itemID then return end
+	--unmeasurable Forever gear stays ignored; only manual Item IDs are toggled here
+	if TyGearIsAutoUnmeasurable(itemID) then return end
 	if not TyGearCharDB then TyGearCharDB = {} end
 	TyGearCharDB.IgnoredItemIDs = TyGearCharDB.IgnoredItemIDs or {}
-	TyGearCharDB.UnmeasurableGearDisabled = TyGearCharDB.UnmeasurableGearDisabled or {}
 	if shouldIgnore then
-		TyGearCharDB.UnmeasurableGearDisabled[itemID] = nil
-		if not TyGearIsAutoUnmeasurable(itemID) then
-			TyGearCharDB.IgnoredItemIDs[itemID] = true
-		end
+		TyGearCharDB.IgnoredItemIDs[itemID] = true
 	else
 		TyGearCharDB.IgnoredItemIDs[itemID] = nil
-		if TyGearIsAutoUnmeasurable(itemID) then
-			TyGearCharDB.UnmeasurableGearDisabled[itemID] = true
-		end
 	end
 	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 end
@@ -760,6 +755,7 @@ function TyGearRememberUnmeasurableGear(info)
 	if not TyGearCharDB.DiscoveredUnmeasurableGear[info.id] then
 		TyGearCharDB.DiscoveredUnmeasurableGear[info.id] = true
 		if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
+		if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
 	end
 end
 
@@ -2666,6 +2662,10 @@ local function buildIgnoreSection(optionsPage)
 		row.name:SetWordWrap(false)
 		row.check:SetScript("OnClick", function(self)
 			local itemID = self:GetParent().itemID
+			if TyGearIsAutoUnmeasurable(itemID) then
+				self:SetChecked(true)
+				return
+			end
 			local tick = self:GetChecked() and true or false
 			TyGearSetItemIgnored(itemID, tick)
 			if tick then
@@ -2678,6 +2678,9 @@ local function buildIgnoreSection(optionsPage)
 		row.check:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetHyperlink("item:"..self:GetParent().itemID)
+			if TyGearIsAutoUnmeasurable(self:GetParent().itemID) then
+				GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
+			end
 			GameTooltip:Show()
 		end)
 		row.check:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2700,7 +2703,15 @@ local function buildIgnoreSection(optionsPage)
 				row:ClearAllPoints()
 				row:SetPoint("TOPLEFT", equippedContainer, "TOPLEFT", 0, -((shown - 1) * 28))
 				row.icon:SetTexture(GetInventoryItemTexture("player", slot) or "Interface\\Icons\\INV_Misc_QuestionMark")
+				local autoIgnored = TyGearIsAutoUnmeasurable(itemID)
 				row.check:SetChecked(TyGearIsItemIgnored({ id = itemID, isGear = true }) and true or false)
+				if row.check.SetEnabled then
+					row.check:SetEnabled(not autoIgnored)
+				elseif autoIgnored then
+					row.check:Disable()
+				else
+					row.check:Enable()
+				end
 				local link = GetInventoryItemLink("player", slot)
 				row.name:SetText((link or ("item "..itemID)).."   "..(TyGearGetLockedGearSlotLabel(slot) or ""))
 				row:Show()
@@ -2756,117 +2767,8 @@ local function buildIgnoreSection(optionsPage)
 		hooksecurefunc("ChatEdit_InsertLink", insertItemLink)
 	end
 
-	local iconContainer
-	local rebuildIcons
-	if IS_WOW_FOREVER then
-		iconContainer = CreateFrame("Frame", nil, page)
-		iconContainer:SetSize(500, 20)
-		local iconButtons = {}
-		local iconSize, iconPad, iconColumns = 36, 4, 8
-
-		local function acquireIconButton()
-			local button = CreateFrame("Button", nil, iconContainer)
-			button:SetSize(iconSize, iconSize)
-			button.icon = button:CreateTexture(nil, "ARTWORK")
-			button.icon:SetAllPoints()
-			local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-			highlight:SetAllPoints()
-			highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
-			highlight:SetBlendMode("ADD")
-			button.check = button:CreateTexture(nil, "OVERLAY")
-			button.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-			button.check:SetSize(18, 18)
-			button.check:SetPoint("BOTTOMRIGHT", 4, -4)
-			button:SetScript("OnClick", function(self)
-				local ignored = TyGearIsItemIgnored({ id = self.itemID, isGear = true })
-				TyGearSetItemIgnored(self.itemID, not ignored)
-				if ignored then
-					PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-				else
-					PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-				end
-				if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
-				if GameTooltip:IsOwned(self) then
-					self:GetScript("OnEnter")(self)
-				end
-			end)
-			button:SetScript("OnEnter", function(self)
-				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-				GameTooltip:SetHyperlink("item:"..self.itemID)
-				local ignored = TyGearIsItemIgnored({ id = self.itemID, isGear = true })
-				GameTooltip:AddLine(ignored and L["Ignored. Click to evaluate this item."] or L["Click to ignore this item."], 1, 0.82, 0, true)
-				GameTooltip:Show()
-			end)
-			button:SetScript("OnLeave", function() GameTooltip:Hide() end)
-			optionsPage:EnableWheel(button)
-			return button
-		end
-
-		rebuildIcons = function()
-			local entries = {}
-			local seen = {}
-			if TyGearUnmeasurableGearList then
-				for _, entry in ipairs(TyGearUnmeasurableGearList) do
-					seen[entry.id] = true
-					table.insert(entries, { id = entry.id, icon = entry.icon, name = entry.name })
-				end
-			end
-			if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear then
-				for itemID in pairs(TyGearCharDB.DiscoveredUnmeasurableGear) do
-					if not seen[itemID] then
-						local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
-						local name = GetItemInfo and GetItemInfo(itemID)
-						table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID) })
-					end
-				end
-			end
-			table.sort(entries, function(a, b)
-				return (a.name or "") < (b.name or "")
-			end)
-			for index, entry in ipairs(entries) do
-				local button = iconButtons[index]
-				if not button then
-					button = acquireIconButton()
-					iconButtons[index] = button
-				end
-				local column = (index - 1) % iconColumns
-				local rowIndex = math.floor((index - 1) / iconColumns)
-				button.itemID = entry.id
-				button:ClearAllPoints()
-				button:SetPoint("TOPLEFT", iconContainer, "TOPLEFT", 8 + column * (iconSize + iconPad), -(rowIndex * (iconSize + iconPad)))
-				if entry.icon then
-					button.icon:SetTexture(entry.icon)
-				else
-					button.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-				end
-				local ignored = TyGearIsItemIgnored({ id = entry.id, isGear = true })
-				if button.icon.SetDesaturated then
-					button.icon:SetDesaturated(not ignored)
-				end
-				button.icon:SetAlpha(ignored and 1 or 0.4)
-				button.check:SetShown(ignored)
-				button:Show()
-				if Item and Item.CreateFromItemID then
-					local itemID = entry.id
-					local item = Item:CreateFromItemID(itemID)
-					item:ContinueOnItemLoad(function()
-						if button.itemID ~= itemID or not button:IsShown() then return end
-						local icon = item.GetItemIcon and item:GetItemIcon()
-						if icon then button.icon:SetTexture(icon) end
-					end)
-				end
-			end
-			for index = #entries + 1, #iconButtons do
-				iconButtons[index]:Hide()
-			end
-			local rows = math.max(math.ceil(#entries / iconColumns), 1)
-			trackHeight(iconContainer, rows * (iconSize + iconPad))
-		end
-	end
-
 	function TyGearRefreshIgnoreSection()
 		rebuildEquipped()
-		if rebuildIcons then rebuildIcons() end
 		if not editBox:HasFocus() then
 			showManualIDs()
 		end
@@ -2877,13 +2779,140 @@ local function buildIgnoreSection(optionsPage)
 	addSubheader(L["Item IDs"])
 	addNote(L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it. Armor and weapons are accepted."])
 	optionsPage:AddRow(editRow)
-	if iconContainer then
-		addSubheader(L["No measurable stats"])
-		addNote(L["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. Click an icon to toggle it."])
-		rebuildIcons()
-		optionsPage:AddRow(iconContainer)
-	end
 	showManualIDs()
+end
+
+--read-only list of Forever gear TyGear cannot score; always ignored, no toggles
+local function buildIgnoredGearListPage(listMenu)
+	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", 8, -8)
+	title:SetText(L["Ignored gear"])
+
+	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", 8, -28)
+	note:SetWidth(480)
+	note:SetJustifyH("LEFT")
+	note:SetText(L["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."])
+	listMenu.ignoredGearNote = note
+
+	local listContainer = CreateFrame("Frame", "TyGearIgnoredGearListContainer", listMenu)
+	listContainer:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -12)
+	listContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+	listContainer:SetHeight(20)
+
+	local emptyText = listContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+	emptyText:SetPoint("TOPLEFT", 0, 0)
+	emptyText:SetText(L["No unmeasurable gear has been found yet."])
+
+	local rows = {}
+	local rowHeight = 28
+
+	local function acquireRow()
+		local row = CreateFrame("Frame", nil, listContainer)
+		row:SetSize(500, rowHeight)
+		row.icon = row:CreateTexture(nil, "ARTWORK")
+		row.icon:SetSize(24, 24)
+		row.icon:SetPoint("LEFT", 0, 0)
+		row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		row.name:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+		row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+		row.name:SetJustifyH("LEFT")
+		row.name:SetWordWrap(false)
+		row:EnableMouse(true)
+		row:SetScript("OnEnter", function(self)
+			if not self.itemID then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetHyperlink("item:"..self.itemID)
+			GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
+			GameTooltip:Show()
+		end)
+		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		return row
+	end
+
+	local function collectEntries()
+		local entries = {}
+		local seen = {}
+		if TyGearUnmeasurableGearList then
+			for _, entry in ipairs(TyGearUnmeasurableGearList) do
+				seen[entry.id] = true
+				table.insert(entries, { id = entry.id, icon = entry.icon, name = entry.name })
+			end
+		end
+		if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear then
+			for itemID in pairs(TyGearCharDB.DiscoveredUnmeasurableGear) do
+				if not seen[itemID] then
+					local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
+					local name = GetItemInfo and GetItemInfo(itemID)
+					table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID) })
+				end
+			end
+		end
+		table.sort(entries, function(a, b)
+			return (a.name or "") < (b.name or "")
+		end)
+		return entries
+	end
+
+	local function headerHeight()
+		local noteHeight = note:GetStringHeight() or 40
+		local estimate = math.ceil(math.max(#(note:GetText() or ""), 1) / 80) * 14
+		if noteHeight < estimate then noteHeight = estimate end
+		return 28 + noteHeight + 12
+	end
+
+	function TyGearRefreshIgnoredGearList()
+		if not listMenu:IsShown() and listContainer.builtOnce then
+			listContainer.needsRefresh = true
+			return
+		end
+		listContainer.builtOnce = true
+		listContainer.needsRefresh = false
+		local entries = collectEntries()
+		for index, entry in ipairs(entries) do
+			local row = rows[index]
+			if not row then
+				row = acquireRow()
+				rows[index] = row
+			end
+			row.itemID = entry.id
+			row:ClearAllPoints()
+			row:SetPoint("TOPLEFT", listContainer, "TOPLEFT", 0, -((index - 1) * rowHeight))
+			row:SetPoint("TOPRIGHT", listContainer, "TOPRIGHT", 0, -((index - 1) * rowHeight))
+			row.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+			row.name:SetText(entry.name or ("item "..entry.id))
+			row:Show()
+			if Item and Item.CreateFromItemID then
+				local itemID = entry.id
+				local item = Item:CreateFromItemID(itemID)
+				item:ContinueOnItemLoad(function()
+					if row.itemID ~= itemID or not row:IsShown() then return end
+					local icon = item.GetItemIcon and item:GetItemIcon()
+					local name = item.GetItemName and item:GetItemName()
+					if icon then row.icon:SetTexture(icon) end
+					if name then row.name:SetText(name) end
+				end)
+			end
+		end
+		for index = #entries + 1, #rows do
+			rows[index]:Hide()
+		end
+		emptyText:SetShown(#entries == 0)
+		local height = #entries == 0 and 20 or (#entries * rowHeight)
+		listContainer:SetHeight(height)
+		listMenu:SetHeight(headerHeight() + height + 16)
+		local scrollFrame = listMenu:GetParent()
+		if scrollFrame and scrollFrame.UpdateScrollChildRect then
+			scrollFrame:UpdateScrollChildRect()
+		end
+	end
+
+	listMenu:HookScript("OnShow", function()
+		if listContainer.needsRefresh or not listContainer.builtOnce then
+			TyGearRefreshIgnoredGearList()
+		end
+	end)
+	TyGearRefreshIgnoredGearList()
 end
 
 local function optionsSetup(optionsMenu)
@@ -3293,6 +3322,25 @@ optionsMenuParent.name = "TyGear"
 optionsMenuParent:SetScrollChild(optionsMenu)
 --the Settings shim above returns the registered category; native InterfaceOptions_AddCategory returns nothing
 local optionsCategory = InterfaceOptions_AddCategory(optionsMenuParent)
+
+--second Settings tab: read-only list of Forever gear that has no measurable stats
+local ignoredGearListMenu
+local ignoredGearListMenuParent
+if IS_WOW_FOREVER then
+	ignoredGearListMenu = CreateFrame("Frame", "TyGearIgnoredGearListMenu")
+	ignoredGearListMenu:SetWidth(1)
+	ignoredGearListMenu:SetHeight(1)
+	ignoredGearListMenuParent = CreateFrame("ScrollFrame", "TyGearIgnoredGearListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
+	ignoredGearListMenuParent.name = L["Ignored gear"]
+	ignoredGearListMenuParent:SetScrollChild(ignoredGearListMenu)
+	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
+		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, ignoredGearListMenuParent, ignoredGearListMenuParent.name)
+	else
+		ignoredGearListMenuParent.parent = optionsMenuParent.name
+		InterfaceOptions_AddCategory(ignoredGearListMenuParent)
+	end
+end
+
 if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 
 --white crafting tools kept by the default ignore list for selling white gear.
@@ -3674,6 +3722,23 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots()
 		end
 		optionsSetup(optionsMenu)
+		if ignoredGearListMenu and not ignoredGearListMenu.built then
+			ignoredGearListMenu.built = true
+			buildIgnoredGearListPage(ignoredGearListMenu)
+			local function layoutIgnoredGearList()
+				local width = math.max((ignoredGearListMenuParent:GetWidth() or 0) - 30, 1)
+				ignoredGearListMenu:SetWidth(width + 8)
+				if ignoredGearListMenu.ignoredGearNote then
+					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 8, 100))
+				end
+				if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
+				if ignoredGearListMenuParent.UpdateScrollChildRect then
+					ignoredGearListMenuParent:UpdateScrollChildRect()
+				end
+			end
+			ignoredGearListMenuParent:HookScript("OnSizeChanged", layoutIgnoredGearList)
+			layoutIgnoredGearList()
+		end
 		if not optionsMenuParent.ignoreSectionHooked then
 			optionsMenuParent.ignoreSectionHooked = true
 			optionsMenuParent:HookScript("OnShow", function()
@@ -3811,7 +3876,7 @@ end
 
 function TyGearPrintHelp()
 	TyGearPrint("TyGear: "..((param1 == "help") and "" or "Unrecognized command.  ").."Recognized commands (also /tygear):", 0)
-	TyGearPrint("TyGear:    '/tg': options menu, including the Ignore section for equipment slots and items", 0)
+	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", and the Ignored gear tab for items TyGear cannot score") or ""), 0)
 	TyGearPrint("TyGear:    '/tg help': command line help", 0)
 	TyGearPrint("TyGear:    '/tg scan': scan all bags for gear upgrades", 0)
 	TyGearPrint("TyGear:    '/tg spec': get name of current talent specialization", 0)
