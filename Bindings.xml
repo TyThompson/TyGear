@@ -1,0 +1,13 @@
+<!--
+	Key Bindings → TyGear
+	Assign keys, then hover an item tooltip and press the binding.
+	This file is loaded automatically; do not list it in the TOC.
+-->
+<Bindings>
+	<Binding name="TYGEAR_TOGGLE_VENDOR_KEEP" header="TYGEAR">
+		TyGearBindingToggleVendorKeep();
+	</Binding>
+	<Binding name="TYGEAR_TOGGLE_IGNORE" header="TYGEAR">
+		TyGearBindingToggleIgnore();
+	</Binding>
+</Bindings>

@@ -12,8 +12,6 @@ The original AutoGear authors and contributors retain credit for the design and 
 
 TyGear automatically rolls on and equips loot according to stat weights like WoWhead filters. TyGear rolls "need" on upgrades and "greed" otherwise.
 
-TyGear also optionally interacts with quest NPCs, automatically accepting and completing quests, including deciding the best quest reward based on the same stat weights. If no item is deemed to be an upgrade, the item worth the most vendor gold is chosen.
-
 Included in TyGear are default stat weights for all specs of all classes. Using these weights, TyGear will roll "need" on better loot and equip it for you when it can.
 
 Stat weights work like the advanced filter on WoWhead. For example, if you specify that 1 point of strength is worth 1 point and 1 point of crit is worth 0.5 points, an item with 5 strength and 3 crit will be worth 6.5 points. That item might then replace an item in the same slot with 3 strength and 2 crit, worth 4 points. If the first item was presented in a loot roll, TyGear would roll "need" and if you won the roll, it would equip the new item as soon as it could.
@@ -29,6 +27,7 @@ TyGear also runs on WoW Forever (interface 16001).
 - Forever has one specialization per class, so TyGear uses the general class profile (`None`). If you heal, tank, or want a more focused damage profile, enable **Override specialization** in `/tg` and choose the closest profile. That choice is saved for the current character. Healers should do this, because the general profile values bonus healing only as spell damage (one third of its value).
 - Forever's combined hit and critical strike, expertise, and armor/spell penetration are read from item tooltips.
 - On Forever, **Use Pawn** and **Roll on non-gear loot** default to off; Pawn has no Forever scales yet.
+- Forever gear with only effects TyGear cannot score (no measurable stats) is always ignored. The **Ignored gear** options tab lists those items.
 - Loot messages and tooltip text can be restricted (secret values) in dungeons and during encounters. TyGear then scans your bags instead of reading the loot message, and treats items it can't read as not evaluable.
 
 Chat commands (`/tygear` is the same as `/tg`):
@@ -38,12 +37,11 @@ Chat commands (`/tygear` is the same as `/tg`):
 /tg scan - manually run automatic gearing once (scan all bags for better gear)
 /tg spec - query name of current specialization
 /tg toggle/[enable/on/start]/[disable/off/stop] - toggle automatic gearing
-/tg quest [enable/on/start]/[disable/off/stop] - toggle automatically accepting quests
-/tg turnin [enable/on/start]/[disable/off/stop] - toggle automatically completing quests which do not award items
-/tg party [enable/on/start]/[disable/off/stop] - toggle automatic acceptance of party invitations
 /tg verbosity [0/1/2]: set allowed verbosity level; valid levels are: 0 (errors), 1 (info), 2 (details)
 ```
 
-Warning: TyGear currently automatically rolls "greed" on everything that isn't a gear upgrade for the current spec, including mounts and crafting reagents. It works quite well for leveling quickly and conveniently, but you should disable it before loot rolls you want control over. To do so, simply run "/tg toggle" or toggle it from the options menu.
+Key Bindings (Esc → Key Bindings → TyGear): assign keys to toggle the hovered item on the vendor **keep list** or the gear **ignore list**. Hover a bag, character, or chat item tooltip and press the key.
+
+Warning: TyGear currently automatically rolls "greed" on everything that isn't a gear upgrade for the current spec, including crafting reagents, when "Roll on non-gear loot" is enabled. Mounts are never rolled on automatically. It works quite well for leveling quickly and conveniently, but you should disable it before loot rolls you want control over. To do so, simply run "/tg toggle" or toggle it from the options menu.
 
 Warning: TyGear is not recommended for use at max level. Its weights are not optimal, nor are stat weights ideal for determining upgrades in end-game content. TyGear is meant primarily as a convenience for leveling quickly. Using it at max level, especially in team PvE or PvP, is likely to get you kicked from various groups and guilds. Calculating proper upgrades using [SimulationCraft](https://www.simulationcraft.org/) is preferable. This will be very time-consuming, but worth it for your powerful max-level character.
