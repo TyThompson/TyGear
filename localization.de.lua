@@ -14,8 +14,8 @@ if GetLocale() == "deDE" then
 	-- options window: general texts
 	T.Localization["This is a shortcut for the \"%s\" CVar provided by Blizzard.  Toggling this will toggle that CVar."] = "Dies ist eine Abkürzung für die CVar \"%s\" von Blizzard.  Das Umschalten dieser Option schaltet auch diese CVar um."
 	T.Localization["Fork of AutoGear by Synthetikaryote and BujuArena."] = "Fork von AutoGear von Synthetikaryote und BujuArena."
-	T.Localization["Scan"] = "Scannen"
-	T.Localization["Click this button to force a scan, the same way that TyGear scans for gear upgrades in your bags whenever new gear is looted.\n\nTip: By equipping your old item, you can use this to help determine how TyGear decided an item was an upgrade."] = "Klicke auf diese Schaltfläche, um einen Scan zu erzwingen – genauso, wie TyGear deine Taschen nach Ausrüstungsverbesserungen durchsucht, sobald neue Ausrüstung erbeutet wird.\n\nTipp: Wenn du deinen alten Gegenstand wieder anlegst, kannst du damit nachvollziehen, warum TyGear einen Gegenstand als Verbesserung eingestuft hat."
+	T.Localization["Scan Bags"] = "Taschen scannen"
+	T.Localization["Click this button to force a bag scan, the same way that TyGear scans for gear upgrades in your bags whenever new gear is looted.\n\nTip: By equipping your old item, you can use this to help determine how TyGear decided an item was an upgrade."] = "Klicke auf diese Schaltfläche, um einen Taschen-Scan zu erzwingen – genauso, wie TyGear deine Taschen nach Ausrüstungsverbesserungen durchsucht, sobald neue Ausrüstung erbeutet wird.\n\nTipp: Wenn du deinen alten Gegenstand wieder anlegst, kannst du damit nachvollziehen, warum TyGear einen Gegenstand als Verbesserung eingestuft hat."
 
 	-- option: Enabled
 	T.Localization["Automatically equip gear"] = "Ausrüstung automatisch anlegen"
@@ -178,8 +178,12 @@ if GetLocale() == "deDE" then
 	T.Localization["Also ignore these item IDs. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons."] = "Diese Gegenstands-IDs zusätzlich ignorieren. Umschalt-Klick auf Ausrüstung fügt sie hinzu, solange dieses Feld den Fokus hat, oder weise unter Tastaturbelegung \"Toggle hovered item on ignore list\" eine Taste zu und drücke sie, während du über Rüstung oder Waffen schwebst."
 	T.Localization["Ignored gear"] = "Ignorierte Ausrüstung"
 	T.Localization["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."] = "Diese Gegenstände haben nur Effekte, die TyGear nicht bewerten kann, etwa 4% Chance, dass Furcht verfehlt. Ausrüstung mit einem zusätzlich bewertbaren Wert bleibt in der normalen Bewertung. Sie bleiben ignoriert, weil TyGear sie nicht messen kann."
+	T.Localization["Add items"] = "Gegenstände hinzufügen"
+	T.Localization["Item IDs separated by commas. Shift-click equipment while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open. Built-in unmeasurable gear stays listed below and is not edited here."] = "Gegenstands-IDs, durch Kommas getrennt. Umschalt-Klick auf Ausrüstung fügt sie hinzu, solange dieses Feld den Fokus hat, oder schlage Gegenstands-IDs in Tooltips nach, während die TyGear-Optionen offen sind. Eingebaute nicht messbare Ausrüstung bleibt unten gelistet und wird hier nicht bearbeitet."
+	T.Localization["Ignored items"] = "Ignorierte Gegenstände"
 	T.Localization["No unmeasurable gear has been found yet."] = "Noch keine nicht messbare Ausrüstung gefunden."
 	T.Localization["TyGear cannot score this item, so it stays ignored."] = "TyGear kann diesen Gegenstand nicht bewerten, daher bleibt er ignoriert."
+	T.Localization["Uncheck to remove this item from the ignored gear list."] = "Haken entfernen, um diesen Gegenstand von der Ignorier-Liste zu nehmen."
 	T.Localization["ignored"] = "ignoriert"
 	T.Localization["every slot this item can use is ignored"] = "jeder Platz, den dieser Gegenstand nutzen kann, ist ignoriert"
 

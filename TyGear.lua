@@ -2884,11 +2884,14 @@ local function newOptionsPage(optionsMenu)
 
 	function optionsPage:AddRow(row, spacing, offsetX)
 		spacing = page.lastRow and (spacing or OPTIONS_ROW_SPACING) or 0
+		--offsetX is always from the page's left padding, not relative to the previous row,
+		--so a one-off indent (Scan Bags, slot grids) does not shove later rows sideways
 		offsetX = offsetX or 0
 		row:SetParent(page)
 		row:ClearAllPoints()
 		if page.lastRow then
-			row:SetPoint("TOPLEFT", page.lastRow, "BOTTOMLEFT", offsetX, -spacing)
+			row:SetPoint("TOP", page.lastRow, "BOTTOM", 0, -spacing)
+			row:SetPoint("LEFT", page, "LEFT", OPTIONS_PAGE_PADDING + offsetX, 0)
 		else
 			row:SetPoint("TOPLEFT", page, "TOPLEFT", OPTIONS_PAGE_PADDING + offsetX, -OPTIONS_PAGE_PADDING)
 		end
@@ -2924,9 +2927,6 @@ local function newOptionsPage(optionsMenu)
 	---Groups options that share a tab onto this page and adds a header when the group changes.
 	function optionsPage:BeginOption(tabLabel, sectionLabel)
 		if tabLabel ~= page.tab then
-			if page.tab == L["Evaluation"] then
-				self:AddScanButton()
-			end
 			page.tab = tabLabel
 			page.section = nil
 			self:AddHeader(tabLabel, true)
@@ -2942,24 +2942,27 @@ local function newOptionsPage(optionsMenu)
 		if self.scanAdded then return end
 		self.scanAdded = true
 		local button = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-		button:SetSize(100, 30)
-		button:SetText(L["Scan"])
+		button:SetHeight(30)
+		button:SetText(L["Scan Bags"])
+		local fontString = button.GetFontString and button:GetFontString()
+		local textWidth = fontString and fontString:GetStringWidth() or 0
+		if not textWidth or textWidth < 8 then
+			textWidth = #L["Scan Bags"] * 7
+		end
+		button:SetWidth(math.max(100, textWidth + 28))
 		button:SetScript("OnClick", function() TyGearScan() end)
 		button:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_NONE")
 			GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-			GameTooltip:AddLine(TyGearColorize(L["Click this button to force a scan, the same way that TyGear scans for gear upgrades in your bags whenever new gear is looted.\n\nTip: By equipping your old item, you can use this to help determine how TyGear decided an item was an upgrade."]), nil, nil, nil, true)
+			GameTooltip:AddLine(TyGearColorize(L["Click this button to force a bag scan, the same way that TyGear scans for gear upgrades in your bags whenever new gear is looted.\n\nTip: By equipping your old item, you can use this to help determine how TyGear decided an item was an upgrade."]), nil, nil, nil, true)
 			GameTooltip:Show()
 		end)
 		button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		enableWheel(button)
-		self:AddRow(button, OPTIONS_BUTTON_SPACING, 4)
+		self:AddRow(button, OPTIONS_BUTTON_SPACING)
 	end
 
 	function optionsPage:Finish()
-		if not self.scanAdded then
-			self:AddScanButton()
-		end
 		local function layout()
 			local width = math.max((scrollFrame:GetWidth() or 0) - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
 			jumpBar:SetWidth(width)
@@ -3242,7 +3245,7 @@ local function buildIgnoreSection(optionsPage)
 	showManualIDs()
 end
 
---read-only list of Forever gear TyGear cannot score; always ignored, no toggles
+--Forever Ignored gear tab: add box near the top, then built-in and discovered unmeasurable gear
 local function buildIgnoredGearListPage(listMenu)
 	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 8, -8)
@@ -3255,8 +3258,103 @@ local function buildIgnoredGearListPage(listMenu)
 	note:SetText(L["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."])
 	listMenu.ignoredGearNote = note
 
+	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	addHeader:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -14)
+	addHeader:SetText(L["Add items"])
+
+	local addNote = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	addNote:SetPoint("TOPLEFT", addHeader, "BOTTOMLEFT", 0, -6)
+	addNote:SetWidth(480)
+	addNote:SetJustifyH("LEFT")
+	addNote:SetText(L["Item IDs separated by commas. Shift-click equipment while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open. Built-in unmeasurable gear stays listed below and is not edited here."])
+	listMenu.ignoredGearAddNote = addNote
+
+	local editRow = CreateFrame("Frame", nil, listMenu)
+	editRow:SetPoint("TOPLEFT", addNote, "BOTTOMLEFT", 0, -8)
+	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+	editRow:SetHeight(24)
+	local editBox = CreateFrame("EditBox", "TyGearIgnoredGearAddEditBox", editRow, "InputBoxTemplate")
+	editBox:SetAutoFocus(false)
+	editBox:SetHeight(20)
+	editBox:SetPoint("LEFT", 4, 0)
+	editBox:SetPoint("RIGHT", editRow, "RIGHT", -4, 0)
+	local suppressEditBoxSave = false
+
+	local function manualIgnoredIDsText()
+		local ids = {}
+		if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear then
+			for itemID in pairs(TyGearCharDB.DiscoveredUnmeasurableGear) do
+				local numericID = tonumber(itemID)
+				if numericID and not (TyGearUnmeasurableGear and TyGearUnmeasurableGear[numericID]) then
+					table.insert(ids, numericID)
+				end
+			end
+		end
+		table.sort(ids)
+		local parts = {}
+		for _, itemID in ipairs(ids) do
+			table.insert(parts, tostring(itemID))
+		end
+		return table.concat(parts, ", ")
+	end
+
+	local function showManualIgnoredIDs()
+		suppressEditBoxSave = true
+		editBox:SetText(manualIgnoredIDsText())
+		editBox:SetCursorPosition(0)
+		suppressEditBoxSave = false
+	end
+
+	local function saveManualIgnoredIDs(text)
+		if not TyGearCharDB then TyGearCharDB = {} end
+		local nextIDs = {}
+		for _, itemID in ipairs(TyGearParseItemIDList(text or "")) do
+			if not (TyGearUnmeasurableGear and TyGearUnmeasurableGear[itemID]) and TyGearIsEquipmentItemID(itemID) then
+				nextIDs[itemID] = true
+			end
+		end
+		TyGearCharDB.DiscoveredUnmeasurableGear = nextIDs
+		showManualIgnoredIDs()
+		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+		if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
+		if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
+	end
+
+	editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	editBox:SetScript("OnEscapePressed", function(self)
+		showManualIgnoredIDs()
+		self:ClearFocus()
+	end)
+	editBox:SetScript("OnEditFocusLost", function(self)
+		if suppressEditBoxSave then return end
+		saveManualIgnoredIDs(self:GetText())
+	end)
+	editBox:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_NONE")
+		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+		GameTooltip:AddLine(L["Add items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Item IDs separated by commas. Shift-click equipment while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open. Built-in unmeasurable gear stays listed below and is not edited here."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:Show()
+	end)
+	editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	local function insertItemLink(text)
+		if editBox:HasFocus() and text and string.find(text, "item:%d+") then
+			editBox:Insert(" "..text)
+		end
+	end
+	if ChatFrameUtil and ChatFrameUtil.InsertLink then
+		hooksecurefunc(ChatFrameUtil, "InsertLink", insertItemLink)
+	elseif ChatEdit_InsertLink then
+		hooksecurefunc("ChatEdit_InsertLink", insertItemLink)
+	end
+	showManualIgnoredIDs()
+
+	local listHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	listHeader:SetPoint("TOPLEFT", editRow, "BOTTOMLEFT", 0, -14)
+	listHeader:SetText(L["Ignored items"])
+
 	local listContainer = CreateFrame("Frame", "TyGearIgnoredGearListContainer", listMenu)
-	listContainer:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -12)
+	listContainer:SetPoint("TOPLEFT", listHeader, "BOTTOMLEFT", 0, -8)
 	listContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	listContainer:SetHeight(20)
 
@@ -3266,24 +3364,80 @@ local function buildIgnoredGearListPage(listMenu)
 
 	local rows = {}
 	local rowHeight = 28
+	local rowSerial = 0
+
+	local function setDiscoveredIgnored(itemID, keep)
+		if not itemID then return end
+		if TyGearUnmeasurableGear and TyGearUnmeasurableGear[itemID] then return end
+		if not TyGearCharDB then TyGearCharDB = {} end
+		TyGearCharDB.DiscoveredUnmeasurableGear = TyGearCharDB.DiscoveredUnmeasurableGear or {}
+		if keep then
+			TyGearCharDB.DiscoveredUnmeasurableGear[itemID] = true
+		else
+			TyGearCharDB.DiscoveredUnmeasurableGear[itemID] = nil
+		end
+		if not editBox:HasFocus() then
+			showManualIgnoredIDs()
+		end
+		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+		if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
+		if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
+	end
 
 	local function acquireRow()
+		rowSerial = rowSerial + 1
 		local row = CreateFrame("Frame", nil, listContainer)
 		row:SetSize(500, rowHeight)
 		row.icon = row:CreateTexture(nil, "ARTWORK")
 		row.icon:SetSize(24, 24)
 		row.icon:SetPoint("LEFT", 0, 0)
+		row.check = CreateFrame("CheckButton", "TyGearIgnoredGearRow"..rowSerial.."CheckButton", row, "InterfaceOptionsCheckButtonTemplate")
+		row.check:SetPoint("LEFT", row.icon, "RIGHT", 2, 0)
+		local templateText = _G[row.check:GetName().."Text"]
+		if templateText then templateText:SetText("") end
 		row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-		row.name:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+		row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
 		row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
 		row.name:SetJustifyH("LEFT")
 		row.name:SetWordWrap(false)
+		row.check:SetScript("OnClick", function(self)
+			local parent = self:GetParent()
+			local itemID = parent.itemID
+			if parent.builtIn then
+				self:SetChecked(true)
+				return
+			end
+			local keep = self:GetChecked() and true or false
+			setDiscoveredIgnored(itemID, keep)
+			if keep then
+				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+			else
+				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+			end
+		end)
+		row.check:SetScript("OnEnter", function(self)
+			local parent = self:GetParent()
+			if not parent.itemID then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetHyperlink("item:"..parent.itemID)
+			if parent.builtIn then
+				GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
+			else
+				GameTooltip:AddLine(L["Uncheck to remove this item from the ignored gear list."], 1, 0.82, 0, true)
+			end
+			GameTooltip:Show()
+		end)
+		row.check:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		row:EnableMouse(true)
 		row:SetScript("OnEnter", function(self)
 			if not self.itemID then return end
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetHyperlink("item:"..self.itemID)
-			GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
+			if self.builtIn then
+				GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
+			else
+				GameTooltip:AddLine(L["Uncheck to remove this item from the ignored gear list."], 1, 0.82, 0, true)
+			end
 			GameTooltip:Show()
 		end)
 		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3296,7 +3450,7 @@ local function buildIgnoredGearListPage(listMenu)
 		if TyGearUnmeasurableGearList then
 			for _, entry in ipairs(TyGearUnmeasurableGearList) do
 				seen[entry.id] = true
-				table.insert(entries, { id = entry.id, icon = entry.icon, name = entry.name })
+				table.insert(entries, { id = entry.id, icon = entry.icon, name = entry.name, builtIn = true })
 			end
 		end
 		if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear then
@@ -3304,7 +3458,7 @@ local function buildIgnoredGearListPage(listMenu)
 				if not seen[itemID] then
 					local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
 					local name = GetItemInfo and GetItemInfo(itemID)
-					table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID) })
+					table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID), builtIn = false })
 				end
 			end
 		end
@@ -3315,10 +3469,14 @@ local function buildIgnoredGearListPage(listMenu)
 	end
 
 	local function headerHeight()
-		local noteHeight = note:GetStringHeight() or 40
-		local estimate = math.ceil(math.max(#(note:GetText() or ""), 1) / 80) * 14
-		if noteHeight < estimate then noteHeight = estimate end
-		return 28 + noteHeight + 12
+		local function measured(fontString, fallback)
+			local height = fontString:GetStringHeight() or fallback
+			local estimate = math.ceil(math.max(#(fontString:GetText() or ""), 1) / 80) * 14
+			if height < estimate then height = estimate end
+			return height
+		end
+		--title + note + add header + add note + edit row + list header + spacings
+		return 28 + measured(note, 40) + 14 + 16 + 6 + measured(addNote, 28) + 8 + 24 + 14 + 16 + 8
 	end
 
 	function TyGearRefreshIgnoredGearList()
@@ -3328,6 +3486,9 @@ local function buildIgnoredGearListPage(listMenu)
 		end
 		listContainer.builtOnce = true
 		listContainer.needsRefresh = false
+		if not editBox:HasFocus() then
+			showManualIgnoredIDs()
+		end
 		local entries = collectEntries()
 		for index, entry in ipairs(entries) do
 			local row = rows[index]
@@ -3336,11 +3497,20 @@ local function buildIgnoredGearListPage(listMenu)
 				rows[index] = row
 			end
 			row.itemID = entry.id
+			row.builtIn = entry.builtIn and true or false
 			row:ClearAllPoints()
 			row:SetPoint("TOPLEFT", listContainer, "TOPLEFT", 0, -((index - 1) * rowHeight))
 			row:SetPoint("TOPRIGHT", listContainer, "TOPRIGHT", 0, -((index - 1) * rowHeight))
 			row.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
 			row.name:SetText(entry.name or ("item "..entry.id))
+			row.check:SetChecked(true)
+			if row.check.SetEnabled then
+				row.check:SetEnabled(not row.builtIn)
+			elseif row.builtIn then
+				row.check:Disable()
+			else
+				row.check:Enable()
+			end
 			row:Show()
 			if Item and Item.CreateFromItemID then
 				local itemID = entry.id
@@ -3626,6 +3796,9 @@ local function optionsSetup(optionsMenu)
 		end
 	end
 	TyGearOptions = orderedOptions
+
+	--Scan Bags sits above Evaluation so it is not buried under options and does not indent later rows
+	optionsPage:AddScanButton()
 
 	local function addOptionsNote(page, text)
 		local holder = CreateFrame("Frame", nil, page)
@@ -4496,6 +4669,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				ignoredGearListMenu:SetWidth(width + 8)
 				if ignoredGearListMenu.ignoredGearNote then
 					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 8, 100))
+				end
+				if ignoredGearListMenu.ignoredGearAddNote then
+					ignoredGearListMenu.ignoredGearAddNote:SetWidth(math.max(width - 8, 100))
 				end
 				if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
 				if ignoredGearListMenuParent.UpdateScrollChildRect then
