@@ -3379,7 +3379,7 @@ local function buildIgnoreSection(optionsPage)
 
 	--keep list and its options live on the ignore list; items here are not sold or evaluated
 	addSubheader(L["Keep List"])
-	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
+	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
 	addNote(keepListDescription)
 
 	local unboundCheck = newCheckbox(
@@ -3963,7 +3963,7 @@ buildKeepListSection = function(listMenu, anchorBelow)
 	note:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -6)
 	note:SetWidth(480)
 	note:SetJustifyH("LEFT")
-	note:SetText(L["Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated. The list starts with crafting tools that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, and enchanting rods. Every fishing pole is kept even if its item ID is removed from this list."])
+	note:SetText(L["Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated. The list starts with crafting tools that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, and enchanting rods. Every fishing pole is kept even if its item ID is removed from this list."])
 	listMenu.keepListNote = note
 
 	local unboundCheck = newCheckbox(
@@ -4985,12 +4985,12 @@ end
 
 if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 
---white crafting tools kept by the default keep list for selling greys and white gear.
+--white crafting gear kept by the default keep list for selling greys and white gear.
+--Non-gear whites are omitted: white selling only evaluates weapons and armor.
 --Defined up here because the saved-variable defaults below include this list, and fishing poles of any item ID are also kept later by weapon subclass.
 --Post-vanilla tools are omitted on WoW Forever, which does not have those professions or items.
 local TyGearCraftingToolItemIDsClassic = {
 	2901, --Mining Pick
-	4471, --Flint and Tinder
 	5956, --Blacksmith Hammer
 	6218, --Runed Copper Rod
 	6219, --Arclight Spanner
@@ -5005,17 +5005,18 @@ local TyGearCraftingToolItemIDsClassic = {
 	12225, --Blump Family Fishing Pole
 	16207, --Runed Arcanite Rod
 }
---removed from the default keep list (still kept by fishing-pole weapon subclass)
+--removed from the default keep list (fishing poles still kept by weapon subclass; non-gear whites are never sold as white gear)
 local TyGearRemovedDefaultKeepListItemIDs = {
 	[3567] = true, --Dwarven Fishing Pole
+	[4471] = true, --Flint and Tinder
 	[4598] = true, --Goblin Fishing Pole
 	[6366] = true, --Darkwood Fishing Pole
+	[20815] = true, --Jeweler's Kit
+	[39505] = true, --Virtuoso Inking Set
+	[40772] = true, --Gnomish Army Knife
 }
 local TyGearCraftingToolItemIDsPostClassic = {
-	20815, --Jeweler's Kit
-	39505, --Virtuoso Inking Set
-	40772, --Gnomish Army Knife
-	85663, --Herbalist's Spade
+	85663, --Herbalist's Spade (two-hand weapon on MoP-era clients)
 }
 TyGearCraftingToolItemIDsMissingOnForever = {}
 for _, itemID in ipairs(TyGearCraftingToolItemIDsPostClassic) do
@@ -5275,7 +5276,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["shouldUse"] = false, --the keep list lives on the ignore list
 				["editBox"] = true,
 				["label"] = L["Keep List"],
-				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."],
+				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."],
 				["editBoxPostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
@@ -5992,7 +5993,7 @@ function TyGearPruneForeverVendorKeepList()
 	end
 end
 
---drop fishing poles that were removed from the default keep list (kept by weapon subclass instead)
+--drop items that were removed from the default keep list (fishing poles kept by subclass; non-gear whites never sold as white gear)
 function TyGearPruneRemovedDefaultKeepListItems()
 	if not TyGearDB or TyGearDB.VendorKeepList == nil then
 		return
