@@ -1,4 +1,4 @@
----@type AutoGearAddon
+---@type TyGearAddon
 local _, T = ...;
 if GetLocale() == "ruRU" then
 	T.Localization["mount"] = "средство передвижения"

@@ -1,4 +1,10 @@
---AutoGear
+-- TyGear
+-- Fork of AutoGear by Synthetikaryote and BujuArena.
+-- Original: https://github.com/BujuArena/AutoGear
+-- License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+-- https://creativecommons.org/licenses/by-nc-sa/4.0/
+-- This copy is modified so the addon, saved variables, and slash commands
+-- use the TyGear name. The original authors retain credit for the work.
 
 -- to do:
 -- implement classic direct % crit and direct % hit
@@ -14,7 +20,7 @@
 -- factor in racial weapon bonuses
 -- eye of arachnida slot nil error
 
----@type AutoGearAddon
+---@type TyGearAddon
 local _, T = ...
 
 ---Current TOC version
@@ -60,7 +66,7 @@ local IS_WOW_FOREVER = (WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PRO
 local _ --prevent taint when using throwaway variable
 local next = next -- bind next locally for speed
 --local lastlink
-AutoGearActionQueue = {}
+TyGearActionQueue = {}
 local queueQueueRebuild
 local weapons
 local tUpdate = 0
@@ -109,29 +115,29 @@ local IsPlayerSpell = C_SpellBook and C_SpellBook.IsSpellKnown or IsPlayerSpell
 local PickupContainerItem = PickupContainerItem or (C_Container and C_Container.PickupContainerItem)
 local UseContainerItem = UseContainerItem or (C_Container and C_Container.UseContainerItem)
 ITEM_UNIQUE_EQUIPPABLE_SANITIZED_PATTERN = select(1,string.gsub(ITEM_UNIQUE_EQUIPPABLE,"%-","%%-"))
-AutoGearWouldRoll = "nil"
-AutoGearSomeItemDataIsMissing = nil
-AutoGearFirstEquippableBagSlot = ContainerIDToInventoryID(1) or 20
-AutoGearLastEquippableBagSlot = ContainerIDToInventoryID(NUM_BAG_SLOTS) or 23
-AutoGearEquippableBagSlots = {}
+TyGearWouldRoll = "nil"
+TyGearSomeItemDataIsMissing = nil
+TyGearFirstEquippableBagSlot = ContainerIDToInventoryID(1) or 20
+TyGearLastEquippableBagSlot = ContainerIDToInventoryID(NUM_BAG_SLOTS) or 23
+TyGearEquippableBagSlots = {}
 --initialize equippable bag slots table
 for i = BACKPACK_CONTAINER+1, NUM_BAG_SLOTS do
-	table.insert(AutoGearEquippableBagSlots, AutoGearFirstEquippableBagSlot+i-1)
+	table.insert(TyGearEquippableBagSlots, TyGearFirstEquippableBagSlot+i-1)
 end
 
 --initialize gear slot names table
-AutoGearSlotNames = {}
+TyGearSlotNames = {}
 --PaperDollItemsFrame may not exist yet when this file loads (e.g. on WoW Forever)
 for _,v in pairs(PaperDollItemsFrame and {PaperDollItemsFrame:GetChildren()} or {}) do
 	if v.GetID and v.GetName then
 		local slotID = v:GetID()
 		if slotID >= INVSLOT_FIRST_EQUIPPED and slotID <= INVSLOT_LAST_EQUIPPED then
-			AutoGearSlotNames[slotID] = _G[strupper(strsub(v:GetName(), 10))]
+			TyGearSlotNames[slotID] = _G[strupper(strsub(v:GetName(), 10))]
 		end
 	end
 end
 
-function AutoGearSerializeTable(val, name, skipnewlines, depth)
+function TyGearSerializeTable(val, name, skipnewlines, depth)
 	skipnewlines = skipnewlines or false
 	depth = depth or 0
 
@@ -143,7 +149,7 @@ function AutoGearSerializeTable(val, name, skipnewlines, depth)
 		tmp = tmp .. "{" .. (not skipnewlines and "\n" or "")
 
 		for k, v in pairs(val) do
-			tmp =  tmp .. AutoGearSerializeTable(v, k, skipnewlines, depth + 1) .. "," .. (not skipnewlines and "\n" or "")
+			tmp =  tmp .. TyGearSerializeTable(v, k, skipnewlines, depth + 1) .. "," .. (not skipnewlines and "\n" or "")
 		end
 
 		tmp = tmp .. string.rep(" ", depth) .. "}"
@@ -160,7 +166,7 @@ function AutoGearSerializeTable(val, name, skipnewlines, depth)
 	return tmp
 end
 
-function AutoGearStringHash(text)
+function TyGearStringHash(text)
 	local counter = 1
 	local len = string.len(text)
 	for i = 1, len, 3 do
@@ -182,108 +188,108 @@ local verbosityNames = {
 -- set default value if key unknown
 setmetatable(verbosityNames, {__index = function () return "funky" end})
 
-function AutoGearGetAllowedVerbosityName(allowedverbosity)
+function TyGearGetAllowedVerbosityName(allowedverbosity)
 	return verbosityNames[allowedverbosity]
 end
 
 --printing function to check allowed verbosity level
-function AutoGearPrint(text, verbosity)
+function TyGearPrint(text, verbosity)
 	if verbosity == nil then verbosity = 0 end
-	if (AutoGearDB.AllowedVerbosity == nil) or (verbosity <= AutoGearDB.AllowedVerbosity) then
+	if (TyGearDB.AllowedVerbosity == nil) or (verbosity <= TyGearDB.AllowedVerbosity) then
 		print(text)
 	end
 end
 
 --initialize table for storing saved variables
-if (not AutoGearDB) then AutoGearDB = {} end
+if (not TyGearDB) then TyGearDB = {} end
 
 --initialize item info cache for quicker repeat lookups
--- AutoGearItemInfoCache = {}
+-- TyGearItemInfoCache = {}
 
 --fill class lists for lookups later
 local playerIsFemale = (C_PlayerInfo.GetSex(PlayerLocation:CreateFromUnit("player")) == 1)
 if _G.FillLocalizedClassList then
-	AutoGearClassList = {}
-	FillLocalizedClassList(AutoGearClassList, playerIsFemale)
+	TyGearClassList = {}
+	FillLocalizedClassList(TyGearClassList, playerIsFemale)
 else
-	AutoGearClassList = LocalizedClassList(playerIsFemale)
+	TyGearClassList = LocalizedClassList(playerIsFemale)
 end
-if not AutoGearClassList["DEATHKNIGHT"] then AutoGearClassList["DEATHKNIGHT"] = "Death Knight" end
-if not AutoGearClassList["DEMONHUNTER"] then AutoGearClassList["DEMONHUNTER"] = "Demon Hunter" end
-if not AutoGearClassList["EVOKER"] then AutoGearClassList["EVOKER"] = "Evoker" end
-if not AutoGearClassList["MONK"] then AutoGearClassList["MONK"] = "Monk" end
-AutoGearReverseClassList = {}
-for k, v in pairs(AutoGearClassList) do
-	AutoGearReverseClassList[v] = k
+if not TyGearClassList["DEATHKNIGHT"] then TyGearClassList["DEATHKNIGHT"] = "Death Knight" end
+if not TyGearClassList["DEMONHUNTER"] then TyGearClassList["DEMONHUNTER"] = "Demon Hunter" end
+if not TyGearClassList["EVOKER"] then TyGearClassList["EVOKER"] = "Evoker" end
+if not TyGearClassList["MONK"] then TyGearClassList["MONK"] = "Monk" end
+TyGearReverseClassList = {}
+for k, v in pairs(TyGearClassList) do
+	TyGearReverseClassList[v] = k
 end
 
-AutoGearClassIDList = {
+TyGearClassIDList = {
 	[1] = {
 		fileName="WARRIOR",
-		localizedName=AutoGearClassList["WARRIOR"]
+		localizedName=TyGearClassList["WARRIOR"]
 	},
 	[2] = {
 		fileName="PALADIN",
-		localizedName=AutoGearClassList["PALADIN"]
+		localizedName=TyGearClassList["PALADIN"]
 	},
 	[3] = {
 		fileName="HUNTER",
-		localizedName=AutoGearClassList["HUNTER"]
+		localizedName=TyGearClassList["HUNTER"]
 	},
 	[4] = {
 		fileName="ROGUE",
-		localizedName=AutoGearClassList["ROGUE"]
+		localizedName=TyGearClassList["ROGUE"]
 	},
 	[5] = {
 		fileName="PRIEST",
-		localizedName=AutoGearClassList["PRIEST"]
+		localizedName=TyGearClassList["PRIEST"]
 	},
 	[6] = {
 		fileName="DEATHKNIGHT",
-		localizedName=AutoGearClassList["DEATHKNIGHT"]
+		localizedName=TyGearClassList["DEATHKNIGHT"]
 	},
 	[7] = {
 		fileName="SHAMAN",
-		localizedName=AutoGearClassList["SHAMAN"]
+		localizedName=TyGearClassList["SHAMAN"]
 	},
 	[8] = {
 		fileName="MAGE",
-		localizedName=AutoGearClassList["MAGE"]
+		localizedName=TyGearClassList["MAGE"]
 	},
 	[9] = {
 		fileName="WARLOCK",
-		localizedName=AutoGearClassList["WARLOCK"]
+		localizedName=TyGearClassList["WARLOCK"]
 	},
 	[10] = {
 		fileName="MONK",
-		localizedName=AutoGearClassList["MONK"]
+		localizedName=TyGearClassList["MONK"]
 	},
 	[11] = {
 		fileName="DRUID",
-		localizedName=AutoGearClassList["DRUID"]
+		localizedName=TyGearClassList["DRUID"]
 	},
 	[12] = {
 		fileName="DEMONHUNTER",
-		localizedName=AutoGearClassList["DEMONHUNTER"]
+		localizedName=TyGearClassList["DEMONHUNTER"]
 	},
 	[13] = {
 		fileName="EVOKER",
-		localizedName=AutoGearClassList["EVOKER"]
+		localizedName=TyGearClassList["EVOKER"]
 	}
 }
-AutoGearReverseClassIDList = {}
-for k, v in pairs(AutoGearClassIDList) do
-	AutoGearReverseClassIDList[v.fileName] = {}
-	AutoGearReverseClassIDList[v.fileName].id = k
-	AutoGearReverseClassIDList[v.fileName].localizedName = v.localizedName
+TyGearReverseClassIDList = {}
+for k, v in pairs(TyGearClassIDList) do
+	TyGearReverseClassIDList[v.fileName] = {}
+	TyGearReverseClassIDList[v.fileName].id = k
+	TyGearReverseClassIDList[v.fileName].localizedName = v.localizedName
 end
 
 --initialize missing saved variables with default values; call only after PLAYER_ENTERING_WORLD
-function AutoGearInitializeDB(defaults, reset)
-	if AutoGearDB == nil or reset ~= nil then AutoGearDB = {} end
+function TyGearInitializeDB(defaults, reset)
+	if TyGearDB == nil or reset ~= nil then TyGearDB = {} end
 	for k,v in pairs(defaults) do
-		if _G["AutoGearDB"][k] == nil then
-			_G["AutoGearDB"][k] = v
+		if _G["TyGearDB"][k] == nil then
+			_G["TyGearDB"][k] = v
 		end
 	end
 end
@@ -291,21 +297,21 @@ end
 -- Specializations appeared only in Mists Of Pandaria. We also have make changes to Cataclysm with preferred talent tree
 -- later
 if IS_WOW_FOREVER then
-	function AutoGearDetectSpec()
+	function TyGearDetectSpec()
 		-- WoW Forever has one specialization per class; builds live in C_Traits, so there is no
 		-- reliable spec to detect. Use the general class profile; role-specific profiles are
 		-- available through the "Override specialization" option.
 		return "None"
 	end
 elseif TOC_VERSION_CURRENT < TOC_VERSION_MOP then
-	function AutoGearDetectSpec()
+	function TyGearDetectSpec()
 		-- GetSpecialization() doesn't exist until MoP
 		-- Instead, this finds the talent tree where the most points are allocated.
 		local highestSpec = nil
 		local highestPointsSpent = nil
 		local numTalentTabs = GetNumTalentTabs()
 		if (not numTalentTabs) or (numTalentTabs < 2) then
-			AutoGearPrint("AutoGear: numTalentTabs in AutoGearGetSpec() is "..tostring(numTalentTabs),0)
+			TyGearPrint("TyGear: numTalentTabs in TyGearGetSpec() is "..tostring(numTalentTabs),0)
 		end
 		-- It needs a condition of being above 0 or else it will assign highestSpec to the first talent tree even if there are 0 points in it.
 		local _, spec, _, _, pointsSpent = GetTalentTabInfo(1)
@@ -355,7 +361,7 @@ elseif TOC_VERSION_CURRENT < TOC_VERSION_MOP then
 		return highestSpec
 	end
 else
-	function AutoGearDetectSpec()
+	function TyGearDetectSpec()
 		local currentSpec = GetSpecialization()
 		local currentSpecName = currentSpec and select(2, GetSpecializationInfo(currentSpec)) or "None"
 		if (currentSpec == 5) then
@@ -366,20 +372,20 @@ else
 	end
 end
 
-function AutoGearGetDefaultOverrideSpec()
+function TyGearGetDefaultOverrideSpec()
 	local className = UnitClass("player")
-	local spec = AutoGearDetectSpec()
+	local spec = TyGearDetectSpec()
 	if spec then
 		return className..": "..spec
 	end
 end
 
-function AutoGearGetLockedGearSlotLabel(slot)
+function TyGearGetLockedGearSlotLabel(slot)
 	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
-		local slotName = AutoGearSlotNames[slot] or GetItemInventorySlotInfo(slot)
+		local slotName = TyGearSlotNames[slot] or GetItemInventorySlotInfo(slot)
 		return tostring(slot)..(slotName and ": "..slotName or "")
-	elseif slot >= AutoGearFirstEquippableBagSlot and slot <= AutoGearLastEquippableBagSlot then
-		local slotNumber = slot-AutoGearFirstEquippableBagSlot+1
+	elseif slot >= TyGearFirstEquippableBagSlot and slot <= TyGearLastEquippableBagSlot then
+		local slotNumber = slot-TyGearFirstEquippableBagSlot+1
 		local slotName = (BAGSLOT or "Bag").." "..tostring(slotNumber)
 		return tostring(slot)..(slotName and ": "..slotName or "")
 	else
@@ -387,12 +393,12 @@ function AutoGearGetLockedGearSlotLabel(slot)
 	end
 end
 
-function AutoGearGetDefaultLockedGearSlots()
+function TyGearGetDefaultLockedGearSlots()
 	local lockedGearSlots = {}
-	for slot = INVSLOT_FIRST_EQUIPPED, AutoGearLastEquippableBagSlot do
-		if slot <= INVSLOT_LAST_EQUIPPED or slot >= AutoGearFirstEquippableBagSlot then
+	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
+		if slot <= INVSLOT_LAST_EQUIPPED or slot >= TyGearFirstEquippableBagSlot then
 			lockedGearSlots[slot] = {
-				["label"] = AutoGearGetLockedGearSlotLabel(slot),
+				["label"] = TyGearGetLockedGearSlotLabel(slot),
 				["enabled"] = false
 			}
 		end
@@ -400,41 +406,41 @@ function AutoGearGetDefaultLockedGearSlots()
 	return lockedGearSlots
 end
 
-function AutoGearGetLockedGearSlots()
-	if not AutoGearDB.LockedGearSlots then
-		AutoGearDB.LockedGearSlots = AutoGearGetDefaultLockedGearSlots()
+function TyGearGetLockedGearSlots()
+	if not TyGearDB.LockedGearSlots then
+		TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots()
 	end
-	return AutoGearDB.LockedGearSlots
+	return TyGearDB.LockedGearSlots
 end
 
-function AutoGearFixLockedGearSlots() -- finds missing slots and adds them, in case Blizzard changed them around
-	if not AutoGearDB.LockedGearSlots then AutoGearDB.LockedGearSlots = AutoGearGetDefaultLockedGearSlots() return end
-	for slot = INVSLOT_FIRST_EQUIPPED, AutoGearLastEquippableBagSlot do
-		if slot <= INVSLOT_LAST_EQUIPPED or slot >= AutoGearFirstEquippableBagSlot then
-			if not AutoGearDB.LockedGearSlots[slot] then
-				AutoGearDB.LockedGearSlots[slot] = {
-					["label"] = AutoGearGetLockedGearSlotLabel(slot),
+function TyGearFixLockedGearSlots() -- finds missing slots and adds them, in case Blizzard changed them around
+	if not TyGearDB.LockedGearSlots then TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots() return end
+	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
+		if slot <= INVSLOT_LAST_EQUIPPED or slot >= TyGearFirstEquippableBagSlot then
+			if not TyGearDB.LockedGearSlots[slot] then
+				TyGearDB.LockedGearSlots[slot] = {
+					["label"] = TyGearGetLockedGearSlotLabel(slot),
 					["enabled"] = false
 				}
-			elseif AutoGearDB.LockedGearSlots[slot].label then
-				AutoGearDB.LockedGearSlots[slot].label = AutoGearGetLockedGearSlotLabel(slot)
+			elseif TyGearDB.LockedGearSlots[slot].label then
+				TyGearDB.LockedGearSlots[slot].label = TyGearGetLockedGearSlotLabel(slot)
 			end
 		end
 	end
 end
 
---an invisible tooltip that AutoGear can scan for various information
-local tooltipFrame = CreateFrame("GameTooltip", "AutoGearTooltip", UIParent, "GameTooltipTemplate")
+--an invisible tooltip that TyGear can scan for various information
+local tooltipFrame = CreateFrame("GameTooltip", "TyGearTooltip", UIParent, "GameTooltipTemplate")
 
 --the main frame
-AutoGearFrame = CreateFrame("Frame", nil, UIParent)
-AutoGearFrame:SetWidth(1) AutoGearFrame:SetHeight(1)
-AutoGearFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+TyGearFrame = CreateFrame("Frame", nil, UIParent)
+TyGearFrame:SetWidth(1) TyGearFrame:SetHeight(1)
+TyGearFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
 
 local E = 0.000001 --epsilon; non-zero value that's insignificantly different from 0, used here for the purpose of valuing gear that has higher stats that give the player "almost no benefit"
 -- regex for finding 0 in this block to replace with E: (?<=[^ ] = )0(?=[^\.0-9])
 if TOC_VERSION_CURRENT < TOC_VERSION_CATA then
-	AutoGearDefaultWeights = {
+	TyGearDefaultWeights = {
 		["DEATHKNIGHT"] = {
 			["None"] = {
 				Strength = 1.05, Agility = E, Stamina = 0.5, Intellect = E, Spirit = E,
@@ -1032,7 +1038,7 @@ if TOC_VERSION_CURRENT < TOC_VERSION_CATA then
 		}
 	}
 else
-	AutoGearDefaultWeights = {
+	TyGearDefaultWeights = {
 		["DEATHKNIGHT"] = {
 			["None"] = {
 				Strength = 1.05, Agility = E, Stamina = 0.5, Intellect = E, Spirit = E,
@@ -1633,78 +1639,78 @@ else
 	}
 end
 
-AutoGearOverrideSpecs = {
+TyGearOverrideSpecs = {
 	{
-		["label"] = AutoGearClassList["DEATHKNIGHT"],
+		["label"] = TyGearClassList["DEATHKNIGHT"],
 		["subLabels"] = {"None", "Blood", "Frost", "Unholy"}
 	},
 	{
-		["label"] = AutoGearClassList["DEMONHUNTER"],
+		["label"] = TyGearClassList["DEMONHUNTER"],
 		["subLabels"] = {"None", "Havoc", "Vengeance", "Devourer"}
 	},
 	{
-		["label"] = AutoGearClassList["DRUID"],
+		["label"] = TyGearClassList["DRUID"],
 		["subLabels"] = {"None", "Balance", "Feral", "Guardian", "Restoration"}
 	},
 	{
-		["label"] = AutoGearClassList["EVOKER"],
+		["label"] = TyGearClassList["EVOKER"],
 		["subLabels"] = {"None", "Devastation", "Preservation", "Augmentation"}
 	},
 	{
-		["label"] = AutoGearClassList["HUNTER"],
+		["label"] = TyGearClassList["HUNTER"],
 		["subLabels"] = {"None", "Beast Mastery", "Marksmanship", "Survival"}
 	},
 	{
-		["label"] = AutoGearClassList["MAGE"],
+		["label"] = TyGearClassList["MAGE"],
 		["subLabels"] = {"None", "Arcane", "Fire", "Frost"}
 	},
 	{
-		["label"] = AutoGearClassList["MONK"],
+		["label"] = TyGearClassList["MONK"],
 		["subLabels"] = {"None", "Brewmaster", "Mistweaver", "Windwalker"}
 	},
 	{
-		["label"] = AutoGearClassList["PALADIN"],
+		["label"] = TyGearClassList["PALADIN"],
 		["subLabels"] = {"None", "Holy", "Protection", "Retribution"}
 	},
 	{
-		["label"] = AutoGearClassList["PRIEST"],
+		["label"] = TyGearClassList["PRIEST"],
 		["subLabels"] = {"None", "Discipline", "Holy", "Shadow"}
 	},
 	{
-		["label"] = AutoGearClassList["ROGUE"],
+		["label"] = TyGearClassList["ROGUE"],
 		["subLabels"] = {"None", "Assassination", "Combat", "Outlaw", "Subtlety"}
 	},
 	{
-		["label"] = AutoGearClassList["SHAMAN"],
+		["label"] = TyGearClassList["SHAMAN"],
 		["subLabels"] = {"None", "Enhancement", "Elemental", "Restoration"}
 	},
 	{
-		["label"] = AutoGearClassList["WARLOCK"],
+		["label"] = TyGearClassList["WARLOCK"],
 		["subLabels"] = {"None", "Affliction", "Demonology", "Destruction"}
 	},
 	{
-		["label"] = AutoGearClassList["WARRIOR"],
+		["label"] = TyGearClassList["WARRIOR"],
 		["subLabels"] = {"None", "Arms", "Fury", "Protection"}
 	}
 }
 
-function AutoGearGetOverrideSpecs()
+function TyGearGetOverrideSpecs()
 	local classOrder = {}
-	for k in pairs(AutoGearDefaultWeights) do
+	for k in pairs(TyGearDefaultWeights) do
 		table.insert(classOrder, k)
 	end
 	table.sort(classOrder)
 
 	for i = 1, #classOrder do (function()
 		local className = classOrder[i]
-		local localizedClassName = AutoGearClassList[className]
+		local localizedClassName = TyGearClassList[className]
 		if localizedClassName == nil then return end
-		AutoGearOverrideSpecs[i] = {
+		TyGearOverrideSpecs[i] = {
 			["label"] = localizedClassName,
-			["subLabels"] = AutoGearOverrideSpecs[i]["subLabels"]
+			["subLabels"] = TyGearOverrideSpecs[i]["subLabels"]
 		}
 		local specOrder = {}
-		for l in pairs(AutoGearDefaultWeights[className]) do
+		for l in pairs(TyGearDefaultWeights[className]) do
 			table.insert(specOrder, l)
 		end
 		table.sort(specOrder, function(a, b)
@@ -1718,69 +1724,69 @@ function AutoGearGetOverrideSpecs()
 		end)
 		for j = 1, #specOrder do
 			local specName = specOrder[j]
-			AutoGearOverrideSpecs[i]["subLabels"][j] = specName
+			TyGearOverrideSpecs[i]["subLabels"][j] = specName
 		end
 	end)() end
-	return AutoGearOverrideSpecs
+	return TyGearOverrideSpecs
 end
 
-function AutoGearGetClassAndSpec()
+function TyGearGetClassAndSpec()
 	local localizedClass, class, spec, classID
 
 	-- Override가 켜져 있고 저장된 OverrideSpec 이 있으면 거기서 먼저 시도
-	if AutoGearDB.Override and AutoGearDB.OverrideSpec then
+	if TyGearDB.Override and TyGearDB.OverrideSpec then
 		-- "죽음의 기사: Blood" / "악마사냥꾼: Havoc" 같은 형식 가정
-		local overrideLocalizedClass, overrideSpec = string.match(AutoGearDB.OverrideSpec, "(.+): ?(.+)")
+		local overrideLocalizedClass, overrideSpec = string.match(TyGearDB.OverrideSpec, "(.+): ?(.+)")
 		if overrideLocalizedClass and overrideSpec then
 			-- 로컬 직업명 -> 영문 직업 토큰 (예: "악마사냥꾼" -> "DEMONHUNTER")
-			local overrideClassToken = AutoGearReverseClassList[overrideLocalizedClass]
-			if overrideClassToken and AutoGearReverseClassIDList[overrideClassToken] then
+			local overrideClassToken = TyGearReverseClassList[overrideLocalizedClass]
+			if overrideClassToken and TyGearReverseClassIDList[overrideClassToken] then
 				localizedClass = overrideLocalizedClass
 				class        = overrideClassToken
 				spec         = overrideSpec
-				classID      = AutoGearReverseClassIDList[overrideClassToken].id
+				classID      = TyGearReverseClassIDList[overrideClassToken].id
 			end
 		end
 	end
 
 	-- 위에서 제대로 못 구했으면 실제 캐릭 정보로 fallback
 	if (localizedClass == nil) or (class == nil) or (spec == nil) or (classID == nil) then
-		localizedClass, class, spec, classID = AutoGearDetectClassAndSpec()
+		localizedClass, class, spec, classID = TyGearDetectClassAndSpec()
 	end
 
 	return localizedClass, class, spec, classID
 end
 
 
-function AutoGearDetectClassAndSpec()
+function TyGearDetectClassAndSpec()
 	local localizedClass, class, spec, classID
 	class, classID = UnitClassBase("player")
-	localizedClass = AutoGearClassIDList[classID].localizedName
-	spec = AutoGearDetectSpec()
+	localizedClass = TyGearClassIDList[classID].localizedName
+	spec = TyGearDetectSpec()
 	return localizedClass, class, spec, classID
 end
 
-function AutoGearSetStatWeights()
-	local localizedClass, class, spec = AutoGearGetClassAndSpec()
-	AutoGearCurrentWeighting = AutoGearDefaultWeights[class] and AutoGearDefaultWeights[class][spec] or nil
-	weapons = AutoGearCurrentWeighting and (AutoGearCurrentWeighting.weapons or "any") or "any"
-	if (not AutoGearCurrentWeighting) then
-		if (not (AutoGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
-			AutoGearPrint("AutoGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
+function TyGearSetStatWeights()
+	local localizedClass, class, spec = TyGearGetClassAndSpec()
+	TyGearCurrentWeighting = TyGearDefaultWeights[class] and TyGearDefaultWeights[class][spec] or nil
+	weapons = TyGearCurrentWeighting and (TyGearCurrentWeighting.weapons or "any") or "any"
+	if (not TyGearCurrentWeighting) then
+		if (not (TyGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
+			TyGearPrint("TyGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
 		end
 		return
 	end
-	if (IS_WOW_FOREVER or TOC_VERSION_CURRENT >= TOC_VERSION_WOTLK) and (not (AutoGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
-		AutoGearCurrentWeighting.Crit = math.max(AutoGearCurrentWeighting.Crit or 0, AutoGearCurrentWeighting.SpellCrit or 0)
+	if (IS_WOW_FOREVER or TOC_VERSION_CURRENT >= TOC_VERSION_WOTLK) and (not (TyGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
+		TyGearCurrentWeighting.Crit = math.max(TyGearCurrentWeighting.Crit or 0, TyGearCurrentWeighting.SpellCrit or 0)
 		if IS_WOW_FOREVER then
 			-- WoW Forever combines melee, ranged and spell hit on gear
-			AutoGearCurrentWeighting.Hit = math.max(AutoGearCurrentWeighting.Hit or 0, AutoGearCurrentWeighting.SpellHit or 0)
+			TyGearCurrentWeighting.Hit = math.max(TyGearCurrentWeighting.Hit or 0, TyGearCurrentWeighting.SpellHit or 0)
 		end
 	end
 end
 
 local function newCheckbox(dbname, label, description, onClick, optionsMenu)
-	local check = CreateFrame("CheckButton", "AutoGear"..dbname.."CheckButton", optionsMenu, "InterfaceOptionsCheckButtonTemplate")
+	local check = CreateFrame("CheckButton", "TyGear"..dbname.."CheckButton", optionsMenu, "InterfaceOptionsCheckButtonTemplate")
 	check:SetScript("OnClick", function(self)
 		local tick = self:GetChecked()
 		onClick(self, tick and true or false)
@@ -1826,7 +1832,7 @@ local function closeDropdownMenu(dropdown)
 end
 
 --options window layout in pixels
-local OPTIONS_TABS_TOP_OFFSET = -40 --below the "AutoGear" title
+local OPTIONS_TABS_TOP_OFFSET = -56 --below the TyGear title and the AutoGear credit line
 local OPTIONS_TAB_HEIGHT = 32 --height of PanelTopTabButtonTemplate
 local OPTIONS_CONTAINER_LEFT_OFFSET = 8
 local OPTIONS_CONTAINER_RIGHT_MARGIN = 30 --room for the scroll bar
@@ -1847,7 +1853,7 @@ local function newOptionsTabs(optionsMenu)
 
 	--bordered container below the tab buttons; it is named because PanelTemplates finds the tabs of
 	--clients without the "Tabs" parentArray (e.g. Classic Era) by the name "<container>Tab<index>"
-	local container = CreateFrame("Frame", "AutoGearOptionsTabContainer", optionsMenu, "BackdropTemplate")
+	local container = CreateFrame("Frame", "TyGearOptionsTabContainer", optionsMenu, "BackdropTemplate")
 	container:SetBackdrop({
 		bgFile = "Interface/ChatFrame/ChatFrameBackground",
 		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
@@ -1940,42 +1946,47 @@ local function optionsSetup(optionsMenu)
 	local frame = {}
 	frame[i] = optionsMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	frame[i]:SetPoint("TOPLEFT", 8, -8)
-	frame[i]:SetText("AutoGear")
+	frame[i]:SetText("TyGear")
+	i = i + 1
+	frame[i] = optionsMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	frame[i]:SetPoint("TOPLEFT", 8, -28)
+	frame[i]:SetJustifyH("LEFT")
+	frame[i]:SetText(L["Fork of AutoGear by Synthetikaryote and BujuArena."])
 	local optionsTabs = newOptionsTabs(optionsMenu)
 
 	--loop through options table to build our options menu programmatically
-	for _, v in ipairs(AutoGearOptions) do (function()
+	for _, v in ipairs(TyGearOptions) do (function()
 		if (not v["option"]) or ((v["shouldUse"] ~= nil) and (v["shouldUse"] == false)) then return end
 		--manual iterator to be able to start from 0 and add another one outside the loop
 		i = i + 1
 
 		--function to run when toggling this option by clicking the checkbox
-		_G["AutoGearSimpleToggle"..v["option"]] = function(self, value)
+		_G["TyGearSimpleToggle"..v["option"]] = function(self, value)
 			if v["cvar"] then
 				SetCVar(v["cvar"], value and 1 or 0)
 			end
-			AutoGearDB[v["option"]] = value
-			AutoGearPrint("AutoGear: "..(AutoGearDB[v["option"]] and v["toggleDescriptionTrue"] or v["toggleDescriptionFalse"]), 3)
-			AutoGearPrint("AutoGear: AutoGearDB."..v["option"].." is "..(AutoGearDB[v["option"]] and "true" or "false")..".",3)
+			TyGearDB[v["option"]] = value
+			TyGearPrint("TyGear: "..(TyGearDB[v["option"]] and v["toggleDescriptionTrue"] or v["toggleDescriptionFalse"]), 3)
+			TyGearPrint("TyGear: TyGearDB."..v["option"].." is "..(TyGearDB[v["option"]] and "true" or "false")..".",3)
 		end
 
 		--function to run when toggling this option via command-line interface
-		_G["AutoGearToggle"..v["option"]] = function(force)
-			if AutoGearDB[v["option"]] == nil then return end
+		_G["TyGearToggle"..v["option"]] = function(force)
+			if TyGearDB[v["option"]] == nil then return end
 			if force ~= nil then
-				AutoGearDB[v["option"]] = force
+				TyGearDB[v["option"]] = force
 			else
-				AutoGearDB[v["option"]] = (not AutoGearDB[v["option"]])
+				TyGearDB[v["option"]] = (not TyGearDB[v["option"]])
 			end
 			if v["cvar"] then SetCVar(v["cvar"], force or (GetCVarBool(v["cvar"]) and 0 or 1)) end
-			AutoGearPrint("AutoGear: "..(AutoGearDB[v["option"]] and v["toggleDescriptionTrue"] or v["toggleDescriptionFalse"]), 0)
-			if _G["AutoGear"..v["option"].."CheckButton"] == nil then return end
-			_G["AutoGear"..v["option"].."CheckButton"]:SetChecked(v["cvar"] and GetCVarBool(v["cvar"]) or AutoGearDB[v["option"]])
+			TyGearPrint("TyGear: "..(TyGearDB[v["option"]] and v["toggleDescriptionTrue"] or v["toggleDescriptionFalse"]), 0)
+			if _G["TyGear"..v["option"].."CheckButton"] == nil then return end
+			_G["TyGear"..v["option"].."CheckButton"]:SetChecked(v["cvar"] and GetCVarBool(v["cvar"]) or TyGearDB[v["option"]])
 		end
 
 		if v["togglePostHook"] then
-			hooksecurefunc("AutoGearSimpleToggle"..v["option"], v["togglePostHook"])
-			hooksecurefunc("AutoGearToggle"..v["option"], v["togglePostHook"])
+			hooksecurefunc("TyGearSimpleToggle"..v["option"], v["togglePostHook"])
+			hooksecurefunc("TyGearToggle"..v["option"], v["togglePostHook"])
 		end
 
 		--set description, and if this option is a cvar shortcut, add explanation of cvars to description
@@ -1987,10 +1998,10 @@ local function optionsSetup(optionsMenu)
 		if v["section"] and (v["section"] ~= page.section) then
 			optionsTabs:AddSectionHeader(page, v["section"])
 		end
-		frame[i] = newCheckbox(v["option"], v["label"], description, _G["AutoGearSimpleToggle"..v["option"]], page)
+		frame[i] = newCheckbox(v["option"], v["label"], description, _G["TyGearSimpleToggle"..v["option"]], page)
 		optionsTabs:AddRow(page, frame[i])
 		frame[i]:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
-		frame[i]:SetChecked(AutoGearDB[v["option"]]) --set initial checked state based on db
+		frame[i]:SetChecked(TyGearDB[v["option"]]) --set initial checked state based on db
 
 		--if this has a child defined and it should be used, build its child
 		if v["child"] and ((v["child"]["shouldUse"] == nil) or (v["child"]["shouldUse"] and (v["child"]["shouldUse"] ~= false))) then
@@ -2000,20 +2011,20 @@ local function optionsSetup(optionsMenu)
 
 				local width = 250
 				if useModernDropdowns then
-					frame[i].dropDown = CreateFrame("DropdownButton", "AutoGear"..v["child"]["option"].."Dropdown", page, "WowStyle1DropdownTemplate")
+					frame[i].dropDown = CreateFrame("DropdownButton", "TyGear"..v["child"]["option"].."Dropdown", page, "WowStyle1DropdownTemplate")
 					--this template draws its box at its frame edges, while UIDropDownMenuTemplate pads it by about 16 pixels on the left
 					frame[i].dropDown:SetPoint("LEFT", frame[i], "RIGHT", width + 16, 0) --attach to parent
 					frame[i].dropDown:SetWidth(width)
 				else
-					frame[i].dropDown = CreateFrame("FRAME", "AutoGear"..v["child"]["option"].."Dropdown", page, "UIDropDownMenuTemplate")
+					frame[i].dropDown = CreateFrame("FRAME", "TyGear"..v["child"]["option"].."Dropdown", page, "UIDropDownMenuTemplate")
 					frame[i].dropDown:SetPoint("TOPLEFT", frame[i], "TOPRIGHT", width, 0) --attach to parent
 					UIDropDownMenu_SetWidth(frame[i].dropDown, width)
 				end
-				--newDropdown(v["child"]["option"], v["child"]["label"], v["child"]["description"], _G["AutoGearSelectFrom"..v["child"]["option"].."Dropdown"], v["child"]["options"], optionsMenu)
+				--newDropdown(v["child"]["option"], v["child"]["label"], v["child"]["description"], _G["TyGearSelectFrom"..v["child"]["option"].."Dropdown"], v["child"]["options"], optionsMenu)
 				--frame[i].dropDown:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
-				if type(AutoGearDB[v["child"]["option"]]) == 'string' then
-					setDropdownText(frame[i].dropDown, AutoGearDB[v["child"]["option"]])
-				elseif type(AutoGearDB[v["child"]["option"]]) == 'table' then
+				if type(TyGearDB[v["child"]["option"]]) == 'string' then
+					setDropdownText(frame[i].dropDown, TyGearDB[v["child"]["option"]])
+				elseif type(TyGearDB[v["child"]["option"]]) == 'table' then
 					local label
 					for _, l in pairs(v["child"]["options"]) do
 						if l["enabled"] then
@@ -2024,41 +2035,41 @@ local function optionsSetup(optionsMenu)
 							end
 						end
 					end
-					setDropdownText(_G["AutoGear"..v["child"]["option"].."Dropdown"], label)
+					setDropdownText(_G["TyGear"..v["child"]["option"].."Dropdown"], label)
 				end
 
 				--function to run when using this dropdown
-				_G["AutoGear"..v["child"]["option"].."Dropdown"].SetValue = function(self, value)
-					if type(AutoGearDB[v["child"]["option"]]) == 'string' then
-						AutoGearDB[v["child"]["option"]] = value
-						setDropdownText(_G["AutoGear"..v["child"]["option"].."Dropdown"], AutoGearDB[v["child"]["option"]])
-						closeDropdownMenu(_G["AutoGear"..v["child"]["option"].."Dropdown"])
+				_G["TyGear"..v["child"]["option"].."Dropdown"].SetValue = function(self, value)
+					if type(TyGearDB[v["child"]["option"]]) == 'string' then
+						TyGearDB[v["child"]["option"]] = value
+						setDropdownText(_G["TyGear"..v["child"]["option"].."Dropdown"], TyGearDB[v["child"]["option"]])
+						closeDropdownMenu(_G["TyGear"..v["child"]["option"].."Dropdown"])
 					end
 				end
 
 				if v["child"]["dropdownPostHook"] then
-					hooksecurefunc(_G["AutoGear"..v["child"]["option"].."Dropdown"], "SetValue", v["child"]["dropdownPostHook"])
+					hooksecurefunc(_G["TyGear"..v["child"]["option"].."Dropdown"], "SetValue", v["child"]["dropdownPostHook"])
 				end
 
 				if useModernDropdowns then
 					--same menu as the UIDropDownMenu version below, built with the modern menu system
 					frame[i].dropDown:SetupMenu(function(dropdown, rootDescription)
-						if type(AutoGearDB[v["child"]["option"]]) == 'string' then
+						if type(TyGearDB[v["child"]["option"]]) == 'string' then
 							for _, j in ipairs(v["child"]["options"]) do
 								--the label is selected when the stored value is one of its subLabels; it only opens its submenu, so its responder does nothing
 								local labelDescription = rootDescription:CreateRadio(j["label"], function()
-									return (AutoGearDB[v["child"]["option"]] and string.match(AutoGearDB[v["child"]["option"]], "^"..j["label"]..":")) and true or false
+									return (TyGearDB[v["child"]["option"]] and string.match(TyGearDB[v["child"]["option"]], "^"..j["label"]..":")) and true or false
 								end, function() end)
 								for _, z in ipairs(j["subLabels"] or {}) do
 									local value = j["label"]..": "..z
 									labelDescription:CreateRadio(z, function()
-										return (AutoGearDB[v["child"]["option"]] == value) or (AutoGearDB[v["child"]["option"]] == z)
+										return (TyGearDB[v["child"]["option"]] == value) or (TyGearDB[v["child"]["option"]] == z)
 									end, function()
 										dropdown:SetValue(value)
 									end)
 								end
 							end
-						elseif type(AutoGearDB[v["child"]["option"]]) == 'table' then
+						elseif type(TyGearDB[v["child"]["option"]]) == 'table' then
 							for _, j in pairs(v["child"]["options"]) do
 								--checkboxes keep the menu open, like keepShownOnClick
 								rootDescription:CreateCheckbox(j["label"], function()
@@ -2081,19 +2092,19 @@ local function optionsSetup(optionsMenu)
 						end
 					end)
 				else
-					UIDropDownMenu_Initialize(_G["AutoGear"..v["child"]["option"].."Dropdown"], function(self, level, menuList)
+					UIDropDownMenu_Initialize(_G["TyGear"..v["child"]["option"].."Dropdown"], function(self, level, menuList)
 						local info = UIDropDownMenu_CreateInfo()
 						if (level or 1) == 1 then
 							--display the labels
-							if type(AutoGearDB[v["child"]["option"]]) == 'string' then
+							if type(TyGearDB[v["child"]["option"]]) == 'string' then
 								for _, j in ipairs(v["child"]["options"]) do
 									info.text = j["label"]
-									info.checked = (AutoGearDB[v["child"]["option"]] and (string.match(AutoGearDB[v["child"]["option"]], "^"..j["label"]..":") and true or false) or false)
+									info.checked = (TyGearDB[v["child"]["option"]] and (string.match(TyGearDB[v["child"]["option"]], "^"..j["label"]..":") and true or false) or false)
 									info.menuList = j
 									info.hasArrow = (j["subLabels"] and true or false)
 									UIDropDownMenu_AddButton(info)
 								end
-							elseif type(AutoGearDB[v["child"]["option"]]) == 'table' then
+							elseif type(TyGearDB[v["child"]["option"]]) == 'table' then
 								for _, j in pairs(v["child"]["options"]) do
 									info.text = j["label"]
 									info.keepShownOnClick = true
@@ -2110,7 +2121,7 @@ local function optionsSetup(optionsMenu)
 												end
 											end
 										end
-										UIDropDownMenu_SetText(_G["AutoGear"..v["child"]["option"].."Dropdown"], label)
+										UIDropDownMenu_SetText(_G["TyGear"..v["child"]["option"].."Dropdown"], label)
 									end
 									info.menuList = j
 									info.hasArrow = (j["subLabels"] and true or false)
@@ -2124,7 +2135,7 @@ local function optionsSetup(optionsMenu)
 								for _, z in ipairs(menuList["subLabels"]) do
 									info.text = z
 									info.arg1 = menuList["label"]..": "..z
-									info.checked = ((AutoGearDB[v["child"]["option"]] == info.arg1) or (AutoGearDB[v["child"]["option"]] == z))
+									info.checked = ((TyGearDB[v["child"]["option"]] == info.arg1) or (TyGearDB[v["child"]["option"]] == z))
 									UIDropDownMenu_AddButton(info, level)
 								end
 							end
@@ -2135,14 +2146,14 @@ local function optionsSetup(optionsMenu)
 			--if the child is a text box for a list of item IDs, build it that way
 			elseif v["child"]["editBox"] then
 				local width = 250
-				local editBox = CreateFrame("EditBox", "AutoGear"..v["child"]["option"].."EditBox", page, "InputBoxTemplate")
+				local editBox = CreateFrame("EditBox", "TyGear"..v["child"]["option"].."EditBox", page, "InputBoxTemplate")
 				frame[i].editBox = editBox
 				--the checkbox's click region reaches 280 pixels to its right, so start past it
 				editBox:SetPoint("LEFT", frame[i], "RIGHT", width + 32, 0)
 				editBox:SetSize(width, 20)
 				editBox:SetAutoFocus(false)
 				local function showSavedText()
-					editBox:SetText(AutoGearDB[v["child"]["option"]])
+					editBox:SetText(TyGearDB[v["child"]["option"]])
 					editBox:SetCursorPosition(0)
 				end
 				showSavedText()
@@ -2152,7 +2163,7 @@ local function optionsSetup(optionsMenu)
 					self:ClearFocus()
 				end)
 				editBox:SetScript("OnEditFocusLost", function(self)
-					AutoGearDB[v["child"]["option"]] = table.concat(AutoGearParseItemIDList(self:GetText()), ", ")
+					TyGearDB[v["child"]["option"]] = table.concat(TyGearParseItemIDList(self:GetText()), ", ")
 					showSavedText()
 				end)
 				editBox:SetScript("OnEnter", function(self)
@@ -2160,7 +2171,7 @@ local function optionsSetup(optionsMenu)
 					GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
 					GameTooltip:AddLine(v["child"]["label"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
 					GameTooltip:AddLine(v["child"]["description"], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-					local itemIDs = AutoGearParseItemIDList(AutoGearDB[v["child"]["option"]])
+					local itemIDs = TyGearParseItemIDList(TyGearDB[v["child"]["option"]])
 					if #itemIDs > 0 then
 						GameTooltip:AddLine(" ")
 						for _, itemID in ipairs(itemIDs) do
@@ -2188,15 +2199,15 @@ local function optionsSetup(optionsMenu)
 		--if this is a cvar, hook Blizzard's SetCVar function to update our checkbox
 		if v["cvar"] then
 			hooksecurefunc("SetCVar",function(CVar, ...)
-				if ((_G["AutoGear"..v["option"].."CheckButton"] ~= nil) and (CVar == v["cvar"])) then
-					_G["AutoGear"..v["option"].."CheckButton"]:SetChecked(GetCVarBool(v["cvar"]))
+				if ((_G["TyGear"..v["option"].."CheckButton"] ~= nil) and (CVar == v["cvar"])) then
+					_G["TyGear"..v["option"].."CheckButton"]:SetChecked(GetCVarBool(v["cvar"]))
 				end
 			end)
 		end
 
 		--if command-line interface commands are defined, add handling of those to the end of our cli command handling function
 		if v["cliCommands"] then
-			hooksecurefunc(SlashCmdList, "AutoGear", function(msg, ...)
+			hooksecurefunc(SlashCmdList, "TyGear", function(msg, ...)
 				local command = nil
 				local force = nil
 				for _, w in ipairs(v["cliCommands"]) do
@@ -2220,13 +2231,13 @@ local function optionsSetup(optionsMenu)
 						break
 					end
 				end
-				if command then _G["AutoGearToggle"..command](force) end
+				if command then _G["TyGearToggle"..command](force) end
 			end)
 		end
 	end)() end
-	hooksecurefunc(SlashCmdList, "AutoGear", function(msg, ...)
+	hooksecurefunc(SlashCmdList, "TyGear", function(msg, ...)
 		if shouldPrintHelp then
-			AutoGearPrintHelp()
+			TyGearPrintHelp()
 			shouldPrintHelp = false
 		end
 	end)
@@ -2235,24 +2246,24 @@ local function optionsSetup(optionsMenu)
 	frame[i] = CreateFrame("Button", nil, optionsTabs.pages[1], "UIPanelButtonTemplate")
 	frame[i]:SetWidth(100)
 	frame[i]:SetHeight(30)
-	frame[i]:SetScript("OnClick", function() AutoGearScan() end)
+	frame[i]:SetScript("OnClick", function() TyGearScan() end)
 	frame[i]:SetText(L["Scan"])
 	optionsTabs:AddRow(optionsTabs.pages[1], frame[i], OPTIONS_BUTTON_SPACING, 4)
 	frame[i]:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(L["Click this button to force a scan, the same way that AutoGear scans for gear upgrades in your bags whenever new gear is looted.\n\nTip: By equipping your old item, you can use this to help determine how AutoGear decided an item was an upgrade."],nil,nil,nil,true)
+		GameTooltip:AddLine(L["Click this button to force a scan, the same way that TyGear scans for gear upgrades in your bags whenever new gear is looted.\n\nTip: By equipping your old item, you can use this to help determine how TyGear decided an item was an upgrade."],nil,nil,nil,true)
 		GameTooltip:Show()
 	end)
 	frame[i]:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	optionsTabs:Finish()
 end
 
-local optionsMenu = CreateFrame("Frame", "AutoGearOptionsMenu")
+local optionsMenu = CreateFrame("Frame", "TyGearOptionsMenu")
 optionsMenu:SetWidth(1) -- must be set to at least 1 or the menu is invisible in the scroll frame, but will expand to show everything
 optionsMenu:SetHeight(1) -- must be set to at least 1 or the menu is invisible in the scroll frame, but will expand to show everything
-local optionsMenuParent = CreateFrame("ScrollFrame", "AutoGearOptionsMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
-optionsMenuParent.name = "AutoGear"
+local optionsMenuParent = CreateFrame("ScrollFrame", "TyGearOptionsMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
+optionsMenuParent.name = "TyGear"
 optionsMenuParent:SetScrollChild(optionsMenu)
 --the Settings shim above returns the registered category; native InterfaceOptions_AddCategory returns nothing
 local optionsCategory = InterfaceOptions_AddCategory(optionsMenuParent)
@@ -2264,7 +2275,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 	if event == "PLAYER_ENTERING_WORLD" then
 
 		--default values for variables saved between sessions
-		AutoGearDBDefaults = {
+		TyGearDBDefaults = {
 			Enabled = true,
 			AutoLootRoll = true,
 			AutoRollOnBoEBlues = false,
@@ -2288,21 +2299,21 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			KeepUnboundGreyGear = false,
 			AutoRepair = false,
 			Override = false,
-			OverrideSpec = AutoGearGetDefaultOverrideSpec(),
-			UsePawn = not IS_WOW_FOREVER, --AutoGear built-in weights are deprecated.  We're using Pawn mainly now, so default true.  Pawn has no WoW Forever scales yet, so Forever uses the built-in class profiles.
+			OverrideSpec = TyGearGetDefaultOverrideSpec(),
+			UsePawn = not IS_WOW_FOREVER, --TyGear built-in weights are deprecated.  We're using Pawn mainly now, so default true.  Pawn has no WoW Forever scales yet, so Forever uses the built-in class profiles.
 			OverridePawnScale = false,
 			PawnScale = "",
 			DebugInfoInTooltips = false,
 			AllowedVerbosity = 1,
 			LockGearSlots = true,
-			LockedGearSlots = AutoGearGetDefaultLockedGearSlots()
+			LockedGearSlots = TyGearGetDefaultLockedGearSlots()
 		}
 
-		AutoGearInitializeDB(AutoGearDBDefaults)
-		AutoGearFixLockedGearSlots()
+		TyGearInitializeDB(TyGearDBDefaults)
+		TyGearFixLockedGearSlots()
 
 		--initialize options menu variables
-		AutoGearOptions = {
+		TyGearOptions = {
 			{
 				["option"] = "Enabled",
 				["tab"] = L["Evaluation"],
@@ -2310,10 +2321,10 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically equip gear"],
-				["description"] = L["Automatically equip gear upgrades, depending on internal stat weights.  These stat weights are currently only configurable by editing the values in the AutoGearDefaultWeights table in AutoGear.lua.  If this is disabled, AutoGear will still scan for gear when receiving new items and viewing loot rolls, but will never equip an item automatically."],
+				["description"] = L["Automatically equip gear upgrades, depending on internal stat weights.  These stat weights are currently only configurable by editing the values in the TyGearDefaultWeights table in TyGear.lua.  If this is disabled, TyGear will still scan for gear when receiving new items and viewing loot rolls, but will never equip an item automatically."],
 				["toggleDescriptionTrue"] = L["Automatic gearing is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic gearing is now disabled.  You can still manually scan bags for upgrades with the options menu button or \"/ag scan\"."],
-				["togglePostHook"] = function() AutoGearUpdateBestItems() end
+				["toggleDescriptionFalse"] = L["Automatic gearing is now disabled.  You can still manually scan bags for upgrades with the options menu button or \"/tg scan\"."],
+				["togglePostHook"] = function() TyGearUpdateBestItems() end
 			},
 			{
 				["option"] = "AutoLootRoll",
@@ -2323,9 +2334,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically roll on greens and BoP blues"],
-				["description"] = L["Automatically roll on group loot of green rarity and blues which bind when picked up, depending on internal stat weights.  If this is disabled, AutoGear will still evaluate these loot rolls and print its evaluation if verbosity is set to 1 (%s) or higher."]:format(AutoGearGetAllowedVerbosityName(1)),
+				["description"] = L["Automatically roll on group loot of green rarity and blues which bind when picked up, depending on internal stat weights.  If this is disabled, TyGear will still evaluate these loot rolls and print its evaluation if verbosity is set to 1 (%s) or higher."]:format(TyGearGetAllowedVerbosityName(1)),
 				["toggleDescriptionTrue"] = L["Automatically rolling on loot of green rarity and blues which bind when picked up is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatically rolling on loot of green rarity and blues which bind when picked up is now disabled.  AutoGear will still try to equip gear received through other means, but you will have to roll on this loot manually."]
+				["toggleDescriptionFalse"] = L["Automatically rolling on loot of green rarity and blues which bind when picked up is now disabled.  TyGear will still try to equip gear received through other means, but you will have to roll on this loot manually."]
 			},
 			{
 				["option"] = "AutoRollOnBoEBlues",
@@ -2335,9 +2346,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically roll on BoE blues"],
-				["description"] = L["Automatically roll on group loot of blue rarity which binds when equipped, depending on internal stat weights.  If this is disabled, AutoGear will still evaluate these loot rolls and print its evaluation if verbosity is set to 1 (%s) or higher."]:format(AutoGearGetAllowedVerbosityName(1)),
+				["description"] = L["Automatically roll on group loot of blue rarity which binds when equipped, depending on internal stat weights.  If this is disabled, TyGear will still evaluate these loot rolls and print its evaluation if verbosity is set to 1 (%s) or higher."]:format(TyGearGetAllowedVerbosityName(1)),
 				["toggleDescriptionTrue"] = L["Automatically rolling on group loot of blue rarity which binds when equipped is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatically rolling on group loot of blue rarity which binds when equipped is now disabled.  AutoGear will still try to equip gear received through other means, but you will have to roll on this loot manually."]
+				["toggleDescriptionFalse"] = L["Automatically rolling on group loot of blue rarity which binds when equipped is now disabled.  TyGear will still try to equip gear received through other means, but you will have to roll on this loot manually."]
 			},
 			{
 				["option"] = "AutoRollOnEpics",
@@ -2347,9 +2358,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically roll on epics"],
-				["description"] = L["Automatically roll on group loot of epic rarity, depending on internal stat weights.  If this is disabled, AutoGear will still evaluate these loot rolls and print its evaluation if verbosity is set to 1 (%s) or higher."]:format(AutoGearGetAllowedVerbosityName(1)),
+				["description"] = L["Automatically roll on group loot of epic rarity, depending on internal stat weights.  If this is disabled, TyGear will still evaluate these loot rolls and print its evaluation if verbosity is set to 1 (%s) or higher."]:format(TyGearGetAllowedVerbosityName(1)),
 				["toggleDescriptionTrue"] = L["Automatically rolling on group loot of epic rarity is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatically rolling on group loot of epic rarity is now disabled.  AutoGear will still try to equip gear received through other means, but you will have to roll on this loot manually."]
+				["toggleDescriptionFalse"] = L["Automatically rolling on group loot of epic rarity is now disabled.  TyGear will still try to equip gear received through other means, but you will have to roll on this loot manually."]
 			},
 			{
 				["option"] = "RollOnNonGearLoot",
@@ -2359,8 +2370,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Roll on non-gear loot"],
-				["description"] = L["Roll on all group loot, including loot that is not gear.  If this is enabled, AutoGear will roll GREED on non-gear, non-mount loot and NEED on mounts."],
-				["toggleDescriptionTrue"] = L["Rolling on non-gear loot is now enabled.  AutoGear will roll GREED on non-gear, non-mount loot and NEED on mounts."],
+				["description"] = L["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."],
+				["toggleDescriptionTrue"] = L["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."],
 				["toggleDescriptionFalse"] = L["Rolling on non-gear loot is now disabled."]
 			},
 			{
@@ -2371,9 +2382,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Never auto-need; only greed"],
-				["description"] = L["Never automatically roll NEED.  If this is enabled, AutoGear will be prevented from automatically rolling NEED when it detects an upgrade, leaving the loot roll interactive to allow manual control of that roll.  It will still be allowed to roll GREED when an upgrade is not detected and automatic rolling is enabled for the detected rarity."],
-				["toggleDescriptionTrue"] = L["Rolling only GREED automatically is now enabled.  AutoGear will be unable to roll NEED automatically."],
-				["toggleDescriptionFalse"] = L["Rolling only GREED automatically is now disabled.  AutoGear will be able to roll NEED on detected upgrades automatically."]
+				["description"] = L["Never automatically roll NEED.  If this is enabled, TyGear will be prevented from automatically rolling NEED when it detects an upgrade, leaving the loot roll interactive to allow manual control of that roll.  It will still be allowed to roll GREED when an upgrade is not detected and automatic rolling is enabled for the detected rarity."],
+				["toggleDescriptionTrue"] = L["Rolling only GREED automatically is now enabled.  TyGear will be unable to roll NEED automatically."],
+				["toggleDescriptionFalse"] = L["Rolling only GREED automatically is now disabled.  TyGear will be able to roll NEED on detected upgrades automatically."]
 			},
 			{
 				["option"] = "AutoConfirmBinding",
@@ -2383,9 +2394,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically confirm soul-binding for non-blues/non-epics"],
-				["description"] = L["Automatically confirm soul-binding when equipping an upgrade that does not have blue or epic rarity, causing it to become soulbound.  If this is disabled, AutoGear will still try to equip non-blue/non-epic binding gear, but you will have to confirm soul-binding manually."],
+				["description"] = L["Automatically confirm soul-binding when equipping an upgrade that does not have blue or epic rarity, causing it to become soulbound.  If this is disabled, TyGear will still try to equip non-blue/non-epic binding gear, but you will have to confirm soul-binding manually."],
 				["toggleDescriptionTrue"] = L["Automatically confirming soul-binding for non-blues/non-epics is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatically confirming soul-binding for non-blues/non-epics is now disabled.  AutoGear will still try to equip non-blue/non-epic binding gear, but you will have to confirm soul-binding manually."]
+				["toggleDescriptionFalse"] = L["Automatically confirming soul-binding for non-blues/non-epics is now disabled.  TyGear will still try to equip non-blue/non-epic binding gear, but you will have to confirm soul-binding manually."]
 			},
 			{
 				["option"] = "AutoConfirmBindingBlues",
@@ -2395,9 +2406,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically confirm soul-binding for blues"],
-				["description"] = L["Automatically confirm soul-binding when equipping an upgrade that has blue rarity, causing it to become soulbound.  If this is disabled, AutoGear will still try to equip blue binding gear, but you will have to confirm soul-binding manually."],
+				["description"] = L["Automatically confirm soul-binding when equipping an upgrade that has blue rarity, causing it to become soulbound.  If this is disabled, TyGear will still try to equip blue binding gear, but you will have to confirm soul-binding manually."],
 				["toggleDescriptionTrue"] = L["Automatically confirming soul-binding for blues is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatically confirming soul-binding for blues is now disabled.  AutoGear will still try to equip blue binding gear, but you will have to confirm soul-binding manually."]
+				["toggleDescriptionFalse"] = L["Automatically confirming soul-binding for blues is now disabled.  TyGear will still try to equip blue binding gear, but you will have to confirm soul-binding manually."]
 			},
 			{
 				["option"] = "AutoConfirmBindingEpics",
@@ -2407,9 +2418,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically confirm soul-binding for epics"],
-				["description"] = L["Automatically confirm soul-binding when equipping an upgrade that has epic rarity, causing it to become soulbound.  If this is disabled, AutoGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."],
+				["description"] = L["Automatically confirm soul-binding when equipping an upgrade that has epic rarity, causing it to become soulbound.  If this is disabled, TyGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."],
 				["toggleDescriptionTrue"] = L["Automatically confirming soul-binding for epics is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatically confirming soul-binding for epics is now disabled.  AutoGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."]
+				["toggleDescriptionFalse"] = L["Automatically confirming soul-binding for epics is now disabled.  TyGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."]
 			},
 			{
 				["option"] = "AutoAcceptQuests",
@@ -2418,7 +2429,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically accept all quests"],
-				["description"] = L["Automatically accept all quests offered by NPCs and group members.  If this is disabled, AutoGear will not accept any quests."],
+				["description"] = L["Automatically accept all quests offered by NPCs and group members.  If this is disabled, TyGear will not accept any quests."],
 				["toggleDescriptionTrue"] = L["Automatically accepting all quests is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatically accepting all quests is now disabled."]
 			},
@@ -2429,7 +2440,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically complete quests which do not award items"],
-				["description"] = L["Automatically turn in completed quests which do not offer a choice of item rewards.  If this is disabled, AutoGear will not turn in these quests, but it can still complete quests which award items if \"Automatically complete quests which award items\" is enabled."],
+				["description"] = L["Automatically turn in completed quests which do not offer a choice of item rewards.  If this is disabled, TyGear will not turn in these quests, but it can still complete quests which award items if \"Automatically complete quests which award items\" is enabled."],
 				["toggleDescriptionTrue"] = L["Automatically completing quests which do not award items is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatically completing quests which do not award items is now disabled."]
 			},
@@ -2440,7 +2451,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically complete quests which award items"],
-				["description"] = L["Automatically evaluate quest item rewards and choose the best upgrade for your current spec, turning in the quest.  If no upgrade is found, AutoGear will choose the most valuable reward in vendor gold.  If this is disabled, AutoGear can still interact with quests, but will not complete quests which present item rewards to choose, and you can still view the total AutoGear score in item tooltips."],
+				["description"] = L["Automatically evaluate quest item rewards and choose the best upgrade for your current spec, turning in the quest.  If no upgrade is found, TyGear will choose the most valuable reward in vendor gold.  If this is disabled, TyGear can still interact with quests, but will not complete quests which present item rewards to choose, and you can still view the total TyGear score in item tooltips."],
 				["toggleDescriptionTrue"] = L["Automatically completing quests which award items is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatically completing quests which award items is now disabled."]
 			},
@@ -2461,8 +2472,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliCommands"] = { "score", "tooltip", "tooltips" },
 				["cliTrue"] = { "show", "enable", "on", "start" },
 				["cliFalse"] = { "hide", "disable", "off", "stop" },
-				["label"] = L["Show AutoGear score in item tooltips"],
-				["description"] = L["Show total AutoGear item score from internal AutoGear stat weights in item tooltips."],
+				["label"] = L["Show TyGear score in item tooltips"],
+				["description"] = L["Show total TyGear item score from internal TyGear stat weights in item tooltips."],
 				["toggleDescriptionTrue"] = L["Showing score in item tooltips is now enabled."],
 				["toggleDescriptionFalse"] = L["Showing score in item tooltips is now disabled."]
 			},
@@ -2473,7 +2484,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "show", "enable", "on", "start" },
 				["cliFalse"] = { "hide", "disable", "off", "stop" },
 				["label"] = L["Show won't-equip reasons in item tooltips"],
-				["description"] = L["Show reasons AutoGear won't automatically equip items in item tooltips, except when the score is lower than the equipped item's score."],
+				["description"] = L["Show reasons TyGear won't automatically equip items in item tooltips, except when the score is lower than the equipped item's score."],
 				["toggleDescriptionTrue"] = L["Showing won't-auto-equip reasons in item tooltips is now enabled."],
 				["toggleDescriptionFalse"] = L["Showing won't-auto-equip reasons in item tooltips is now disabled."]
 			},
@@ -2508,14 +2519,14 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically sell greys"],
-				["description"] = L["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nAutoGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, and greys vendors refuse to buy.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
+				["description"] = L["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, and greys vendors refuse to buy.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
 				["toggleDescriptionTrue"] = L["Automatic selling of grey items is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatic selling of grey items is now disabled."],
 				["child"] = {
 					["option"] = "SellGreysExclusions",
 					["editBox"] = true,
 					["label"] = L["Exclusions"],
-					["description"] = L["Item IDs separated by commas.  Greys listed here are kept, and whites listed here are sold along with the greys.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the AutoGear options are open."]
+					["description"] = L["Item IDs separated by commas.  Greys listed here are kept, and whites listed here are sold along with the greys.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."]
 				}
 			},
 			{
@@ -2555,16 +2566,16 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Override specialization"],
-				["description"] = L["Override specialization with the specialization chosen in this dropdown.  If this is enabled, AutoGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the spec detected automatically."],
-				["toggleDescriptionTrue"] = L["Specialization overriding is now enabled.  AutoGear will use the specialization selected in the dropdown for evaluating gear."],
-				["toggleDescriptionFalse"] = L["Specialization overriding is now disabled.  AutoGear will use your class and its detected specialization for evaluating gear.  Type \"/ag spec\" to check what specialization AutoGear detects for your character."],
-				["togglePostHook"] = function() AutoGearUpdateBestItems() end,
+				["description"] = L["Override specialization with the specialization chosen in this dropdown.  If this is enabled, TyGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the spec detected automatically."],
+				["toggleDescriptionTrue"] = L["Specialization overriding is now enabled.  TyGear will use the specialization selected in the dropdown for evaluating gear."],
+				["toggleDescriptionFalse"] = L["Specialization overriding is now disabled.  TyGear will use your class and its detected specialization for evaluating gear.  Type \"/tg spec\" to check what specialization TyGear detects for your character."],
+				["togglePostHook"] = function() TyGearUpdateBestItems() end,
 				["child"] = {
 					["option"] = "OverrideSpec",
-					["options"] = AutoGearGetOverrideSpecs(),
+					["options"] = TyGearGetOverrideSpecs(),
 					["label"] = "Override specialization",
-					["description"] = "Override specialization with the spec chosen in this dropdown.  If this is enabled, AutoGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the specialization detected automatically.",
-					["dropdownPostHook"] = function() AutoGearSetStatWeights() end
+					["description"] = "Override specialization with the spec chosen in this dropdown.  If this is enabled, TyGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the specialization detected automatically.",
+					["dropdownPostHook"] = function() TyGearSetStatWeights() end
 				}
 			},
 			{
@@ -2574,10 +2585,10 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Use Pawn to evaluate upgrades"],
-				["description"] = L["If Pawn (gear evaluation addon) is installed and configured, use a Pawn scale instead of AutoGear's internal stat weights for evaluating gear upgrades.  AutoGear will use the Pawn scale with a name matching the \"[class]: [spec]\" format; example \"Paladin: Retribution\". If \"Override specialization\" is also enabled, that class and spec will be used for detecting which Pawn scale name to use instead. Visible scales (not hidden in Pawn's settings) will be prioritized when detecting which scale to use."]..(((PawnIsReady ~= nil) and PawnIsReady()) and "" or "\n\n"..RED_FONT_COLOR_CODE..L["Pawn is not running, so this option will do nothing."]..FONT_COLOR_CODE_CLOSE),
+				["description"] = L["If Pawn (gear evaluation addon) is installed and configured, use a Pawn scale instead of TyGear's internal stat weights for evaluating gear upgrades.  TyGear will use the Pawn scale with a name matching the \"[class]: [spec]\" format; example \"Paladin: Retribution\". If \"Override specialization\" is also enabled, that class and spec will be used for detecting which Pawn scale name to use instead. Visible scales (not hidden in Pawn's settings) will be prioritized when detecting which scale to use."]..(((PawnIsReady ~= nil) and PawnIsReady()) and "" or "\n\n"..RED_FONT_COLOR_CODE..L["Pawn is not running, so this option will do nothing."]..FONT_COLOR_CODE_CLOSE),
 				["toggleDescriptionTrue"] = L["Using Pawn for evaluating gear upgrades is now enabled."],
 				["toggleDescriptionFalse"] = L["Using Pawn for evaluating gear upgrades is now disabled."],
-				["togglePostHook"] = function() AutoGearUpdateBestItems() end
+				["togglePostHook"] = function() TyGearUpdateBestItems() end
 			},
 			{
 				["option"] = "OverridePawnScale",
@@ -2590,21 +2601,21 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["description"] = L["Override the Pawn scale that would normally be automatically detected in \"[class]: [spec]\" format with the Pawn scale chosen in this dropdown.\n\nThis override does nothing unless \"Use Pawn to evaluate upgrades\" is enabled."],
 				["toggleDescriptionTrue"] = L["Overriding Pawn scale with the selected scale is now enabled."],
 				["toggleDescriptionFalse"] = L["Overriding Pawn scale with the selected scale is now disabled."],
-				["togglePostHook"] = function() AutoGearUpdateBestItems() end,
+				["togglePostHook"] = function() TyGearUpdateBestItems() end,
 				["child"] = {
 					["option"] = "PawnScale",
-					["options"] = (function() if PawnIsReady and PawnIsReady() then return AutoGearGetPawnScales() end end)(),
+					["options"] = (function() if PawnIsReady and PawnIsReady() then return TyGearGetPawnScales() end end)(),
 					["label"] = "Pawn scale to use",
 					["description"] = "Override the Pawn scale that would normally be automatically detected in \"[class]: [spec]\" format with the Pawn scale chosen in this dropdown.",
 					["shouldUse"] = (PawnIsReady and PawnIsReady()),
 					["dropdownPostHook"] = function(self, value)
-						if AutoGearDB.PawnScale and string.len(AutoGearDB.PawnScale)>0 then
+						if TyGearDB.PawnScale and string.len(TyGearDB.PawnScale)>0 then
 							local numMatches
-							AutoGearDB.PawnScale, numMatches = string.gsub(AutoGearDB.PawnScale, "^Visible: ?", "", 1)
-							if numMatches and numMatches == 0 then AutoGearDB.PawnScale = string.gsub(AutoGearDB.PawnScale, "^Hidden: ?", "", 1) end
-							setDropdownText(AutoGearPawnScaleDropdown, AutoGearDB.PawnScale)
+							TyGearDB.PawnScale, numMatches = string.gsub(TyGearDB.PawnScale, "^Visible: ?", "", 1)
+							if numMatches and numMatches == 0 then TyGearDB.PawnScale = string.gsub(TyGearDB.PawnScale, "^Hidden: ?", "", 1) end
+							setDropdownText(TyGearPawnScaleDropdown, TyGearDB.PawnScale)
 						end
-						AutoGearSetStatWeights()
+						TyGearSetStatWeights()
 					end
 				}
 			},
@@ -2615,13 +2626,13 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Lock specified gear slots"],
-				["description"] = L["Lock the specified gear slots, so AutoGear will not remove or equip items in those slots.  If this is enabled and any slots are locked, AutoGear will still evaluate scores for items in all slots, but will not remove or equip items in the locked slots."],
+				["description"] = L["Lock the specified gear slots, so TyGear will not remove or equip items in those slots.  If this is enabled and any slots are locked, TyGear will still evaluate scores for items in all slots, but will not remove or equip items in the locked slots."],
 				["toggleDescriptionTrue"] = L["Locking specified gear slots is now enabled."],
 				["toggleDescriptionFalse"] = L["Locking specified gear slots is now disabled."],
-				["togglePostHook"] = function() AutoGearUpdateBestItems() end,
+				["togglePostHook"] = function() TyGearUpdateBestItems() end,
 				["child"] = {
 					["option"] = "LockedGearSlots",
-					["options"] = AutoGearGetLockedGearSlots(),
+					["options"] = TyGearGetLockedGearSlots(),
 					["label"] = "Gear slots to lock",
 					["description"] = "Choose which gear slots to lock in this dropdown."
 				}
@@ -2633,68 +2644,68 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Show debug info in item tooltips (%swarning%s: laggy!)"]:format(RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE),
-				["description"] = L["This is a test mode to show debug info in tooltips, such as the real roll outcome if the item viewed dropped as a loot roll.  This is to help the developers find and fix bugs in AutoGear.  You can use it to help too and report issues.\n\n%sWarning%s: laggy!"]:format(RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE),
-				["toggleDescriptionTrue"] = L["Debug info in tooltips is now enabled. Info such as whether AutoGear would \"%sNEED%s\" or \"%sGREED%s\" on an item will be shown in item tooltips.  (%swarning%s: laggy!)"]:format(GREEN_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE, RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE, RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE),
+				["description"] = L["This is a test mode to show debug info in tooltips, such as the real roll outcome if the item viewed dropped as a loot roll.  This is to help the developers find and fix bugs in TyGear.  You can use it to help too and report issues.\n\n%sWarning%s: laggy!"]:format(RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE),
+				["toggleDescriptionTrue"] = L["Debug info in tooltips is now enabled. Info such as whether TyGear would \"%sNEED%s\" or \"%sGREED%s\" on an item will be shown in item tooltips.  (%swarning%s: laggy!)"]:format(GREEN_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE, RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE, RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE),
 				["toggleDescriptionFalse"] = L["Debug info in tooltips is now disabled."]
 			}
 		}
 
-		if AutoGearDB.OverrideSpec == nil then
-			AutoGearDB.OverrideSpec = AutoGearGetDefaultOverrideSpec()
+		if TyGearDB.OverrideSpec == nil then
+			TyGearDB.OverrideSpec = TyGearGetDefaultOverrideSpec()
 		end
-		if (not AutoGearDB.LockedGearSlots) or (#AutoGearDB.LockedGearSlots == 0) then
-			AutoGearDB.LockedGearSlots = AutoGearGetDefaultLockedGearSlots()
+		if (not TyGearDB.LockedGearSlots) or (#TyGearDB.LockedGearSlots == 0) then
+			TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots()
 		end
 		optionsSetup(optionsMenu)
 
-		hooksecurefunc("GetQuestReward", function() AutoGearQueueLocalUpdate() end)
+		hooksecurefunc("GetQuestReward", function() TyGearQueueLocalUpdate() end)
 
-		AutoGearQueueLocalUpdate()
+		TyGearQueueLocalUpdate()
 
 		optionsMenu:UnregisterAllEvents()
 		optionsMenu:SetScript("OnEvent", nil)
 
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"PARTY_INVITE_REQUEST")
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"START_LOOT_ROLL")
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"CONFIRM_LOOT_ROLL")
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"CHAT_MSG_LOOT")
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"EQUIP_BIND_CONFIRM")
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"EQUIP_BIND_TRADEABLE_CONFIRM") --Fires when the player tries to equip a soulbound item that can still be traded to eligible players
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"MERCHANT_SHOW")
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"MERCHANT_CLOSED")              --Purchases produce no CHAT_MSG_LOOT, so scan once the merchant closes
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"PLAYER_LEVEL_UP")              --Items with a level requirement become usable without any loot event
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"PLAYER_EQUIPMENT_CHANGED")     --Fires when equipment is equipped or unequipped from the player, excluding bags
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"BAG_CONTAINER_UPDATE")         --Fires when bags are equipped or unequipped from the player
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_ACCEPTED")               --Fires when a new quest is added to the player's quest log (which is what happens after a player accepts a quest).
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_ACCEPT_CONFIRM")         --Fires when certain kinds of quests (e.g. NPC escort quests) are started by another member of the player's group
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_AUTOCOMPLETE")           --Fires when a quest is automatically completed (remote handin available)
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_COMPLETE")               --Fires when the player is looking at the "Complete" page for a quest, at a questgiver.
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_DETAIL")                 --Fires when details of an available quest are presented by a questgiver
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_FINISHED")               --Fires when the player ends interaction with a questgiver or ends a stage of the questgiver dialog
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_GREETING")               --Fires when a questgiver presents a greeting along with a list of active or available quests
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_ITEM_UPDATE")            --Fires when information about items in a questgiver dialog is updated
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_LOG_UPDATE")             --Fires when the game client receives updates relating to the player's quest log (this event is not just related to the quests inside it)
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_PROGRESS")               --Fires when interacting with a questgiver about an active quest
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_QUERY_COMPLETE")       --Fires when quest completion information is available from the server; deprecated and registering returns an error as of 8.x
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_WATCH_UPDATE")           --Fires when the player's status regarding a quest's objectives changes, for instance picking up a required object or killing a mob for that quest. All forms of (quest objective) progress changes will trigger this event.
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"GOSSIP_CLOSED")                --Fires when an NPC gossip interaction ends
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"GOSSIP_CONFIRM")               --Fires when the player is requested to confirm a gossip choice
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"GOSSIP_CONFIRM_CANCEL")        --Fires when an attempt to confirm a gossip choice is canceled
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"GOSSIP_ENTER_CODE")            --Fires when the player attempts a gossip choice which requires entering a code
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"GOSSIP_SHOW")                  --Fires when an NPC gossip interaction begins
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"UNIT_QUEST_LOG_CHANGED")       --Fires when a unit's quests change (accepted/objective progress/abandoned/completed)
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"PLAYER_SPECIALIZATION_CHANGED")
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"CONFIRM_DISENCHANT_ROLL")
-		pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"QUEST_POI_UPDATE")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PARTY_INVITE_REQUEST")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"START_LOOT_ROLL")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CONFIRM_LOOT_ROLL")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CHAT_MSG_LOOT")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"EQUIP_BIND_CONFIRM")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"EQUIP_BIND_TRADEABLE_CONFIRM") --Fires when the player tries to equip a soulbound item that can still be traded to eligible players
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"MERCHANT_SHOW")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"MERCHANT_CLOSED")              --Purchases produce no CHAT_MSG_LOOT, so scan once the merchant closes
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_LEVEL_UP")              --Items with a level requirement become usable without any loot event
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_EQUIPMENT_CHANGED")     --Fires when equipment is equipped or unequipped from the player, excluding bags
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"BAG_CONTAINER_UPDATE")         --Fires when bags are equipped or unequipped from the player
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_ACCEPTED")               --Fires when a new quest is added to the player's quest log (which is what happens after a player accepts a quest).
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_ACCEPT_CONFIRM")         --Fires when certain kinds of quests (e.g. NPC escort quests) are started by another member of the player's group
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_AUTOCOMPLETE")           --Fires when a quest is automatically completed (remote handin available)
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_COMPLETE")               --Fires when the player is looking at the "Complete" page for a quest, at a questgiver.
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_DETAIL")                 --Fires when details of an available quest are presented by a questgiver
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_FINISHED")               --Fires when the player ends interaction with a questgiver or ends a stage of the questgiver dialog
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_GREETING")               --Fires when a questgiver presents a greeting along with a list of active or available quests
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_ITEM_UPDATE")            --Fires when information about items in a questgiver dialog is updated
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_LOG_UPDATE")             --Fires when the game client receives updates relating to the player's quest log (this event is not just related to the quests inside it)
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_PROGRESS")               --Fires when interacting with a questgiver about an active quest
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_QUERY_COMPLETE")       --Fires when quest completion information is available from the server; deprecated and registering returns an error as of 8.x
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_WATCH_UPDATE")           --Fires when the player's status regarding a quest's objectives changes, for instance picking up a required object or killing a mob for that quest. All forms of (quest objective) progress changes will trigger this event.
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_CLOSED")                --Fires when an NPC gossip interaction ends
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_CONFIRM")               --Fires when the player is requested to confirm a gossip choice
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_CONFIRM_CANCEL")        --Fires when an attempt to confirm a gossip choice is canceled
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_ENTER_CODE")            --Fires when the player attempts a gossip choice which requires entering a code
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_SHOW")                  --Fires when an NPC gossip interaction begins
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"UNIT_QUEST_LOG_CHANGED")       --Fires when a unit's quests change (accepted/objective progress/abandoned/completed)
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_SPECIALIZATION_CHANGED")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CONFIRM_DISENCHANT_ROLL")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_POI_UPDATE")
 
-		AutoGearFrame:SetScript("OnUpdate", AutoGearMain)
+		TyGearFrame:SetScript("OnUpdate", TyGearMain)
 	end
 end)
 
-_G["SLASH_AutoGear1"] = "/AutoGear"
-_G["SLASH_AutoGear2"] = "/autogear"
-_G["SLASH_AutoGear3"] = "/ag"
-SlashCmdList["AutoGear"] = function(msg)
+_G["SLASH_TyGear1"] = "/TyGear"
+_G["SLASH_TyGear2"] = "/tygear"
+_G["SLASH_TyGear3"] = "/tg"
+SlashCmdList["TyGear"] = function(msg)
 	param1, param2, param3, param4, param5 = msg:match("([^%s,]*)[%s,]*([^%s,]*)[%s,]*([^%s,]*)[%s,]*([^%s,]*)[%s,]*([^%s,]*)[%s,]*")
 	if (not param1) then param1 = "" end
 	if (not param2) then param2 = "" end
@@ -2702,76 +2713,76 @@ SlashCmdList["AutoGear"] = function(msg)
 	if (not param4) then param4 = "" end
 	if (not param5) then param5 = "" end
 	if (param1 == "enable" or param1 == "on" or param1 == "start") then
-		AutoGearToggleEnabled(true)
+		TyGearToggleEnabled(true)
 	elseif (param1 == "disable" or param1 == "off" or param1 == "stop") then
-		AutoGearToggleEnabled(false)
+		TyGearToggleEnabled(false)
 	elseif (param1 == "scan") then
-		AutoGearScan()
+		TyGearScan()
 	elseif (param1 == "spec") then
-		local localizedRealClass, realClass, realSpec, realClassID = AutoGearDetectClassAndSpec()
-		local localizedOverrideClass, overrideClass, overrideSpec, overrideClassID = AutoGearGetClassAndSpec()
-		local usingPawn = AutoGearDB.UsePawn and PawnIsReady and PawnIsReady()
+		local localizedRealClass, realClass, realSpec, realClassID = TyGearDetectClassAndSpec()
+		local localizedOverrideClass, overrideClass, overrideSpec, overrideClassID = TyGearGetClassAndSpec()
+		local usingPawn = TyGearDB.UsePawn and PawnIsReady and PawnIsReady()
 		local pawnScaleName = ""
 		local pawnScaleLocalizedName = ""
 		if usingPawn then
-			pawnScaleName, pawnScaleLocalizedName = AutoGearGetPawnScaleName()
+			pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
 		end
-		AutoGearPrint("AutoGear: Looks like you are a"..(realSpec:find("^[AEIOUaeiou]") and "n " or " ")..RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass).."."..((usingPawn or (AutoGearDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec)))) and ("  However, AutoGear is using "..(usingPawn and ("Pawn scale \""..PawnGetScaleColor(pawnScaleName)..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass).." weights")).." for gear evaluation due to the \""..(usingPawn and "Use Pawn to evaluate upgrades" or "Override specialization").."\" option.") or "").."  AutoGear is using weapons value \""..weapons.."\" from \""..((AutoGearDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec))) and (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass)) or (RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass))).."\" to determine which weapons are valid.  CanDualWield() returns \""..(CanDualWield() and "true" or "false").."\".", 0) 
-		if IS_WOW_FOREVER and (not AutoGearDB.Override) then
-			AutoGearPrint("AutoGear: WoW Forever has one specialization per class, so AutoGear uses the general class profile.  Enable \"Override specialization\" in \"/ag\" to use a healer, tank, or focused damage profile.", 0)
+		TyGearPrint("TyGear: Looks like you are a"..(realSpec:find("^[AEIOUaeiou]") and "n " or " ")..RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass).."."..((usingPawn or (TyGearDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec)))) and ("  However, TyGear is using "..(usingPawn and ("Pawn scale \""..PawnGetScaleColor(pawnScaleName)..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass).." weights")).." for gear evaluation due to the \""..(usingPawn and "Use Pawn to evaluate upgrades" or "Override specialization").."\" option.") or "").."  TyGear is using weapons value \""..weapons.."\" from \""..((TyGearDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec))) and (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass)) or (RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass))).."\" to determine which weapons are valid.  CanDualWield() returns \""..(CanDualWield() and "true" or "false").."\".", 0) 
+		if IS_WOW_FOREVER and (not TyGearDB.Override) then
+			TyGearPrint("TyGear: WoW Forever has one specialization per class, so TyGear uses the general class profile.  Enable \"Override specialization\" in \"/tg\" to use a healer, tank, or focused damage profile.", 0)
 		end
 	elseif (param1 == "verbosity") or (param1 == "allowedverbosity") then
-		AutoGearSetAllowedVerbosity(param2)
+		TyGearSetAllowedVerbosity(param2)
 	elseif ((param1 == "setspec") or
 	(param1 == "overridespec") or
 	(param1 == "overridespecialization") or
 	(param1 == "specoverride")) then
 		local params = param2..(string.len(param3)>0 and " "..param3 or "")..(string.len(param4)>0 and " "..param4 or "")..(string.len(param5)>0 and " "..param5 or "")
 		local localizedClassName, spec = string.match(params, "^\"?([^:\"]-): ([^:\"]+)\"?$")
-		local class = AutoGearReverseClassList[localizedClassName]
-		if class and AutoGearDefaultWeights[class][spec] then
+		local class = TyGearReverseClassList[localizedClassName]
+		if class and TyGearDefaultWeights[class][spec] then
 			local overridespec = localizedClassName..": "..spec
-			AutoGearDB.OverrideSpec = overridespec
-			if AutoGearOverrideSpecDropdown then
-				AutoGearOverrideSpecDropdown:SetValue(overridespec)
+			TyGearDB.OverrideSpec = overridespec
+			if TyGearOverrideSpecDropdown then
+				TyGearOverrideSpecDropdown:SetValue(overridespec)
 			end
-			AutoGearPrint("AutoGear: "..(AutoGearDB.Override and "" or "While \"Override specialization\" is enabled, ").."AutoGear will now use "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(overridespec).." weights to evaluate gear.",0)
+			TyGearPrint("TyGear: "..(TyGearDB.Override and "" or "While \"Override specialization\" is enabled, ").."TyGear will now use "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(overridespec).." weights to evaluate gear.",0)
 		else
-			AutoGearPrint("AutoGear: Unrecognized command. Usage: \"/ag overridespec [class]: [spec]\" (example: \"/ag overridespec Hunter: Beast Mastery\")",0)
+			TyGearPrint("TyGear: Unrecognized command. Usage: \"/tg overridespec [class]: [spec]\" (example: \"/tg overridespec Hunter: Beast Mastery\")",0)
 		end
 	elseif ((param1 == "pawnscale") or
 	(param1 == "setpawnscale") or
 	(param1 == "setscale") or
 	(param1 == "scaleoverride")) then
-		-- AutoGearItemInfoCache = {}
+		-- TyGearItemInfoCache = {}
 		if PawnIsReady then
 			if PawnIsReady() then
 				local userPawnScaleName = param2..(string.len(param3)>0 and " "..param3 or "")..(string.len(param4)>0 and " "..param4 or "")..(string.len(param5)>0 and " "..param5 or "")
 				if string.len(userPawnScaleName) == 0 then
-					AutoGearPrint("AutoGear: Usage: \"/ag pawnscale [Pawn scale name]\" (example: \"/ag pawnscale Hunter: Beast Mastery\")",0)
+					TyGearPrint("TyGear: Usage: \"/tg pawnscale [Pawn scale name]\" (example: \"/tg pawnscale Hunter: Beast Mastery\")",0)
 					return
 				end
-				local truePawnScaleName, pawnScaleLocalizedName = AutoGearGetPawnScaleName(userPawnScaleName)
+				local truePawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName(userPawnScaleName)
 				if PawnDoesScaleExist(truePawnScaleName) then
-					AutoGearDB.PawnScale = userPawnScaleName
-					if AutoGearPawnScaleDropdown then
-						setDropdownText(AutoGearPawnScaleDropdown, AutoGearDB.PawnScale)
+					TyGearDB.PawnScale = userPawnScaleName
+					if TyGearPawnScaleDropdown then
+						setDropdownText(TyGearPawnScaleDropdown, TyGearDB.PawnScale)
 					end
 
-					AutoGearPrint("AutoGear: "..(AutoGearDB.UsePawn and "" or "While using Pawn is enabled, ").."AutoGear will now use the \""..PawnGetScaleColor(truePawnScaleName)..(pawnScaleLocalizedName or truePawnScaleName)..FONT_COLOR_CODE_CLOSE.."\" Pawn scale to evaluate gear.",0)
+					TyGearPrint("TyGear: "..(TyGearDB.UsePawn and "" or "While using Pawn is enabled, ").."TyGear will now use the \""..PawnGetScaleColor(truePawnScaleName)..(pawnScaleLocalizedName or truePawnScaleName)..FONT_COLOR_CODE_CLOSE.."\" Pawn scale to evaluate gear.",0)
 				else
-					AutoGearPrint("AutoGear: According to Pawn, a Pawn scale named \""..userPawnScaleName.."\" does not exist.",0)
+					TyGearPrint("TyGear: According to Pawn, a Pawn scale named \""..userPawnScaleName.."\" does not exist.",0)
 				end
 			else
-				AutoGearPrint("AutoGear: Pawn is not ready yet.",0)
+				TyGearPrint("TyGear: Pawn is not ready yet.",0)
 			end
 		else
-			AutoGearPrint("AutoGear: Pawn is not installed.",0)
+			TyGearPrint("TyGear: Pawn is not installed.",0)
 		end
 	elseif (param1 == "") then
 		if InCombatLockdown() then
 			--opening the settings panel is a restricted action in combat on modern clients
-			AutoGearPrint("AutoGear: The options menu can't be opened in combat.  Type \"/ag\" again after combat.", 0)
+			TyGearPrint("TyGear: The options menu can't be opened in combat.  Type \"/tg\" again after combat.", 0)
 		elseif Settings and Settings.OpenToCategory then
 			local categoryID = optionsCategory and optionsCategory.GetID and optionsCategory:GetID()
 			if not categoryID then
@@ -2795,48 +2806,49 @@ SlashCmdList["AutoGear"] = function(msg)
 	end
 end
 
-function AutoGearPrintHelp()
-	AutoGearPrint("AutoGear: "..((param1 == "help") and "" or "Unrecognized command.  ").."Recognized commands:", 0)
-	AutoGearPrint("AutoGear:    '/ag': options menu", 0)
-	AutoGearPrint("AutoGear:    '/ag help': command line help", 0)
-	AutoGearPrint("AutoGear:    '/ag scan': scan all bags for gear upgrades", 0)
-	AutoGearPrint("AutoGear:    '/ag spec': get name of current talent specialization", 0)
-	AutoGearPrint("AutoGear:    '/ag [gear/toggle]/[enable/on/start]/[disable/off/stop]': toggle automatic gearing", 0)
-	AutoGearPrint("AutoGear:    '/ag roll [enable/on/start]/[disable/off/stop]': toggle automatic loot rolling", 0)
-	AutoGearPrint("AutoGear:    '/ag bind [enable/on/start]/[disable/off/stop]': toggle automatic soul-binding confirmation", 0)
-	AutoGearPrint("AutoGear:    '/ag neverneed [enable/on/start]/[disable/off/stop]': toggle preventing automatically rolling NEED", 0)
-	AutoGearPrint("AutoGear:    '/ag quest [enable/on/start]/[disable/off/stop]': toggle automatically accepting quests", 0)
-	AutoGearPrint("AutoGear:    '/ag turnin [enable/on/start]/[disable/off/stop]': toggle automatically completing quests which do not award items", 0)
-	AutoGearPrint("AutoGear:    '/ag party [enable/on/start]/[disable/off/stop]': toggle automatic acceptance of party invitations", 0)
-	AutoGearPrint("AutoGear:    '/ag tooltip [toggle/show/hide]': toggle showing score in item tooltips", 0)
-	AutoGearPrint("AutoGear:    '/ag reasons [toggle/show/hide]': toggle showing won't-auto-equip reasons in item tooltips", 0)
-	AutoGearPrint("AutoGear:    '/ag compare [enable/on/start]/[disable/off/stop]': toggle always comparing gear", 0)
-	AutoGearPrint("AutoGear:    '/ag override [enable/on/start]/[disable/off/stop]': toggle specialization override", 0)
-	AutoGearPrint("AutoGear:    '/ag overridespec [class]: [spec]': set override spec to \"[class]: [spec]\"",0)
-	AutoGearPrint("AutoGear:    '/ag pawn [enable/on/start]/[disable/off/stop]': toggle using Pawn scales", 0)
-	AutoGearPrint("AutoGear:    '/ag pawnscale [Pawn scale name]': set Pawn scale override to the specifed Pawn scale", 0)
-	AutoGearPrint("AutoGear:    '/ag sell [enable/on/start]/[disable/off/stop]': toggle automatic selling of grey items", 0)
-	AutoGearPrint("AutoGear:    '/ag repair [enable/on/start]/[disable/off/stop]': toggle automatic repairing", 0)
-	AutoGearPrint("AutoGear:    '/ag verbosity [0/1/2/3]': set allowed verbosity level; valid levels are: 0 ("..AutoGearGetAllowedVerbosityName(0).."), 1 ("..AutoGearGetAllowedVerbosityName(1).."), 2 ("..AutoGearGetAllowedVerbosityName(2).."), 3 ("..AutoGearGetAllowedVerbosityName(3)..")", 0)
+function TyGearPrintHelp()
+	TyGearPrint("TyGear: "..((param1 == "help") and "" or "Unrecognized command.  ").."Recognized commands (also /tygear):", 0)
+	TyGearPrint("TyGear:    '/tg': options menu", 0)
+	TyGearPrint("TyGear:    '/tg help': command line help", 0)
+	TyGearPrint("TyGear:    '/tg scan': scan all bags for gear upgrades", 0)
+	TyGearPrint("TyGear:    '/tg spec': get name of current talent specialization", 0)
+	TyGearPrint("TyGear:    '/tg [gear/toggle]/[enable/on/start]/[disable/off/stop]': toggle automatic gearing", 0)
+	TyGearPrint("TyGear:    '/tg roll [enable/on/start]/[disable/off/stop]': toggle automatic loot rolling", 0)
+	TyGearPrint("TyGear:    '/tg bind [enable/on/start]/[disable/off/stop]': toggle automatic soul-binding confirmation", 0)
+	TyGearPrint("TyGear:    '/tg neverneed [enable/on/start]/[disable/off/stop]': toggle preventing automatically rolling NEED", 0)
+	TyGearPrint("TyGear:    '/tg quest [enable/on/start]/[disable/off/stop]': toggle automatically accepting quests", 0)
+	TyGearPrint("TyGear:    '/tg turnin [enable/on/start]/[disable/off/stop]': toggle automatically completing quests which do not award items", 0)
+	TyGearPrint("TyGear:    '/tg party [enable/on/start]/[disable/off/stop]': toggle automatic acceptance of party invitations", 0)
+	TyGearPrint("TyGear:    '/tg tooltip [toggle/show/hide]': toggle showing score in item tooltips", 0)
+	TyGearPrint("TyGear:    '/tg reasons [toggle/show/hide]': toggle showing won't-auto-equip reasons in item tooltips", 0)
+	TyGearPrint("TyGear:    '/tg compare [enable/on/start]/[disable/off/stop]': toggle always comparing gear", 0)
+	TyGearPrint("TyGear:    '/tg override [enable/on/start]/[disable/off/stop]': toggle specialization override", 0)
+	TyGearPrint("TyGear:    '/tg overridespec [class]: [spec]': set override spec to \"[class]: [spec]\"",0)
+	TyGearPrint("TyGear:    '/tg pawn [enable/on/start]/[disable/off/stop]': toggle using Pawn scales", 0)
+	TyGearPrint("TyGear:    '/tg pawnscale [Pawn scale name]': set Pawn scale override to the specifed Pawn scale", 0)
+	TyGearPrint("TyGear:    '/tg sell [enable/on/start]/[disable/off/stop]': toggle automatic selling of grey items", 0)
+	TyGearPrint("TyGear:    '/tg repair [enable/on/start]/[disable/off/stop]': toggle automatic repairing", 0)
+	TyGearPrint("TyGear:    '/tg verbosity [0/1/2/3]': set allowed verbosity level; valid levels are: 0 ("..TyGearGetAllowedVerbosityName(0).."), 1 ("..TyGearGetAllowedVerbosityName(1).."), 2 ("..TyGearGetAllowedVerbosityName(2).."), 3 ("..TyGearGetAllowedVerbosityName(3)..")", 0)
+	TyGearPrint("TyGear: Fork of AutoGear by Synthetikaryote and BujuArena. Original: https://github.com/BujuArena/AutoGear (CC BY-NC-SA 4.0).", 0)
 end
 
-function AutoGearSetAllowedVerbosity(allowedverbosity)
+function TyGearSetAllowedVerbosity(allowedverbosity)
 	allowedverbosity = tonumber(allowedverbosity)
 	if type(allowedverbosity) ~= "number" then
-		AutoGearPrint("AutoGear: The current allowed verbosity level is "..tostring(AutoGearDB.AllowedVerbosity).." ("..AutoGearGetAllowedVerbosityName(AutoGearDB.AllowedVerbosity).."). Valid levels are: 0 ("..AutoGearGetAllowedVerbosityName(0).."), 1 ("..AutoGearGetAllowedVerbosityName(1).."), 2 ("..AutoGearGetAllowedVerbosityName(2).."), 3 ("..AutoGearGetAllowedVerbosityName(3)..").", 0)
+		TyGearPrint("TyGear: The current allowed verbosity level is "..tostring(TyGearDB.AllowedVerbosity).." ("..TyGearGetAllowedVerbosityName(TyGearDB.AllowedVerbosity).."). Valid levels are: 0 ("..TyGearGetAllowedVerbosityName(0).."), 1 ("..TyGearGetAllowedVerbosityName(1).."), 2 ("..TyGearGetAllowedVerbosityName(2).."), 3 ("..TyGearGetAllowedVerbosityName(3)..").", 0)
 		return
 	end
 
 	if allowedverbosity < 0 or allowedverbosity > 3 then
-		AutoGearPrint("AutoGear: That is an invalid allowed verbosity level. Valid levels are: 0 ("..AutoGearGetAllowedVerbosityName(0).."), 1 ("..AutoGearGetAllowedVerbosityName(1).."), 2 ("..AutoGearGetAllowedVerbosityName(2).."), 3 ("..AutoGearGetAllowedVerbosityName(3)..").", 0)
+		TyGearPrint("TyGear: That is an invalid allowed verbosity level. Valid levels are: 0 ("..TyGearGetAllowedVerbosityName(0).."), 1 ("..TyGearGetAllowedVerbosityName(1).."), 2 ("..TyGearGetAllowedVerbosityName(2).."), 3 ("..TyGearGetAllowedVerbosityName(3)..").", 0)
 		return
 	else
-		AutoGearDB.AllowedVerbosity = allowedverbosity
-		AutoGearPrint("AutoGear: Allowed verbosity level is now: "..tostring(AutoGearDB.AllowedVerbosity).." ("..AutoGearGetAllowedVerbosityName(AutoGearDB.AllowedVerbosity)..").", 0)
+		TyGearDB.AllowedVerbosity = allowedverbosity
+		TyGearPrint("TyGear: Allowed verbosity level is now: "..tostring(TyGearDB.AllowedVerbosity).." ("..TyGearGetAllowedVerbosityName(TyGearDB.AllowedVerbosity)..").", 0)
 	end
 end
 
-function AutoGearGetContainerItemInfo(bagIndex, bagSlot)
+function TyGearGetContainerItemInfo(bagIndex, bagSlot)
 	if GetContainerItemInfo then
 		local _, count, locked, quality, _, _, link = GetContainerItemInfo(bagIndex, bagSlot)
 		if (link) then
@@ -2850,16 +2862,16 @@ function AutoGearGetContainerItemInfo(bagIndex, bagSlot)
 	end
 end
 
-AutoGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, ...)
+TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, ...)
 
 	--turning in a quest takes the same steps up to the reward screen whether or not it awards items, so either completion option opens completed quests and continues past the progress screen
-	local shouldAdvanceQuestTurnIns = AutoGearDB.AutoCompleteNonItemQuests or AutoGearDB.AutoCompleteItemQuests
+	local shouldAdvanceQuestTurnIns = TyGearDB.AutoCompleteNonItemQuests or TyGearDB.AutoCompleteItemQuests
 	if (event == "QUEST_ACCEPT_CONFIRM") then --another group member starts a quest (like an escort)
-		if (AutoGearDB.AutoAcceptQuests) then
+		if (TyGearDB.AutoAcceptQuests) then
 			ConfirmAcceptQuest()
 		end
 	elseif (event == "QUEST_DETAIL") then
-		if (AutoGearDB.AutoAcceptQuests) then
+		if (TyGearDB.AutoAcceptQuests) then
 			QuestDetailAcceptButton_OnClick()
 		end
 	elseif (event == "GOSSIP_SHOW") then
@@ -2873,7 +2885,7 @@ AutoGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4
 			end
 		end
 		--available quests
-		if (AutoGearDB.AutoAcceptQuests) then
+		if (TyGearDB.AutoAcceptQuests) then
 			for i = 1, C_GossipInfo.GetNumAvailableQuests() do
 				local quest = C_GossipInfo.GetAvailableQuests()[i]
 				if (quest["isTrivial"]==false) then
@@ -2892,7 +2904,7 @@ AutoGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4
 			end
 		end
 		--available quests
-		if (AutoGearDB.AutoAcceptQuests) then
+		if (TyGearDB.AutoAcceptQuests) then
 			for i = 1, C_GossipInfo.GetNumAvailableQuests() do
 				local quest = C_GossipInfo.GetAvailableQuests()[i]
 				if (not quest.isTrivial) then
@@ -2908,10 +2920,10 @@ AutoGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4
 	if (event == "QUEST_COMPLETE") then
 		local rewards = GetNumQuestChoices()
 		if (not rewards or rewards == 0) then
-			if (AutoGearDB.AutoCompleteNonItemQuests) then
+			if (TyGearDB.AutoCompleteNonItemQuests) then
 				GetQuestReward()
 			end
-		elseif (AutoGearDB.AutoCompleteItemQuests) then
+		elseif (TyGearDB.AutoCompleteItemQuests) then
 			--choose a quest reward
 			local questRewardIDs = {}
 			local itemLinkMissing
@@ -2919,7 +2931,7 @@ AutoGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4
 				local itemLink = GetQuestItemLink("choice", i)
 				if (not itemLink) then
 					itemLinkMissing = 1
-					AutoGearPrint("AutoGear: No item link received from the server. To automatically choose a reward, you can try reopening quest rewards menu.", 0)
+					TyGearPrint("TyGear: No item link received from the server. To automatically choose a reward, you can try reopening quest rewards menu.", 0)
 				else
 					local _, _, Color, Ltype, id, Enchant, Gem1, Gem2, Gem3, Gem4, Suffix, Unique, LinkLvl, Name = string.find(itemLink, "|?c?f?f?(%x*)|?H?([^:]*):?(%d+):?(%d*):?(%d*):?(%d*):?(%d*):?(%d*):?(%-?%d*):?(%-?%d*):?(%d*)|?h?%[?([^%[%]]*)%]?|?h?|?r?")
 					questRewardIDs[i] = id
@@ -2927,45 +2939,45 @@ AutoGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4
 			end
 			if not itemLinkMissing then
 				--only turn in once a reward was actually chosen; GetQuestReward(nil) on a quest with choices is undefined
-				local chosenReward = AutoGearConsiderAllItems(nil, questRewardIDs)
+				local chosenReward = TyGearConsiderAllItems(nil, questRewardIDs)
 				if chosenReward then
 					GetQuestReward(chosenReward)
 				else
-					AutoGearPrint("AutoGear: Could not choose a quest reward automatically; please choose one manually.", 0)
+					TyGearPrint("TyGear: Could not choose a quest reward automatically; please choose one manually.", 0)
 				end
 			end
 		end
 	end
 
-	if (AutoGearDB.AutoAcceptPartyInvitations) then
+	if (TyGearDB.AutoAcceptPartyInvitations) then
 		if (event == "PARTY_INVITE_REQUEST") then
-			AutoGearPrint("AutoGear: Automatically accepting party invite.", 1)
+			TyGearPrint("TyGear: Automatically accepting party invite.", 1)
 			AcceptGroup()
-			pcall(AutoGearFrame.RegisterEvent,AutoGearFrame,"GROUP_ROSTER_UPDATE")
+			pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GROUP_ROSTER_UPDATE")
 		elseif (event == "GROUP_ROSTER_UPDATE") then --for closing the invite window once I have joined the group
 			StaticPopup_Hide("PARTY_INVITE")
-			pcall(AutoGearFrame.UnregisterEvent,AutoGearFrame,"GROUP_ROSTER_UPDATE")
+			pcall(TyGearFrame.UnregisterEvent,TyGearFrame,"GROUP_ROSTER_UPDATE")
 		end
 	end
 
 	if event == "PLAYER_SPECIALIZATION_CHANGED" and arg1 == "player" then
-		local localizedClass, class, spec = AutoGearGetClassAndSpec()
-		AutoGearPrint("AutoGear: Talent specialization changed.  Considering all items for gear that's better suited for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 2)
-		AutoGearConsiderAllItems()
+		local localizedClass, class, spec = TyGearGetClassAndSpec()
+		TyGearPrint("TyGear: Talent specialization changed.  Considering all items for gear that's better suited for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 2)
+		TyGearConsiderAllItems()
 	elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "BAG_CONTAINER_UPDATE" then
-		AutoGearQueueLocalUpdate()
+		TyGearQueueLocalUpdate()
 	elseif event == "MERCHANT_CLOSED" or event == "PLAYER_LEVEL_UP" then
 		if event == "MERCHANT_CLOSED" then
-			AutoGearStopSellingGreys()
+			TyGearStopSellingGreys()
 		end
 		-- Scan after the merchant closes (not during selling, so bag slots stay stable) and after leveling up.
-		AutoGearQueueScan()
+		TyGearQueueScan()
 	elseif event == "UI_ERROR_MESSAGE" then
 		--in client versions before the original 7.0.3, the message is the only arg; in later mainline clients, and in classic clients since 1.13.2, a message type is the first arg
-		AutoGearHandleSellingError((type(arg1) == "string") and arg1 or arg2)
+		TyGearHandleSellingError((type(arg1) == "string") and arg1 or arg2)
 	elseif event == "START_LOOT_ROLL" then
 		local link = GetLootRollItemLink(arg1)
-		AutoGearHandleLootRoll(link, arg1)
+		TyGearHandleLootRoll(link, arg1)
 	elseif event == "CONFIRM_LOOT_ROLL" or event == "CONFIRM_DISENCHANT_ROLL" then
 		ConfirmLootRoll(arg1, arg2)
 	elseif event == "CHAT_MSG_LOOT" then --when receiving a new item
@@ -2973,7 +2985,7 @@ AutoGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4
 		--loot messages are secret values in dungeons, raids and encounters under the Midnight addon restrictions
 		--(Retail 12, WoW Forever); they can't be matched then, so just scan the bags for the new item
 		if issecretvalue and issecretvalue(message) then
-			AutoGearQueueScan()
+			TyGearQueueScan()
 			return
 		end
 		local pattern1 = LOOT_ITEM_SELF_MULTIPLE:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)"):gsub("^", "^")
@@ -3006,76 +3018,76 @@ AutoGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4
 			if linkInvType then
 				-- if it's not gear, return early to avoid scanning for upgrades
 				if (linkInvType == Enum.InventoryType.IndexNonEquipType) then
-					AutoGearPrint("AutoGear: Skipping scan because looted item "..link.." is not equippable gear.", 3)
+					TyGearPrint("TyGear: Skipping scan because looted item "..link.." is not equippable gear.", 3)
 					return
 				--make sure a fishing pole isn't replaced while fishing
-				elseif (AutoGearIsInvTypeWeapon(linkInvType) and AutoGearIsMainHandAFishingPole()) then
-					AutoGearPrint("AutoGear: Skipping scan because "..link.." is a weapon and a fishing pole is equipped. This is intentional to prevent replacing fishing poles while fishing.", 3)
+				elseif (TyGearIsInvTypeWeapon(linkInvType) and TyGearIsMainHandAFishingPole()) then
+					TyGearPrint("TyGear: Skipping scan because "..link.." is a weapon and a fishing pole is equipped. This is intentional to prevent replacing fishing poles while fishing.", 3)
 					return
 				end
 			else
-				AutoGearPrint("AutoGear: No inventory type was found for looted item "..link.." from CHAT_MSG_LOOT event message \""..message.."\". Scanning anyway in case it was gear.", 3)
+				TyGearPrint("TyGear: No inventory type was found for looted item "..link.." from CHAT_MSG_LOOT event message \""..message.."\". Scanning anyway in case it was gear.", 3)
 			end
 		else
-			AutoGearPrint("AutoGear: No item link was found in CHAT_MSG_LOOT event message \""..message.."\". Scanning anyway in case the looted item was gear.", 3)
+			TyGearPrint("TyGear: No item link was found in CHAT_MSG_LOOT event message \""..message.."\". Scanning anyway in case the looted item was gear.", 3)
 		end
 
-		AutoGearQueueScan()
+		TyGearQueueScan()
 	elseif (event == "EQUIP_BIND_CONFIRM") or
 	(event == "EQUIP_BIND_REFUNDABLE_CONFIRM") or
 	(event == "EQUIP_BIND_TRADEABLE_CONFIRM") then
 		local rarity = Item:CreateFromItemLocation(C_Cursor.GetCursorItem()):GetItemQuality()
 		if rarity == nil then return end
-		if ((rarity ~= 3) and (rarity ~= 4) and (AutoGearDB.AutoConfirmBinding == true)) or
-		((rarity == 3) and (AutoGearDB.AutoConfirmBindingBlues == true)) or
-		((rarity == 4) and (AutoGearDB.AutoConfirmBindingEpics == true)) then
+		if ((rarity ~= 3) and (rarity ~= 4) and (TyGearDB.AutoConfirmBinding == true)) or
+		((rarity == 3) and (TyGearDB.AutoConfirmBindingBlues == true)) or
+		((rarity == 4) and (TyGearDB.AutoConfirmBindingEpics == true)) then
 			EquipPendingItem(arg1)
 		end
 	elseif event == "MERCHANT_SHOW" then
-		if (AutoGearDB.AutoSellGreys == true) then
-			AutoGearStartSellingGreys()
+		if (TyGearDB.AutoSellGreys == true) then
+			TyGearStartSellingGreys()
 		end
-		if (AutoGearDB.AutoRepair == true) then
+		if (TyGearDB.AutoRepair == true) then
 			-- repair all gear
-			local cashString = AutoGearCashToString(GetRepairAllCost())
+			local cashString = TyGearCashToString(GetRepairAllCost())
 			if IS_WOW_FOREVER or TOC_VERSION_CURRENT >= TOC_VERSION_TBC then --WoW Forever has guild banks despite its 1.x interface number
 				if (GetRepairAllCost() > 0) then
 					if (CanGuildBankRepair()) then
 						RepairAllItems(1) --guild repair
 						--fix this.  it doesn't see 0 yet, even if it repaired
 						if (GetRepairAllCost() == 0) then
-							AutoGearPrint("AutoGear: Repaired all items for "..cashString.." using guild funds.", 1)
+							TyGearPrint("TyGear: Repaired all items for "..cashString.." using guild funds.", 1)
 						end
 					end
 				end
 			end
 			if (GetRepairAllCost() > 0) then
 				if (GetRepairAllCost() <= GetMoney()) then
-					AutoGearPrint("AutoGear: Repaired all items for "..cashString..".", 1)
+					TyGearPrint("TyGear: Repaired all items for "..cashString..".", 1)
 					RepairAllItems()
 				elseif (GetRepairAllCost() > GetMoney()) then
-					AutoGearPrint("AutoGear: Not enough money to repair all items ("..cashString..").", 0)
+					TyGearPrint("TyGear: Not enough money to repair all items ("..cashString..").", 0)
 				end
 			end
 		end
 	elseif event ~= "ADDON_LOADED" then
-		AutoGearPrint("AutoGear: event fired: "..event, 3)
+		TyGearPrint("TyGear: event fired: "..event, 3)
 	end
 end)
 
-function AutoGearDecideRoll(link, lootRollID)
-	if not AutoGearCurrentWeighting then AutoGearSetStatWeights() end
-	if AutoGearCurrentWeighting then
+function TyGearDecideRoll(link, lootRollID)
+	if not TyGearCurrentWeighting then TyGearSetStatWeights() end
+	if TyGearCurrentWeighting then
 		local rollDecision = nil
 		local canNeed = lootRollID and select(6,GetLootRollItemInfo(lootRollID)) or 1
 		local lootRollItemID = GetItemInfoInstant(link)
-		local rollItemInfo = AutoGearReadItemInfo(nil, nil, nil, nil, nil, link)
+		local rollItemInfo = TyGearReadItemInfo(nil, nil, nil, nil, nil, link)
 		local reason = rollItemInfo.reason or "(no reason set)"
-		local wouldNeed = AutoGearConsiderAllItems(lootRollItemID, nil, rollItemInfo, true)
-		if (AutoGearDB.RollOnNonGearLoot == false)
+		local wouldNeed = TyGearConsiderAllItems(lootRollItemID, nil, rollItemInfo, true)
+		if (TyGearDB.RollOnNonGearLoot == false)
 		and (not rollItemInfo.isGear)
 		and (not rollItemInfo.isMount) then
-			AutoGearPrint("AutoGear: "..rollItemInfo.link.." is not gear and \"Roll on non-gear loot\" is disabled, so not rolling.", 3)
+			TyGearPrint("TyGear: "..rollItemInfo.link.." is not gear and \"Roll on non-gear loot\" is disabled, so not rolling.", 3)
 			--local rollDecision is nil, so no roll
 		elseif wouldNeed and canNeed then
 			if rollItemInfo.Within5levels or (rollItemInfo.isMount and (not rollItemInfo.alreadyKnown)) or (not rollItemInfo.unusable) then
@@ -3084,7 +3096,7 @@ function AutoGearDecideRoll(link, lootRollID)
 					or #rollItemInfo.validGearSlots
 				local numberOfCopiesOwned = GetItemCount(rollItemInfo.id, true)
 				if numberOfCopiesOwned >= maxNumberOfCopiesAllowedToNeed then
-					AutoGearPrint("AutoGear: "..rollItemInfo.link.." is "..(rollItemInfo.isMount and "a mount" or "an upgrade usable within 5 levels")..", but you already have "..tostring(numberOfCopiesOwned).." cop"..(numberOfCopiesOwned == 1 and "y" or "ies")..", so rolling "..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE..".",3)
+					TyGearPrint("TyGear: "..rollItemInfo.link.." is "..(rollItemInfo.isMount and "a mount" or "an upgrade usable within 5 levels")..", but you already have "..tostring(numberOfCopiesOwned).." cop"..(numberOfCopiesOwned == 1 and "y" or "ies")..", so rolling "..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE..".",3)
 					rollDecision = 2 --greed
 				else
 					rollDecision = 1 --need
@@ -3095,29 +3107,29 @@ function AutoGearDecideRoll(link, lootRollID)
 		else
 			rollDecision = 2 --greed
 			if (wouldNeed and not canNeed) then
-				AutoGearPrint("AutoGear: Would roll NEED, but NEED is not an option for "..rollItemInfo.link..".", 1)
+				TyGearPrint("TyGear: Would roll NEED, but NEED is not an option for "..rollItemInfo.link..".", 1)
 			end
 		end
 		return rollDecision, rollItemInfo, reason
 	else
-		local localizedClass, class, spec = AutoGearGetClassAndSpec()
-		AutoGearPrint("AutoGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
+		local localizedClass, class, spec = TyGearGetClassAndSpec()
+		TyGearPrint("TyGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
 	end
 end
 
-function AutoGearHandleLootRoll(link, lootRollID)
+function TyGearHandleLootRoll(link, lootRollID)
 	local item = Item:CreateFromItemLink(link)
 	item:ContinueOnItemLoad(function()
-		AutoGearHandleLootRollCallback(link, lootRollID)
+		TyGearHandleLootRollCallback(link, lootRollID)
 	end)
 end
 
-function AutoGearHandleLootRollCallback(link, lootRollID)
-		local rollDecision, rollItemInfo, reason = AutoGearDecideRoll(link, lootRollID)
+function TyGearHandleLootRollCallback(link, lootRollID)
+		local rollDecision, rollItemInfo, reason = TyGearDecideRoll(link, lootRollID)
 		if not rollItemInfo then
-			AutoGearPrint("AutoGear: Error: Could not read item info for "..(link and link or "the rollable loot")..".", 0)
+			TyGearPrint("TyGear: Error: Could not read item info for "..(link and link or "the rollable loot")..".", 0)
 		elseif rollItemInfo.unusable then
-			AutoGearPrint("AutoGear: "..link.." will not be equipped.  "..reason, 1)
+			TyGearPrint("TyGear: "..link.." will not be equipped.  "..reason, 1)
 		end
 		if rollDecision then
 			local newAction = {}
@@ -3126,12 +3138,12 @@ function AutoGearHandleLootRollCallback(link, lootRollID)
 			newAction.rollID = lootRollID
 			newAction.rollType = rollDecision
 			newAction.info = rollItemInfo
-			table.insert(AutoGearActionQueue, newAction)
+			table.insert(TyGearActionQueue, newAction)
 		end
 end
 
 -- from Attrition addon
-function AutoGearCashToString(cash)
+function TyGearCashToString(cash)
 	if not cash then return "" end
 
 	local gold   = floor(cash / (100 * 100))
@@ -3147,7 +3159,7 @@ function AutoGearCashToString(cash)
 end
 
 --reads item IDs from text containing item IDs and item links, in order and without duplicates
-function AutoGearParseItemIDList(text)
+function TyGearParseItemIDList(text)
 	--item links hold other numbers too (enchants, bonus IDs, digits in item names), so reduce each link to its item ID first
 	text = string.gsub(text, "|c[^|]*|Hitem:(%d+)[^|]*|h.-|h|r", " %1 ")
 	text = string.gsub(text, "|Hitem:(%d+)[^|]*|h.-|h", " %1 ")
@@ -3163,7 +3175,7 @@ function AutoGearParseItemIDList(text)
 end
 
 --greys which have a sell price but which vendors refuse to buy
-AutoGearUnsellableGreyItemIDs = {
+TyGearUnsellableGreyItemIDs = {
 	[200590] = true, --Carefully Rolled Message
 	[200592] = true, --Dirty Old Satchel
 	[200593] = true, --Sealed Expedition Note
@@ -3175,7 +3187,7 @@ AutoGearUnsellableGreyItemIDs = {
 }
 
 --greys which Keeper Ta'hult in Oribos takes as payment for the Baubleworm pets
-AutoGearKeeperTahultPetGreyItemIDs = {
+TyGearKeeperTahultPetGreyItemIDs = {
 	[3300] = true, --Rabbit's Foot
 	[3670] = true, --Large Slimy Bone
 	[6150] = true, --A Frayed Knot
@@ -3191,8 +3203,8 @@ AutoGearKeeperTahultPetGreyItemIDs = {
 local greySelling
 
 --returns the sale value and link of the item in a bag slot if it should be sold to a vendor, or nil to keep it
-function AutoGearGetItemSaleValue(bag, slot)
-	local count, locked, link = AutoGearGetContainerItemInfo(bag, slot)
+function TyGearGetItemSaleValue(bag, slot)
+	local count, locked, link = TyGearGetContainerItemInfo(bag, slot)
 	if (not link) or locked then return end
 	--battle pets have battlepet: links and can't be sold
 	local itemID = tonumber(string.match(link, "item:(%d+)"))
@@ -3203,17 +3215,17 @@ function AutoGearGetItemSaleValue(bag, slot)
 	local isListed = greySelling.listedItemIDs[itemID]
 	if quality == 0 then
 		if isListed
-		or AutoGearUnsellableGreyItemIDs[itemID]
-		or (AutoGearDB.KeepKeeperTahultPetItems and AutoGearKeeperTahultPetGreyItemIDs[itemID])
+		or TyGearUnsellableGreyItemIDs[itemID]
+		or (TyGearDB.KeepKeeperTahultPetItems and TyGearKeeperTahultPetGreyItemIDs[itemID])
 		or greySelling.merchantCostItemIDs[itemID] then
 			return
 		end
-		if AutoGearDB.KeepUnboundGreyGear and ((classID == Enum.ItemClass.Weapon) or (classID == Enum.ItemClass.Armor)) then
+		if TyGearDB.KeepUnboundGreyGear and ((classID == Enum.ItemClass.Weapon) or (classID == Enum.ItemClass.Armor)) then
 			local isBound
 			if C_Item and C_Item.IsBound and ItemLocation then
 				isBound = C_Item.IsBound(ItemLocation:CreateFromBagAndSlot(bag, slot))
 			else
-				isBound = AutoGearItemContainsText(bag, slot, ITEM_SOULBOUND)
+				isBound = TyGearItemContainsText(bag, slot, ITEM_SOULBOUND)
 			end
 			if not isBound then return end
 		end
@@ -3223,18 +3235,18 @@ function AutoGearGetItemSaleValue(bag, slot)
 
 	if greySelling.upgradeBagSlots[bag..":"..slot] then return end
 	--an item whose tooltip can't be read can't be ruled out as a quest item
-	local isQuestItem, isTooltipUnreadable = AutoGearIsQuestItem(bag, slot)
+	local isQuestItem, isTooltipUnreadable = TyGearIsQuestItem(bag, slot)
 	if isQuestItem or isTooltipUnreadable then return end
 
 	return sellPrice * count, link
 end
 
 --counts sales which went through, judging by the item having left its bag slot; returns whether any sale is still pending
-function AutoGearSettleGreySales()
+function TyGearSettleGreySales()
 	local isAnySalePending = false
 	for _, sale in pairs(greySelling.sales) do
 		if not sale.isSold then
-			local _, locked, link = AutoGearGetContainerItemInfo(sale.bag, sale.slot)
+			local _, locked, link = TyGearGetContainerItemInfo(sale.bag, sale.slot)
 			if link ~= sale.link then
 				sale.isSold = true
 				greySelling.soldValue = greySelling.soldValue + sale.value
@@ -3248,11 +3260,11 @@ function AutoGearSettleGreySales()
 end
 
 --sells everything that should be sold and returns whether selling needs another pass
-function AutoGearSellGreysPass()
-	local needsAnotherPass = AutoGearSettleGreySales()
+function TyGearSellGreysPass()
+	local needsAnotherPass = TyGearSettleGreySales()
 	for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS) do
 		for slot = 1, GetContainerNumSlots(bag) do
-			local value, link = AutoGearGetItemSaleValue(bag, slot)
+			local value, link = TyGearGetItemSaleValue(bag, slot)
 			if value then
 				local saleKey = bag..":"..slot..":"..link
 				local sale = greySelling.sales[saleKey]
@@ -3271,10 +3283,10 @@ function AutoGearSellGreysPass()
 	return needsAnotherPass
 end
 
-function AutoGearStartSellingGreys()
-	if greySelling then AutoGearStopSellingGreys() end
+function TyGearStartSellingGreys()
+	if greySelling then TyGearStopSellingGreys() end
 	if IsShiftKeyDown() then
-		AutoGearPrint("AutoGear: Not selling greys this time because Shift was held while opening the vendor.", 2)
+		TyGearPrint("TyGear: Not selling greys this time because Shift was held while opening the vendor.", 2)
 		return
 	end
 
@@ -3286,7 +3298,7 @@ function AutoGearStartSellingGreys()
 		merchantCostItemIDs = {},
 		upgradeBagSlots = {},
 	}
-	for _, itemID in ipairs(AutoGearParseItemIDList(AutoGearDB.SellGreysExclusions)) do
+	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.SellGreysExclusions)) do
 		greySelling.listedItemIDs[itemID] = true
 	end
 	--keep items this vendor takes as payment for its goods
@@ -3299,64 +3311,64 @@ function AutoGearStartSellingGreys()
 			end
 		end
 	end
-	--keep greys which AutoGear would equip as upgrades
-	AutoGearUpdateBestItems()
-	for _, bestItem in pairs(AutoGearBestItems) do
+	--keep greys which TyGear would equip as upgrades
+	TyGearUpdateBestItems()
+	for _, bestItem in pairs(TyGearBestItems) do
 		if bestItem.bag and bestItem.slot then
 			greySelling.upgradeBagSlots[bestItem.bag..":"..bestItem.slot] = true
 		end
 	end
 
-	AutoGearFrame:RegisterEvent("UI_ERROR_MESSAGE")
-	table.insert(AutoGearActionQueue, { action = "sellgreys", t = 0.0 })
+	TyGearFrame:RegisterEvent("UI_ERROR_MESSAGE")
+	table.insert(TyGearActionQueue, { action = "sellgreys", t = 0.0 })
 end
 
-function AutoGearStopSellingGreys(reason)
+function TyGearStopSellingGreys(reason)
 	if not greySelling then return end
-	AutoGearSettleGreySales()
-	AutoGearFrame:UnregisterEvent("UI_ERROR_MESSAGE")
+	TyGearSettleGreySales()
+	TyGearFrame:UnregisterEvent("UI_ERROR_MESSAGE")
 	if greySelling.soldCount > 0 then
-		AutoGearPrint("AutoGear: Sold "..greySelling.soldCount.." grey item"..((greySelling.soldCount == 1) and "" or "s").." for "..AutoGearCashToString(greySelling.soldValue)..".", 1)
+		TyGearPrint("TyGear: Sold "..greySelling.soldCount.." grey item"..((greySelling.soldCount == 1) and "" or "s").." for "..TyGearCashToString(greySelling.soldValue)..".", 1)
 	end
 	if reason then
-		AutoGearPrint("AutoGear: Stopped selling greys because "..reason..".", 1)
+		TyGearPrint("TyGear: Stopped selling greys because "..reason..".", 1)
 	end
 	greySelling = nil
 end
 
-function AutoGearSellGreysTick()
+function TyGearSellGreysTick()
 	--using a bag item with no vendor open would use or equip it instead of selling it
 	if not (MerchantFrame and MerchantFrame:IsShown()) then
-		AutoGearStopSellingGreys()
+		TyGearStopSellingGreys()
 		return
 	end
-	if not AutoGearSellGreysPass() then
-		AutoGearStopSellingGreys()
+	if not TyGearSellGreysPass() then
+		TyGearStopSellingGreys()
 	else
-		table.insert(AutoGearActionQueue, { action = "sellgreys", t = 0.0 })
+		table.insert(TyGearActionQueue, { action = "sellgreys", t = 0.0 })
 	end
 end
 
-function AutoGearHandleSellingError(message)
+function TyGearHandleSellingError(message)
 	if (not greySelling) or (not message) or (issecretvalue and issecretvalue(message)) then return end
 	if message == ERR_VENDOR_DOESNT_BUY then
-		AutoGearStopSellingGreys("this vendor doesn't buy items")
+		TyGearStopSellingGreys("this vendor doesn't buy items")
 	elseif message == ERR_TOO_MUCH_GOLD then
-		AutoGearStopSellingGreys("you have max gold on this character")
+		TyGearStopSellingGreys("you have max gold on this character")
 	end
 end
 
-function AutoGearIsQuestItem(container, slot)
-	return AutoGearItemContainsText(container, slot, ITEM_BIND_QUEST or "Quest Item")
+function TyGearIsQuestItem(container, slot)
+	return TyGearItemContainsText(container, slot, ITEM_BIND_QUEST or "Quest Item")
 end
 
 --returns whether a left-side line of the bag item's tooltip is exactly the search text; the second return value is true when the tooltip couldn't be read
-function AutoGearItemContainsText(container, slot, search)
-	AutoGearTooltip:SetOwner(UIParent, "ANCHOR_NONE")
-	AutoGearTooltip:ClearLines()
-	AutoGearTooltip:SetBagItem(container, slot)
-	for i=1, AutoGearTooltip:NumLines() do
-		local mytext = _G["AutoGearTooltipTextLeft" .. i]
+function TyGearItemContainsText(container, slot, search)
+	TyGearTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+	TyGearTooltip:ClearLines()
+	TyGearTooltip:SetBagItem(container, slot)
+	for i=1, TyGearTooltip:NumLines() do
+		local mytext = _G["TyGearTooltipTextLeft" .. i]
 		if (mytext) then
 			local text = mytext:GetText()
 			--tooltip text can be a secret value under the Midnight addon restrictions; it can't be compared then
@@ -3371,241 +3383,241 @@ function AutoGearItemContainsText(container, slot, search)
 	return nil
 end
 
-function AutoGearUpdateEquippedItem(invSlot)
+function TyGearUpdateEquippedItem(invSlot)
 	local info, score
-	info = AutoGearReadItemInfo(invSlot)
-	score = AutoGearDetermineItemScore(info)
-	AutoGearEquippedItems[invSlot] = {}
-	AutoGearEquippedItems[invSlot].info = info
-	AutoGearEquippedItems[invSlot].score = score
-	AutoGearEquippedItems[invSlot].equipped = 1
+	info = TyGearReadItemInfo(invSlot)
+	score = TyGearDetermineItemScore(info)
+	TyGearEquippedItems[invSlot] = {}
+	TyGearEquippedItems[invSlot].info = info
+	TyGearEquippedItems[invSlot].score = score
+	TyGearEquippedItems[invSlot].equipped = 1
 end
 
-function AutoGearUpdateEquippedItems()
-	AutoGearSetStatWeights()
-	-- AutoGearItemInfoCache = {}
-	AutoGearEquippedItems = {}
+function TyGearUpdateEquippedItems()
+	TyGearSetStatWeights()
+	-- TyGearItemInfoCache = {}
+	TyGearEquippedItems = {}
 	local info, score
-	for invSlot = INVSLOT_FIRST_EQUIPPED, AutoGearLastEquippableBagSlot do
-		if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= AutoGearFirstEquippableBagSlot then
-			AutoGearUpdateEquippedItem(invSlot)
+	for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
+		if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
+			TyGearUpdateEquippedItem(invSlot)
 		end
 	end
 
 	--pretend the tabard slot is a separate slot for 2-handers
-	if (AutoGearEquippedItems[INVSLOT_MAINHAND] and
-	AutoGearEquippedItems[INVSLOT_MAINHAND].info and
-	AutoGearEquippedItems[INVSLOT_MAINHAND].info.is2hWeapon and
+	if (TyGearEquippedItems[INVSLOT_MAINHAND] and
+	TyGearEquippedItems[INVSLOT_MAINHAND].info and
+	TyGearEquippedItems[INVSLOT_MAINHAND].info.is2hWeapon and
 	(not ((weapons == "2hDW") and CanDualWield() and IsPlayerSpell(46917)))) then
-		AutoGearEquippedItems[INVSLOT_TABARD] = AutoGearDeepCopy(AutoGearEquippedItems[INVSLOT_MAINHAND])
-		AutoGearEquippedItems[INVSLOT_MAINHAND].info = { name = "nothing", empty = 1 }
-		AutoGearEquippedItems[INVSLOT_MAINHAND].score = 0
-		AutoGearEquippedItems[INVSLOT_MAINHAND].equipped = nil
+		TyGearEquippedItems[INVSLOT_TABARD] = TyGearDeepCopy(TyGearEquippedItems[INVSLOT_MAINHAND])
+		TyGearEquippedItems[INVSLOT_MAINHAND].info = { name = "nothing", empty = 1 }
+		TyGearEquippedItems[INVSLOT_MAINHAND].score = 0
+		TyGearEquippedItems[INVSLOT_MAINHAND].equipped = nil
 	else
-		AutoGearEquippedItems[INVSLOT_TABARD] = {}
-		AutoGearEquippedItems[INVSLOT_TABARD].info = { name = "nothing", empty = 1 }
-		AutoGearEquippedItems[INVSLOT_TABARD].score = 0
-		AutoGearEquippedItems[INVSLOT_TABARD].equipped = nil
+		TyGearEquippedItems[INVSLOT_TABARD] = {}
+		TyGearEquippedItems[INVSLOT_TABARD].info = { name = "nothing", empty = 1 }
+		TyGearEquippedItems[INVSLOT_TABARD].score = 0
+		TyGearEquippedItems[INVSLOT_TABARD].equipped = nil
 	end
 end
 
-function AutoGearDeepCopy(object)
+function TyGearDeepCopy(object)
 	local object_type = type(object)
 	local newObject
 	if object_type == 'table' then
 		newObject = {}
 		for orig_key, orig_value in next, object, nil do
-			newObject[AutoGearDeepCopy(orig_key)] = AutoGearDeepCopy(orig_value)
+			newObject[TyGearDeepCopy(orig_key)] = TyGearDeepCopy(orig_value)
 		end
-		setmetatable(newObject, AutoGearDeepCopy(getmetatable(object)))
+		setmetatable(newObject, TyGearDeepCopy(getmetatable(object)))
 	else -- number, string, boolean, etc
 		newObject = object
 	end
 	return newObject
 end
 
-function AutoGearUpdateBestItems()
-	AutoGearUpdateEquippedItems()
+function TyGearUpdateBestItems()
+	TyGearUpdateEquippedItems()
 
 	--set starting best scores from all equipped items
-	AutoGearBestItems = AutoGearDeepCopy(AutoGearEquippedItems)
+	TyGearBestItems = TyGearDeepCopy(TyGearEquippedItems)
 
 	local info
 
 	-- table to track whether an item's been added
-	AutoGearBestItemsAlreadyAdded = {}
+	TyGearBestItemsAlreadyAdded = {}
 
 	--consider all items in bags
 	for bag = 0, NUM_BAG_SLOTS do
 		local slotMax = GetContainerNumSlots(bag)
 		for slot = 0, slotMax do
-			info = AutoGearReadItemInfo(nil, nil, bag, slot)
-			-- AutoGearPrint((info.link or info.name or "nil").." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
-			AutoGearConsiderItem(info, bag, slot, nil)
+			info = TyGearReadItemInfo(nil, nil, bag, slot)
+			-- TyGearPrint((info.link or info.name or "nil").." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
+			TyGearConsiderItem(info, bag, slot, nil)
 		end
 	end
 end
 
-function AutoGearConsiderAllItems(lootRollItemID, questRewardIDs, arbitraryItemInfo, noActions)
+function TyGearConsiderAllItems(lootRollItemID, questRewardIDs, arbitraryItemInfo, noActions)
 	if (arbitraryItemInfo and arbitraryItemInfo.isMount and (not arbitraryItemInfo.alreadyKnown)) then
 		return 1
 	end
 
 	local anythingBetter = nil
 
-	AutoGearUpdateBestItems()
+	TyGearUpdateBestItems()
 
 	--consider item being rolled on (if any)
 	if lootRollItemID and arbitraryItemInfo then
-		AutoGearConsiderItem(arbitraryItemInfo, nil, nil, 1)
+		TyGearConsiderItem(arbitraryItemInfo, nil, nil, 1)
 	end
 
 	--consider quest rewards (if any)
 	if questRewardIDs and not noActions then
 		for i = 1, GetNumQuestChoices() do
-			local info = AutoGearReadItemInfo(nil, nil, nil, nil, i)
-			AutoGearConsiderItem(info, nil, nil, nil, i)
+			local info = TyGearReadItemInfo(nil, nil, nil, nil, i)
+			TyGearConsiderItem(info, nil, nil, nil, i)
 		end
 	end
 
 	--create all future equip actions required (only if not rolling currently)
 	if (not lootRollItemID and not questRewardIDs and not noActions) then
-		for invSlot = INVSLOT_FIRST_EQUIPPED, AutoGearLastEquippableBagSlot do
-			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= AutoGearFirstEquippableBagSlot then
+		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
+			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
 				if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND or invSlot == INVSLOT_TABARD then
 					--skip weapons for now
 				else
-					local isSlotLocked = AutoGearDB.LockGearSlots and AutoGearDB.LockedGearSlots[invSlot].enabled
-					local equippedInfo = AutoGearEquippedItems[invSlot].info
-					local equippedScore = AutoGearEquippedItems[invSlot].score
-					if (not AutoGearBestItems[invSlot].equipped) then
+					local isSlotLocked = TyGearDB.LockGearSlots and TyGearDB.LockedGearSlots[invSlot].enabled
+					local equippedInfo = TyGearEquippedItems[invSlot].info
+					local equippedScore = TyGearEquippedItems[invSlot].score
+					if (not TyGearBestItems[invSlot].equipped) then
 						anythingBetter = 1
-						AutoGearPrint("AutoGear: "..(AutoGearBestItems[invSlot].info.link or AutoGearBestItems[invSlot].info.name).." ("..string.format("%.2f", AutoGearBestItems[invSlot].score)..") was determined to be better than "..(equippedInfo.link or equippedInfo.name).." ("..string.format("%.2f", equippedScore)..").  "..((AutoGearDB.Enabled == true) and (isSlotLocked and "Would equip, but slot "..tostring(invSlot or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
-						AutoGearPrintItem(AutoGearBestItems[invSlot].info)
-						AutoGearPrintItem(equippedInfo)
+						TyGearPrint("TyGear: "..(TyGearBestItems[invSlot].info.link or TyGearBestItems[invSlot].info.name).." ("..string.format("%.2f", TyGearBestItems[invSlot].score)..") was determined to be better than "..(equippedInfo.link or equippedInfo.name).." ("..string.format("%.2f", equippedScore)..").  "..((TyGearDB.Enabled == true) and (isSlotLocked and "Would equip, but slot "..tostring(invSlot or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+						TyGearPrintItem(TyGearBestItems[invSlot].info)
+						TyGearPrintItem(equippedInfo)
 						if not isSlotLocked then
 							local newAction = {}
 							newAction.action = "equip"
 							newAction.t = GetTime()
-							newAction.container = AutoGearBestItems[invSlot].bag
-							newAction.slot = AutoGearBestItems[invSlot].slot
+							newAction.container = TyGearBestItems[invSlot].bag
+							newAction.slot = TyGearBestItems[invSlot].slot
 							newAction.replaceSlot = invSlot
-							newAction.info = AutoGearBestItems[invSlot].info
-							newAction.score = AutoGearBestItems[invSlot].score
-							table.insert(AutoGearActionQueue, newAction)
+							newAction.info = TyGearBestItems[invSlot].info
+							newAction.score = TyGearBestItems[invSlot].score
+							table.insert(TyGearActionQueue, newAction)
 						end
 					end
 				end
 			end
 		end
 		--handle weapons
-		local isMainHandSlotLocked = AutoGearDB.LockGearSlots and AutoGearDB.LockedGearSlots[INVSLOT_MAINHAND].enabled
-		local isOffHandSlotLocked = AutoGearDB.LockGearSlots and AutoGearDB.LockedGearSlots[INVSLOT_OFFHAND].enabled
-		if (AutoGearBestItems[INVSLOT_MAINHAND].score + AutoGearBestItems[INVSLOT_OFFHAND].score > AutoGearBestItems[INVSLOT_TABARD].score)
-		or (AutoGearEquippedItems[INVSLOT_TABARD].info.unusable)
-		or (((not AutoGearBestItems[INVSLOT_MAINHAND].info.empty)
-		or (not AutoGearBestItems[INVSLOT_OFFHAND].info.empty))
-		and AutoGearBestItems[INVSLOT_TABARD].info.empty) then
+		local isMainHandSlotLocked = TyGearDB.LockGearSlots and TyGearDB.LockedGearSlots[INVSLOT_MAINHAND].enabled
+		local isOffHandSlotLocked = TyGearDB.LockGearSlots and TyGearDB.LockedGearSlots[INVSLOT_OFFHAND].enabled
+		if (TyGearBestItems[INVSLOT_MAINHAND].score + TyGearBestItems[INVSLOT_OFFHAND].score > TyGearBestItems[INVSLOT_TABARD].score)
+		or (TyGearEquippedItems[INVSLOT_TABARD].info.unusable)
+		or (((not TyGearBestItems[INVSLOT_MAINHAND].info.empty)
+		or (not TyGearBestItems[INVSLOT_OFFHAND].info.empty))
+		and TyGearBestItems[INVSLOT_TABARD].info.empty) then
 			local extraDelay = 0
 			local mainSwap, offSwap
 			--main hand
-			if (not AutoGearBestItems[INVSLOT_MAINHAND].equipped) and (not AutoGearBestItems[INVSLOT_MAINHAND].info.empty) then
+			if (not TyGearBestItems[INVSLOT_MAINHAND].equipped) and (not TyGearBestItems[INVSLOT_MAINHAND].info.empty) then
 				mainSwap = 1
 				if not isMainHandSlotLocked then
 					local newAction = {}
 					newAction.action = "equip"
 					newAction.t = GetTime()
-					newAction.container = AutoGearBestItems[INVSLOT_MAINHAND].bag
-					newAction.slot = AutoGearBestItems[INVSLOT_MAINHAND].slot
+					newAction.container = TyGearBestItems[INVSLOT_MAINHAND].bag
+					newAction.slot = TyGearBestItems[INVSLOT_MAINHAND].slot
 					newAction.replaceSlot = INVSLOT_MAINHAND
-					newAction.info = AutoGearBestItems[INVSLOT_MAINHAND].info
-					newAction.score = AutoGearBestItems[INVSLOT_MAINHAND].score
-					table.insert(AutoGearActionQueue, newAction)
+					newAction.info = TyGearBestItems[INVSLOT_MAINHAND].info
+					newAction.score = TyGearBestItems[INVSLOT_MAINHAND].score
+					table.insert(TyGearActionQueue, newAction)
 					extraDelay = 0.5
 				end
 			end
 			--off-hand
-			if (not AutoGearBestItems[INVSLOT_OFFHAND].equipped) and (not AutoGearBestItems[INVSLOT_OFFHAND].info.empty) then
+			if (not TyGearBestItems[INVSLOT_OFFHAND].equipped) and (not TyGearBestItems[INVSLOT_OFFHAND].info.empty) then
 				offSwap = 1
 				if not isOffHandSlotLocked then
 					local newAction = {}
 					newAction.action = "equip"
 					newAction.t = GetTime() + extraDelay --do it after a longer delay
-					newAction.container = AutoGearBestItems[INVSLOT_OFFHAND].bag
-					newAction.slot = AutoGearBestItems[INVSLOT_OFFHAND].slot
+					newAction.container = TyGearBestItems[INVSLOT_OFFHAND].bag
+					newAction.slot = TyGearBestItems[INVSLOT_OFFHAND].slot
 					newAction.replaceSlot = INVSLOT_OFFHAND
-					newAction.info = AutoGearBestItems[INVSLOT_OFFHAND].info
-					newAction.score = AutoGearBestItems[INVSLOT_OFFHAND].score
-					table.insert(AutoGearActionQueue, newAction)
+					newAction.info = TyGearBestItems[INVSLOT_OFFHAND].info
+					newAction.score = TyGearBestItems[INVSLOT_OFFHAND].score
+					table.insert(TyGearActionQueue, newAction)
 				end
 			end
 			if (mainSwap or offSwap) then
 				anythingBetter = 1
 				if (mainSwap and offSwap) then
-					if (AutoGearIsTwoHandEquipped()) then
-						local equippedMain = AutoGearEquippedItems[INVSLOT_TABARD].info
-						local mainScore = AutoGearEquippedItems[INVSLOT_TABARD].score
-						AutoGearPrint("AutoGear: "..(AutoGearBestItems[INVSLOT_MAINHAND].info.link or AutoGearBestItems[INVSLOT_MAINHAND].info.name).." ("..string.format("%.2f", AutoGearBestItems[INVSLOT_MAINHAND].score)..") combined with "..(AutoGearBestItems[INVSLOT_OFFHAND].info.link or AutoGearBestItems[INVSLOT_OFFHAND].info.name).." ("..string.format("%.2f", AutoGearBestItems[INVSLOT_OFFHAND].score)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..string.format("%.2f", mainScore)..").  "..((AutoGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
-						AutoGearPrintItem(AutoGearBestItems[INVSLOT_MAINHAND].info)
-						AutoGearPrintItem(AutoGearBestItems[INVSLOT_OFFHAND].info)
-						AutoGearPrintItem(equippedMain)
+					if (TyGearIsTwoHandEquipped()) then
+						local equippedMain = TyGearEquippedItems[INVSLOT_TABARD].info
+						local mainScore = TyGearEquippedItems[INVSLOT_TABARD].score
+						TyGearPrint("TyGear: "..(TyGearBestItems[INVSLOT_MAINHAND].info.link or TyGearBestItems[INVSLOT_MAINHAND].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_MAINHAND].score)..") combined with "..(TyGearBestItems[INVSLOT_OFFHAND].info.link or TyGearBestItems[INVSLOT_OFFHAND].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_OFFHAND].score)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..string.format("%.2f", mainScore)..").  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+						TyGearPrintItem(TyGearBestItems[INVSLOT_MAINHAND].info)
+						TyGearPrintItem(TyGearBestItems[INVSLOT_OFFHAND].info)
+						TyGearPrintItem(equippedMain)
 					else
-						local equippedMain = AutoGearEquippedItems[INVSLOT_MAINHAND].info
-						local mainScore = AutoGearEquippedItems[INVSLOT_MAINHAND].score
-						local equippedOff = AutoGearEquippedItems[INVSLOT_OFFHAND].info
-						local offScore = AutoGearEquippedItems[INVSLOT_OFFHAND].score
-						AutoGearPrint("AutoGear: "..(AutoGearBestItems[INVSLOT_MAINHAND].info.link or AutoGearBestItems[INVSLOT_MAINHAND].info.name).." ("..string.format("%.2f", AutoGearBestItems[INVSLOT_MAINHAND].score)..") combined with "..(AutoGearBestItems[INVSLOT_OFFHAND].info.link or AutoGearBestItems[INVSLOT_OFFHAND].info.name).." ("..string.format("%.2f", AutoGearBestItems[INVSLOT_OFFHAND].score)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..string.format("%.2f", mainScore)..") combined with "..(equippedOff.link or equippedOff.name).." ("..string.format("%.2f", offScore)..").  "..((AutoGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
-						AutoGearPrintItem(AutoGearBestItems[INVSLOT_MAINHAND].info)
-						AutoGearPrintItem(AutoGearBestItems[INVSLOT_OFFHAND].info)
-						AutoGearPrintItem(equippedMain)
-						AutoGearPrintItem(equippedOff)
+						local equippedMain = TyGearEquippedItems[INVSLOT_MAINHAND].info
+						local mainScore = TyGearEquippedItems[INVSLOT_MAINHAND].score
+						local equippedOff = TyGearEquippedItems[INVSLOT_OFFHAND].info
+						local offScore = TyGearEquippedItems[INVSLOT_OFFHAND].score
+						TyGearPrint("TyGear: "..(TyGearBestItems[INVSLOT_MAINHAND].info.link or TyGearBestItems[INVSLOT_MAINHAND].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_MAINHAND].score)..") combined with "..(TyGearBestItems[INVSLOT_OFFHAND].info.link or TyGearBestItems[INVSLOT_OFFHAND].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_OFFHAND].score)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..string.format("%.2f", mainScore)..") combined with "..(equippedOff.link or equippedOff.name).." ("..string.format("%.2f", offScore)..").  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+						TyGearPrintItem(TyGearBestItems[INVSLOT_MAINHAND].info)
+						TyGearPrintItem(TyGearBestItems[INVSLOT_OFFHAND].info)
+						TyGearPrintItem(equippedMain)
+						TyGearPrintItem(equippedOff)
 					end
 				else
 					local invSlot = INVSLOT_MAINHAND
 					if (offSwap) then invSlot = INVSLOT_OFFHAND end
-					local equippedInfo = AutoGearEquippedItems[invSlot].info
-					local equippedScore = AutoGearEquippedItems[invSlot].score
-					AutoGearPrint("AutoGear: "..(AutoGearBestItems[invSlot].info.link or AutoGearBestItems[invSlot].info.name).." ("..string.format("%.2f", AutoGearBestItems[invSlot].score)..") was determined to be better than "..(equippedInfo.link or equippedInfo.name).." ("..string.format("%.2f", equippedScore)..").  "..((AutoGearDB.Enabled == true) and (((invSlot == INVSLOT_MAINHAND and isMainHandSlotLocked) or (invSlot == INVSLOT_OFFHAND and isOffHandSlotLocked)) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
-					AutoGearPrintItem(AutoGearBestItems[invSlot].info)
-					AutoGearPrintItem(equippedInfo)
+					local equippedInfo = TyGearEquippedItems[invSlot].info
+					local equippedScore = TyGearEquippedItems[invSlot].score
+					TyGearPrint("TyGear: "..(TyGearBestItems[invSlot].info.link or TyGearBestItems[invSlot].info.name).." ("..string.format("%.2f", TyGearBestItems[invSlot].score)..") was determined to be better than "..(equippedInfo.link or equippedInfo.name).." ("..string.format("%.2f", equippedScore)..").  "..((TyGearDB.Enabled == true) and (((invSlot == INVSLOT_MAINHAND and isMainHandSlotLocked) or (invSlot == INVSLOT_OFFHAND and isOffHandSlotLocked)) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+					TyGearPrintItem(TyGearBestItems[invSlot].info)
+					TyGearPrintItem(equippedInfo)
 				end
 			end
-		elseif (AutoGearBestItems[INVSLOT_TABARD].score > (AutoGearBestItems[INVSLOT_MAINHAND].score + AutoGearBestItems[INVSLOT_OFFHAND].score))
-		or ((not AutoGearBestItems[INVSLOT_TABARD].info.empty)
-		and ((AutoGearBestItems[INVSLOT_MAINHAND].info.empty)
-		and (AutoGearBestItems[INVSLOT_OFFHAND].info.empty))) then
-			if (not AutoGearBestItems[INVSLOT_TABARD].equipped) and (not AutoGearBestItems[INVSLOT_TABARD].info.empty) then
+		elseif (TyGearBestItems[INVSLOT_TABARD].score > (TyGearBestItems[INVSLOT_MAINHAND].score + TyGearBestItems[INVSLOT_OFFHAND].score))
+		or ((not TyGearBestItems[INVSLOT_TABARD].info.empty)
+		and ((TyGearBestItems[INVSLOT_MAINHAND].info.empty)
+		and (TyGearBestItems[INVSLOT_OFFHAND].info.empty))) then
+			if (not TyGearBestItems[INVSLOT_TABARD].equipped) and (not TyGearBestItems[INVSLOT_TABARD].info.empty) then
 				anythingBetter = 1
-				local showBothSlots = AutoGearIsTwoHandEquipped()
+				local showBothSlots = TyGearIsTwoHandEquipped()
 				local mainSlot = showBothSlots and INVSLOT_TABARD or INVSLOT_MAINHAND
-				local equippedMain = AutoGearEquippedItems[mainSlot].info
-				local mainScore = AutoGearEquippedItems[mainSlot].score
-				local equippedOff = AutoGearEquippedItems[INVSLOT_OFFHAND].info
-				local offScore = AutoGearEquippedItems[INVSLOT_OFFHAND].score
-				AutoGearPrint("AutoGear: "..(AutoGearBestItems[INVSLOT_TABARD].info.link or AutoGearBestItems[INVSLOT_TABARD].info.name).." ("..string.format("%.2f", AutoGearBestItems[INVSLOT_TABARD].score)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..string.format("%.2f", mainScore)..")"..(showBothSlots and ((" combined with "..(equippedOff.link or equippedOff.name).." ("..string.format("%.2f", offScore))..")") or "")..".  "..((AutoGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
-				AutoGearPrintItem(AutoGearBestItems[INVSLOT_TABARD].info)
-				AutoGearPrintItem(equippedMain)
-				if showBothSlots then AutoGearPrintItem(equippedOff) end
+				local equippedMain = TyGearEquippedItems[mainSlot].info
+				local mainScore = TyGearEquippedItems[mainSlot].score
+				local equippedOff = TyGearEquippedItems[INVSLOT_OFFHAND].info
+				local offScore = TyGearEquippedItems[INVSLOT_OFFHAND].score
+				TyGearPrint("TyGear: "..(TyGearBestItems[INVSLOT_TABARD].info.link or TyGearBestItems[INVSLOT_TABARD].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_TABARD].score)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..string.format("%.2f", mainScore)..")"..(showBothSlots and ((" combined with "..(equippedOff.link or equippedOff.name).." ("..string.format("%.2f", offScore))..")") or "")..".  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+				TyGearPrintItem(TyGearBestItems[INVSLOT_TABARD].info)
+				TyGearPrintItem(equippedMain)
+				if showBothSlots then TyGearPrintItem(equippedOff) end
 				if (not isMainHandSlotLocked) and (not isOffHandSlotLocked) then
 					local newAction = {}
 					newAction.action = "equip"
 					newAction.t = GetTime() + 0.5 --do it after a short delay
-					newAction.container = AutoGearBestItems[INVSLOT_TABARD].bag
-					newAction.slot = AutoGearBestItems[INVSLOT_TABARD].slot
+					newAction.container = TyGearBestItems[INVSLOT_TABARD].bag
+					newAction.slot = TyGearBestItems[INVSLOT_TABARD].slot
 					newAction.replaceSlot = INVSLOT_MAINHAND
-					newAction.info = AutoGearBestItems[INVSLOT_TABARD].info
-					newAction.score = AutoGearBestItems[INVSLOT_TABARD].score
-					table.insert(AutoGearActionQueue, newAction)
+					newAction.info = TyGearBestItems[INVSLOT_TABARD].info
+					newAction.score = TyGearBestItems[INVSLOT_TABARD].score
+					table.insert(TyGearActionQueue, newAction)
 				end
 			end
 		end
 	elseif (lootRollItemID) then
 		--decide whether to roll on the item or not
-		for invSlot = INVSLOT_FIRST_EQUIPPED, AutoGearLastEquippableBagSlot do
-			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= AutoGearFirstEquippableBagSlot then
-				if (AutoGearBestItems[invSlot].rollOn and
-				(invSlot ~= INVSLOT_MAINHAND or invSlot ~= INVSLOT_OFFHAND or AutoGearIs1hWorthwhile(invSlot)) and
-				(invSlot ~= INVSLOT_TABARD or AutoGearIsBest2hBetterThanBestMainAndOff())) then
+		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
+			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
+				if (TyGearBestItems[invSlot].rollOn and
+				(invSlot ~= INVSLOT_MAINHAND or invSlot ~= INVSLOT_OFFHAND or TyGearIs1hWorthwhile(invSlot)) and
+				(invSlot ~= INVSLOT_TABARD or TyGearIsBest2hBetterThanBestMainAndOff())) then
 					return 1
 				end
 			end
@@ -3616,13 +3628,13 @@ function AutoGearConsiderAllItems(lootRollItemID, questRewardIDs, arbitraryItemI
 		--pick the reward with the biggest score improvement
 		local bestRewardIndex
 		local bestRewardScoreDelta
-		for invSlot = INVSLOT_FIRST_EQUIPPED, AutoGearLastEquippableBagSlot do
-			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= AutoGearFirstEquippableBagSlot then
-				if (AutoGearBestItems[invSlot].chooseReward and (invSlot ~= INVSLOT_TABARD or AutoGearIsBest2hBetterThanBestMainAndOff())) then
-					local delta = AutoGearBestItems[invSlot].score - AutoGearEquippedItems[invSlot].score
+		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
+			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
+				if (TyGearBestItems[invSlot].chooseReward and (invSlot ~= INVSLOT_TABARD or TyGearIsBest2hBetterThanBestMainAndOff())) then
+					local delta = TyGearBestItems[invSlot].score - TyGearEquippedItems[invSlot].score
 					if (not bestRewardScoreDelta or delta > bestRewardScoreDelta) then
 						bestRewardScoreDelta = delta
-						bestRewardIndex = AutoGearBestItems[invSlot].chooseReward
+						bestRewardIndex = TyGearBestItems[invSlot].chooseReward
 					end
 				end
 			end
@@ -3643,91 +3655,91 @@ function AutoGearConsiderAllItems(lootRollItemID, questRewardIDs, arbitraryItemI
 	return anythingBetter
 end
 
-function AutoGearIsBest2hBetterThanBestMainAndOff()
-	return AutoGearBestItems[INVSLOT_TABARD].score > AutoGearBestItems[INVSLOT_MAINHAND].score + AutoGearBestItems[INVSLOT_OFFHAND].score
+function TyGearIsBest2hBetterThanBestMainAndOff()
+	return TyGearBestItems[INVSLOT_TABARD].score > TyGearBestItems[INVSLOT_MAINHAND].score + TyGearBestItems[INVSLOT_OFFHAND].score
 end
 
-function AutoGearIs1hWorthwhile(i)
+function TyGearIs1hWorthwhile(i)
 	-- 3x the highest weight among the 5 main stats
 	local minScore = 3 * math.max(unpack({
-		AutoGearCurrentWeighting.Strength or 0,
-		AutoGearCurrentWeighting.Agility or 0,
-		AutoGearCurrentWeighting.Stamina or 0,
-		AutoGearCurrentWeighting.Intellect or 0,
-		AutoGearCurrentWeighting.Spirit or 0}))
-	return AutoGearBestItems[i].score > minScore and AutoGearBestItems[i].score > AutoGearBestItems[INVSLOT_TABARD].score * (i == INVSLOT_MAINHAND and 0.15 or 0.05)
+		TyGearCurrentWeighting.Strength or 0,
+		TyGearCurrentWeighting.Agility or 0,
+		TyGearCurrentWeighting.Stamina or 0,
+		TyGearCurrentWeighting.Intellect or 0,
+		TyGearCurrentWeighting.Spirit or 0}))
+	return TyGearBestItems[i].score > minScore and TyGearBestItems[i].score > TyGearBestItems[INVSLOT_TABARD].score * (i == INVSLOT_MAINHAND and 0.15 or 0.05)
 end
 
---companion function to AutoGearConsiderAllItems
-function AutoGearConsiderItem(info, bag, slot, rollOn, chooseReward)
+--companion function to TyGearConsiderAllItems
+function TyGearConsiderItem(info, bag, slot, rollOn, chooseReward)
 	if info.empty
-	or (info.guid and AutoGearBestItemsAlreadyAdded[info.guid])
+	or (info.guid and TyGearBestItemsAlreadyAdded[info.guid])
 	or (info.isAmmoBag
-	and	AutoGearBestItems[INVSLOT_RANGED].info.isRangedWeapon)
-	and (not AutoGearIsAmmoBagValidForRangedWeapon(info, AutoGearBestItems[INVSLOT_RANGED].info)) then
+	and	TyGearBestItems[INVSLOT_RANGED].info.isRangedWeapon)
+	and (not TyGearIsAmmoBagValidForRangedWeapon(info, TyGearBestItems[INVSLOT_RANGED].info)) then
 		return
 	end
 	if (info.isMount and (not info.alreadyKnown)) then return true end
 	if (info.usable or (rollOn and info.Within5levels)) then
-		local score = AutoGearDetermineItemScore(info)
+		local score = TyGearDetermineItemScore(info)
 		if info.isGear and info.validGearSlots then
 			local firstValidGearSlot = info.validGearSlots[1]
 			local lowestScoringValidGearSlot = firstValidGearSlot
-			local lowestScoringValidGearSlotScore = AutoGearBestItems[firstValidGearSlot].score or 0
+			local lowestScoringValidGearSlotScore = TyGearBestItems[firstValidGearSlot].score or 0
 			for _, gearSlot in pairs(info.validGearSlots) do
 				local skipThisSlot = false
 				for _, otherGearSlot in pairs(info.validGearSlots) do
 					if gearSlot ~= otherGearSlot then
-						if not AutoGearIsGearPairEquippableTogether(info, AutoGearBestItems[otherGearSlot].info) then
+						if not TyGearIsGearPairEquippableTogether(info, TyGearBestItems[otherGearSlot].info) then
 							skipThisSlot = true
 						end
 					end
 				end
 				if not skipThisSlot and
-				((not AutoGearBestItems[gearSlot]) or
-				(AutoGearBestItems[gearSlot].info.empty or
-				(not AutoGearBestItems[gearSlot].score) or
-				(AutoGearBestItems[gearSlot].score < lowestScoringValidGearSlotScore))) then
+				((not TyGearBestItems[gearSlot]) or
+				(TyGearBestItems[gearSlot].info.empty or
+				(not TyGearBestItems[gearSlot].score) or
+				(TyGearBestItems[gearSlot].score < lowestScoringValidGearSlotScore))) then
 					lowestScoringValidGearSlot = gearSlot
-					lowestScoringValidGearSlotScore = AutoGearBestItems[gearSlot] and AutoGearBestItems[gearSlot].score or 0
+					lowestScoringValidGearSlotScore = TyGearBestItems[gearSlot] and TyGearBestItems[gearSlot].score or 0
 				end
 			end
 
 			if (
 				((score > lowestScoringValidGearSlotScore) and (not info.isAmmoBag))
-				or AutoGearBestItems[lowestScoringValidGearSlot].info.empty
-				or AutoGearBestItems[lowestScoringValidGearSlot].info.unusable
+				or TyGearBestItems[lowestScoringValidGearSlot].info.empty
+				or TyGearBestItems[lowestScoringValidGearSlot].info.unusable
 				or (info.isAmmoBag
-					and AutoGearIsAmmoBagValidForBestKnownRangedWeapon(info)
+					and TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
 					and ((score > lowestScoringValidGearSlotScore)
-					or (not AutoGearIsAmmoBagValidForBestKnownRangedWeapon(AutoGearBestItems[lowestScoringValidGearSlot].info)))
+					or (not TyGearIsAmmoBagValidForBestKnownRangedWeapon(TyGearBestItems[lowestScoringValidGearSlot].info)))
 				)
 			) then
-				-- AutoGearPrint(info.link.." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
-				if info.guid then AutoGearBestItemsAlreadyAdded[info.guid] = 1 end
-				AutoGearBestItems[lowestScoringValidGearSlot].info = info
-				AutoGearBestItems[lowestScoringValidGearSlot].score = score
-				AutoGearBestItems[lowestScoringValidGearSlot].equipped = nil
-				AutoGearBestItems[lowestScoringValidGearSlot].bag = bag
-				AutoGearBestItems[lowestScoringValidGearSlot].slot = slot
-				AutoGearBestItems[lowestScoringValidGearSlot].rollOn = rollOn
-				AutoGearBestItems[lowestScoringValidGearSlot].chooseReward = chooseReward
+				-- TyGearPrint(info.link.." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
+				if info.guid then TyGearBestItemsAlreadyAdded[info.guid] = 1 end
+				TyGearBestItems[lowestScoringValidGearSlot].info = info
+				TyGearBestItems[lowestScoringValidGearSlot].score = score
+				TyGearBestItems[lowestScoringValidGearSlot].equipped = nil
+				TyGearBestItems[lowestScoringValidGearSlot].bag = bag
+				TyGearBestItems[lowestScoringValidGearSlot].slot = slot
+				TyGearBestItems[lowestScoringValidGearSlot].rollOn = rollOn
+				TyGearBestItems[lowestScoringValidGearSlot].chooseReward = chooseReward
 				return true
 			end
 		end
 	end
 end
 
-function AutoGearIsAmmoBagValidForBestKnownRangedWeapon(info)
-	return AutoGearIsAmmoBagValidForRangedWeapon (
+function TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
+	return TyGearIsAmmoBagValidForRangedWeapon (
 		info,
-		(AutoGearBestItems and AutoGearBestItems[INVSLOT_RANGED])
-		and AutoGearBestItems[INVSLOT_RANGED].info
-		or AutoGearReadItemInfo(INVSLOT_RANGED)
+		(TyGearBestItems and TyGearBestItems[INVSLOT_RANGED])
+		and TyGearBestItems[INVSLOT_RANGED].info
+		or TyGearReadItemInfo(INVSLOT_RANGED)
 	)
 end
 
-function AutoGearGetValidGearSlots(info)
+function TyGearGetValidGearSlots(info)
 	local gearSlotTable = {
 		[Enum.InventoryType.IndexNonEquipType]       = nil,
 		[Enum.InventoryType.IndexAmmoType]           = nil, -- ignore ammo because it's hard to match with weapon type
@@ -3813,9 +3825,9 @@ function AutoGearGetValidGearSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = AutoGearEquippableBagSlots,
+		[Enum.InventoryType.IndexBagType]            = TyGearEquippableBagSlots,
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
-		                                               and AutoGearEquippableBagSlots
+		                                               and TyGearEquippableBagSlots
                                                        or nil
 	}
 
@@ -3825,7 +3837,7 @@ end
 -- indicates slots that go together as a set
 -- for example, the set of slots for a shield is { main-hand and off-hand } even though the shield can only be equipped in the off-hand
 -- this is useful to find which slots to use to add scores together from all items in those slots
-function AutoGearGetSetSlots(info)
+function TyGearGetSetSlots(info)
 	local setSlotTable = {
 		[Enum.InventoryType.IndexNonEquipType]       = nil,
 		[Enum.InventoryType.IndexAmmoType]           = nil, -- ignore ammo because it's hard to match with weapon type
@@ -3912,23 +3924,23 @@ function AutoGearGetSetSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = AutoGearEquippableBagSlots,
+		[Enum.InventoryType.IndexBagType]            = TyGearEquippableBagSlots,
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
-		                                               and AutoGearEquippableBagSlots
+		                                               and TyGearEquippableBagSlots
                                                        or nil
 	}
 
 	return setSlotTable[info.invType]
 end
 
-function AutoGearIsInvTypeWeapon(invType)
+function TyGearIsInvTypeWeapon(invType)
 	if not invType then return nil end
-	return AutoGearIsInvTypeTwoHanded(invType) or
-	AutoGearIsInvTypeOneHanded(invType) or
-	AutoGearIsInvTypeRangedOrRelic(invType)
+	return TyGearIsInvTypeTwoHanded(invType) or
+	TyGearIsInvTypeOneHanded(invType) or
+	TyGearIsInvTypeRangedOrRelic(invType)
 end
 
-function AutoGearIsInvTypeOneHanded(invType)
+function TyGearIsInvTypeOneHanded(invType)
 	if not invType then return nil end
 	return (invType == Enum.InventoryType.IndexWeaponType) or
 	(invType == Enum.InventoryType.IndexWeaponmainhandType) or
@@ -3938,21 +3950,21 @@ function AutoGearIsInvTypeOneHanded(invType)
 	((TOC_VERSION_CURRENT >= TOC_VERSION_MOP) and (invType == Enum.InventoryType.IndexRangedrightType))
 end
 
-function AutoGearIsInvTypeTwoHanded(invType)
+function TyGearIsInvTypeTwoHanded(invType)
 	if not invType then return nil end
 	return (invType == Enum.InventoryType.Index2HweaponType) or
 	((TOC_VERSION_CURRENT >= TOC_VERSION_MOP) and (invType == Enum.InventoryType.IndexRangedType))
 end
 
-function AutoGearIsInvTypeRangedOrRelic(invType)
+function TyGearIsInvTypeRangedOrRelic(invType)
 	if not invType then return nil end
 	return (TOC_VERSION_CURRENT < TOC_VERSION_MOP) and (
-		AutoGearIsInvTypeRanged(invType) or
-		AutoGearIsInvTypeRelic(invType)
+		TyGearIsInvTypeRanged(invType) or
+		TyGearIsInvTypeRelic(invType)
 	)
 end
 
-function AutoGearIsInvTypeRanged(invType)
+function TyGearIsInvTypeRanged(invType)
 	if not invType then return nil end
 	return (TOC_VERSION_CURRENT < TOC_VERSION_MOP) and (
 		(invType == Enum.InventoryType.IndexRangedType) or
@@ -3961,59 +3973,59 @@ function AutoGearIsInvTypeRanged(invType)
 	)
 end
 
-function AutoGearIsInvTypeRelic(invType)
+function TyGearIsInvTypeRelic(invType)
 	if not invType then return nil end
 	return (TOC_VERSION_CURRENT < TOC_VERSION_MOP) and (
 		invType == Enum.InventoryType.IndexRelicType
 	)
 end
 
-function AutoGearIsAmmoBagAQuiverForArrows(info)
+function TyGearIsAmmoBagAQuiverForArrows(info)
 	if (not info.classID) or (not info.subclassID) then return nil end
 	return (info.isAmmoBag) and (info.subclassID == 2)
 end
 
-function AutoGearIsAmmoBagABulletPouch(info)
+function TyGearIsAmmoBagABulletPouch(info)
 	if (not info.classID) or (not info.subclassID) then return nil end
 	return (info.isAmmoBag) and (info.subclassID == 3)
 end
 
-function AutoGearIsAmmoBagValidForRangedWeapon(ammoBag, rangedWeapon)
+function TyGearIsAmmoBagValidForRangedWeapon(ammoBag, rangedWeapon)
 	if (not ammoBag.isAmmoBag)
 	or (not rangedWeapon.isRangedWeapon)
 	or (not rangedWeapon.classID)
 	or (not rangedWeapon.subclassID) then
 		return nil
 	end
-	return (AutoGearIsAmmoBagAQuiverForArrows(ammoBag) and
-	(AutoGearIsRangedWeaponABowOrCrossbow(rangedWeapon))) or
-	(AutoGearIsAmmoBagABulletPouch(ammoBag) and
-	AutoGearIsRangedWeaponAGun(rangedWeapon))
+	return (TyGearIsAmmoBagAQuiverForArrows(ammoBag) and
+	(TyGearIsRangedWeaponABowOrCrossbow(rangedWeapon))) or
+	(TyGearIsAmmoBagABulletPouch(ammoBag) and
+	TyGearIsRangedWeaponAGun(rangedWeapon))
 end
 
-function AutoGearIsRangedWeaponABowOrCrossbow(info)
+function TyGearIsRangedWeaponABowOrCrossbow(info)
 	if (not info.classID) or (not info.subclassID) then return nil end
 	return (info.classID == Enum.ItemClass.Weapon) and
 	((info.subclassID == Enum.ItemWeaponSubclass.Bows) or
 	(info.subclassID == Enum.ItemWeaponSubclass.Crossbow))
 end
 
-function AutoGearIsRangedWeaponAGun(info)
+function TyGearIsRangedWeaponAGun(info)
 	if (not info.classID) or (not info.subclassID) then return nil end
 	return ((info.classID == Enum.ItemClass.Weapon) and
 	(info.subclassID == Enum.ItemWeaponSubclass.Guns))
 end
 
-function AutoGearIsItemTwoHanded(itemID)
+function TyGearIsItemTwoHanded(itemID)
 	if not itemID then return nil end
-	return AutoGearIsInvTypeTwoHanded(C_Item.GetItemInventoryTypeByID(itemID))
+	return TyGearIsInvTypeTwoHanded(C_Item.GetItemInventoryTypeByID(itemID))
 end
 
-function AutoGearIsTwoHandEquipped()
-	return AutoGearIsItemTwoHanded(GetInventoryItemID("player", INVSLOT_MAINHAND))
+function TyGearIsTwoHandEquipped()
+	return TyGearIsItemTwoHanded(GetInventoryItemID("player", INVSLOT_MAINHAND))
 end
 
-function AutoGearIsMainHandAFishingPole()
+function TyGearIsMainHandAFishingPole()
 	local mainHandID = GetInventoryItemID("player", INVSLOT_MAINHAND)
 	if mainHandID then
 		local itemClassID, itemSubClassID = select(6, GetItemInfoInstant(GetInventoryItemID("player", INVSLOT_MAINHAND)))
@@ -4021,33 +4033,33 @@ function AutoGearIsMainHandAFishingPole()
 	end
 end
 
-function AutoGearPrintItem(info)
-	AutoGearPrint("AutoGear:     "..(info.link or info.name)..":", 2)
-	if AutoGearDB.UsePawn and PawnIsReady and PawnIsReady() then
-		local pawnScaleName, pawnScaleLocalizedName = AutoGearGetPawnScaleName()
+function TyGearPrintItem(info)
+	TyGearPrint("TyGear:     "..(info.link or info.name)..":", 2)
+	if TyGearDB.UsePawn and PawnIsReady and PawnIsReady() then
+		local pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
 		local pawnScaleColor = PawnGetScaleColor(pawnScaleName)
-		local score = AutoGearDetermineItemScore(info)
+		local score = TyGearDetermineItemScore(info)
 		-- 3 decimal places max
 		score = math.floor(score * 1000) / 1000
-		AutoGearPrint("AutoGear:         "..(((pawnScaleLocalizedName or pawnScaleName) and pawnScaleColor) and ("Pawn \""..pawnScaleColor..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or "AutoGear").." score: "..(score or "nil"),2)
-	elseif (not (AutoGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
+		TyGearPrint("TyGear:         "..(((pawnScaleLocalizedName or pawnScaleName) and pawnScaleColor) and ("Pawn \""..pawnScaleColor..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or "TyGear").." score: "..(score or "nil"),2)
+	elseif (not (TyGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
 		for k,v in pairs(info) do
-			if (k ~= "Name" and AutoGearCurrentWeighting[k]) then
-				AutoGearPrint("AutoGear:         "..k..": "..string.format("%.2f", v).." * "..AutoGearCurrentWeighting[k].." = "..string.format("%.2f", v * AutoGearCurrentWeighting[k]), 2)
+			if (k ~= "Name" and TyGearCurrentWeighting[k]) then
+				TyGearPrint("TyGear:         "..k..": "..string.format("%.2f", v).." * "..TyGearCurrentWeighting[k].." = "..string.format("%.2f", v * TyGearCurrentWeighting[k]), 2)
 			end
 		end
 	else
-		AutoGearPrint("AutoGear:         (error: Stats aren't ready to be printed.)", 2)
+		TyGearPrint("TyGear:         (error: Stats aren't ready to be printed.)", 2)
 	end
 end
 
 --matches the item set header line in item tooltips, like "Midnight Herald's Regalia (2/5)"; ITEM_SET_NAME is "%s (%d/%d)" in English and is localized, so magic characters are escaped before turning its format specifiers into pattern items
 local ITEM_SET_NAME_PATTERN = "^"..(ITEM_SET_NAME:gsub("[%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"):gsub("%%s", ".+"):gsub("%%d", "%%d+")).."$"
 
-function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRewardIndex, link, tooltipData)
+function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, questRewardIndex, link, tooltipData)
 	if not tooltipData then
-		AutoGearTooltip:SetOwner(UIParent, "ANCHOR_NONE")
-		AutoGearTooltip:ClearLines()
+		TyGearTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+		TyGearTooltip:ClearLines()
 	end
 
 	local info = {}
@@ -4065,7 +4077,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 			info.link = info.item:GetItemLink()
 		end
 		if not tooltipData then tooltipData = C_TooltipInfo and C_TooltipInfo.GetBagItem(container, slot) end
-		if not tooltipData then AutoGearTooltip:SetBagItem(container, slot) end
+		if not tooltipData then TyGearTooltip:SetBagItem(container, slot) end
 	elseif inventoryID then
 		info.item = Item:CreateFromEquipmentSlot(inventoryID)
 		if info.item:IsItemEmpty() then
@@ -4080,7 +4092,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 			if C_TooltipInfo and C_TooltipInfo.GetInventoryItem then
 				tooltipData = C_TooltipInfo.GetInventoryItem("player", inventoryID)
 			else
-				AutoGearTooltip:SetInventoryItem("player", inventoryID)
+				TyGearTooltip:SetInventoryItem("player", inventoryID)
 			end
 		end
 	elseif lootRollID then
@@ -4091,7 +4103,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 		if C_TooltipInfo and C_TooltipInfo.GetLootRollItem then
 			tooltipData = C_TooltipInfo.GetLootRollItem(lootRollID)
 		else
-			AutoGearTooltip:SetLootRollItem(lootRollID)
+			TyGearTooltip:SetLootRollItem(lootRollID)
 		end
 	elseif questRewardIndex then
 		if not info.link then
@@ -4101,7 +4113,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 		if C_TooltipInfo and C_TooltipInfo.GetQuestItem then
 			tooltipData = C_TooltipInfo.GetQuestItem("choice", questRewardIndex)
 		else
-			AutoGearTooltip:SetQuestItem("choice", questRewardIndex)
+			TyGearTooltip:SetQuestItem("choice", questRewardIndex)
 		end
 	elseif link then
 		info.link = link
@@ -4109,10 +4121,10 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 		if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
 			tooltipData = C_TooltipInfo.GetHyperlink(info.link)
 		else
-			AutoGearTooltip:SetHyperlink(info.link)
+			TyGearTooltip:SetHyperlink(info.link)
 		end
 	else
-		AutoGearPrint(
+		TyGearPrint(
 			"inventoryID: "..tostring(inventoryID or "nil")..
 			"; lootRollID: "..tostring(lootRollID or "nil")..
 			"; container: "..tostring(container or "nil")..
@@ -4129,8 +4141,8 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 		info.itemLocation = nil
 	end
 	if not info.id then
-		AutoGearPrint("Error: "..tostring(info.name or "nil").." doesn't have an item ID",3)
-		AutoGearPrint(
+		TyGearPrint("Error: "..tostring(info.name or "nil").." doesn't have an item ID",3)
+		TyGearPrint(
 			"inventoryID: "..tostring(inventoryID or "nil")..
 			"; lootRollID: "..tostring(lootRollID or "nil")..
 			"; container: "..tostring(container or "nil")..
@@ -4147,8 +4159,8 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 	info.rarityColor = info.item:GetItemQualityColor()
 	info.guid = tooltipData and tooltipData.guid or info.item:GetItemGUID()
 	if info.link == nil then
-		AutoGearPrint("Error: "..tostring(info.name or "nil").." doesn't have a link",3)
-		AutoGearPrint(
+		TyGearPrint("Error: "..tostring(info.name or "nil").." doesn't have a link",3)
+		TyGearPrint(
 			"inventoryID: "..tostring(inventoryID or "nil")..
 			"; lootRollID: "..tostring(lootRollID or "nil")..
 			"; container: "..tostring(container or "nil")..
@@ -4162,8 +4174,8 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 
 	-- EF: this might actually be breaking it as I think it's caching empty tooltips before they're fully loaded
 	-- caching did not show a performance benefit, so commented this and the below out
-	-- info.linkHash = AutoGearStringHash(info.link)
-	-- local cachediteminfo = AutoGearItemInfoCache[info.linkHash]
+	-- info.linkHash = TyGearStringHash(info.link)
+	-- local cachediteminfo = TyGearItemInfoCache[info.linkHash]
 	-- if cachediteminfo then return cachediteminfo end
 
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
@@ -4172,7 +4184,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 	if (info.classID == Enum.ItemClass.Miscellaneous) and
 	(info.subclassID == Enum.ItemMiscellaneousSubclass.Mount) then
 		info.isMount = 1
-		if AutoGearIsMountItemAlreadyCollected(info.id) then
+		if TyGearIsMountItemAlreadyCollected(info.id) then
 			info.alreadyKnown = 1
 		end
 	elseif not info.isGear then
@@ -4183,25 +4195,25 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 	info.YellowSockets = 0
 	info.BlueSockets = 0
 	info.MetaSockets = 0
-	local localizedClass, class, spec = AutoGearGetClassAndSpec()
+	local localizedClass, class, spec = TyGearGetClassAndSpec()
 
 	if info.isGear then
-		if AutoGearIsInvTypeWeapon(info.invType) then
+		if TyGearIsInvTypeWeapon(info.invType) then
 			info.isWeaponOrOffHand = 1
 		end
-		if AutoGearIsInvTypeTwoHanded(info.invType) then
+		if TyGearIsInvTypeTwoHanded(info.invType) then
 			info.is2hWeapon = 1
-		elseif AutoGearIsInvTypeOneHanded(info.invType) then
+		elseif TyGearIsInvTypeOneHanded(info.invType) then
 			info.is1hWeaponOrOffHand = 1
-		elseif AutoGearIsInvTypeRanged(info.invType) then
+		elseif TyGearIsInvTypeRanged(info.invType) then
 			info.isRangedWeapon = 1
-		elseif AutoGearIsInvTypeRelic(info.invType) then
+		elseif TyGearIsInvTypeRelic(info.invType) then
 			info.isRelic = 1
 		end
 		if info.classID == Enum.ItemClass.Quiver then
 			info.isAmmoBag = 1
 		end
-		info.validGearSlots = AutoGearGetValidGearSlots(info)
+		info.validGearSlots = TyGearGetValidGearSlots(info)
 		info.numValidGearSlots = 0
 		if not info.validGearSlots then
 			info.unusable = 1
@@ -4213,7 +4225,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 		end
 	end
 
-	local numLines = tooltipData and #tooltipData.lines or AutoGearTooltip:NumLines()
+	local numLines = tooltipData and #tooltipData.lines or TyGearTooltip:NumLines()
 	local textLeft, textRight
 	--disabled set bonuses used to be grey but turned red in Midnight, leading to needing this detection to prevent falsely detecting items with disabled set bonuses as unusable
 	--the item set section starts at its header line and comes after the item's own requirements; red text there (like an inactive set bonus's "Requires level 80 or below") is about the set, not about using the item
@@ -4225,7 +4237,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 			textLeft = tooltipData.lines[i].leftText
 			textLeftText = textLeft
 		else
-			textLeft = _G["AutoGearTooltipTextLeft"..i]
+			textLeft = _G["TyGearTooltipTextLeft"..i]
 		end
 		if textLeft then
 			local r, g, b
@@ -4250,10 +4262,10 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 			if i==1 then
 				info.name = textLeftText
 				if info.name == "Retrieving item information" or not info.item:IsItemDataCached() then
-					if not AutoGearSomeItemDataIsMissing then
-						AutoGearSomeItemDataIsMissing = 1
-						AutoGearPrint("AutoGear: An item was not yet ready on the client side when updating AutoGear's local item info, so updating AutoGear's table of equipped items again.",3)
-						AutoGearQueueLocalUpdate()
+					if not TyGearSomeItemDataIsMissing then
+						TyGearSomeItemDataIsMissing = 1
+						TyGearPrint("TyGear: An item was not yet ready on the client side when updating TyGear's local item info, so updating TyGear's table of equipped items again.",3)
+						TyGearQueueLocalUpdate()
 					end
 					info.unusable = 1
 					info.reason = "(this item's tooltip is not yet available)"
@@ -4261,7 +4273,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 			end
 			if (i==2 or i==3) then
 				-- local currentItem = GameTooltip:GetItem()
-				-- if currentItem and info.id == Item:CreateFromItemLink(currentItem):GetItemID() then AutoGearPrint(text,3) end
+				-- if currentItem and info.id == Item:CreateFromItemLink(currentItem):GetItemID() then TyGearPrint(text,3) end
 				if string.find(textLeftText, ITEM_BIND_ON_EQUIP) or
 				string.find(textLeftText, ITEM_BIND_ON_USE) then
 					info.boe = 1
@@ -4286,7 +4298,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 					info.uniqueType = uniqueType
 					info.numEquippable = tonumber(numEquippable)
 				end
-				AutoGearPrint("AutoGear: uniqueType, numEquippable in \""..textLeftText.."\": \""..tostring(uniqueType).."\", "..tostring(numEquippable), 3)
+				TyGearPrint("TyGear: uniqueType, numEquippable in \""..textLeftText.."\": \""..tostring(uniqueType).."\", "..tostring(numEquippable), 3)
 			end
 			local multiplier = 1.0
 			if string.find(text, "chance to") and not string.find(text, "improves") then multiplier = multiplier/3.0 end
@@ -4295,14 +4307,14 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 			if r < 0.8 and g < 0.8 and b < 0.8 and string.find(text, "set:") then multiplier = 0 end
 			-- note: these proc checks may not be correct for all cases
 			if string.find(text, "chance") or string.find(text, "use:") then
-				if string.find(text, "deal damage") then multiplier = multiplier * (AutoGearCurrentWeighting.DamageProc or 0) end
-				if string.find(text, "damage and healing") then multiplier = multiplier * math.max((AutoGearCurrentWeighting.HealingProc or 0), (AutoGearCurrentWeighting.DamageProc or 0))
-				elseif string.find(text, "healing spells") then multiplier = multiplier * (AutoGearCurrentWeighting.HealingProc or 0)
-				elseif string.find(text, "damage spells") then multiplier = multiplier * (AutoGearCurrentWeighting.DamageSpellProc or 0)
+				if string.find(text, "deal damage") then multiplier = multiplier * (TyGearCurrentWeighting.DamageProc or 0) end
+				if string.find(text, "damage and healing") then multiplier = multiplier * math.max((TyGearCurrentWeighting.HealingProc or 0), (TyGearCurrentWeighting.DamageProc or 0))
+				elseif string.find(text, "healing spells") then multiplier = multiplier * (TyGearCurrentWeighting.HealingProc or 0)
+				elseif string.find(text, "damage spells") then multiplier = multiplier * (TyGearCurrentWeighting.DamageSpellProc or 0)
 				end
-				if string.find(text, "melee and ranged") then multiplier = multiplier * math.max((AutoGearCurrentWeighting.MeleeProc or 0), (AutoGearCurrentWeighting.RangedProc or 0))
-				elseif string.find(text, "melee attacks") then multiplier = multiplier * (AutoGearCurrentWeighting.MeleeProc or 0)
-				elseif string.find(text, "ranged attacks") then multiplier = multiplier * (AutoGearCurrentWeighting.RangedProc or 0)
+				if string.find(text, "melee and ranged") then multiplier = multiplier * math.max((TyGearCurrentWeighting.MeleeProc or 0), (TyGearCurrentWeighting.RangedProc or 0))
+				elseif string.find(text, "melee attacks") then multiplier = multiplier * (TyGearCurrentWeighting.MeleeProc or 0)
+				elseif string.find(text, "ranged attacks") then multiplier = multiplier * (TyGearCurrentWeighting.RangedProc or 0)
 				end
 			end
 			local value = tonumber(string.match(text, "-?[0-9]+%.?[0-9]*")) or 0
@@ -4417,7 +4429,7 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 				textRight = tooltipData.lines[i].rightText or tooltipData.lines[i].textRight
 				textRightText = textRight
 			else
-				textRight = _G["AutoGearTooltipTextRight"..i]
+				textRight = _G["TyGearTooltipTextRight"..i]
 			end
 			if textRight then
 				local r, g, b
@@ -4554,15 +4566,15 @@ function AutoGearReadItemInfo(inventoryID, lootRollID, container, slot, questRew
 	end
 
 	--caching did not show a performance benefit, so commented this out
-	-- if not AutoGearIsItemDataMissing then
-	-- 	AutoGearItemInfoCache[info.linkHash] = info
+	-- if not TyGearIsItemDataMissing then
+	-- 	TyGearItemInfoCache[info.linkHash] = info
 	-- end
 
 	return info
 end
 
-function AutoGearGetPawnScales()
-	AutoGearPawnScales = {
+function TyGearGetPawnScales()
+	TyGearPawnScales = {
 		{
 			["label"] = "Visible",
 			["subLabels"] = {}
@@ -4572,25 +4584,25 @@ function AutoGearGetPawnScales()
 			["subLabels"] = {}
 		}
 	}
-	AutoGearPawnScalesFromPawn = PawnGetAllScalesEx()
-	for _, v in ipairs(AutoGearPawnScalesFromPawn) do
+	TyGearPawnScalesFromPawn = PawnGetAllScalesEx()
+	for _, v in ipairs(TyGearPawnScalesFromPawn) do
 		if v["IsVisible"] then
-			table.insert(AutoGearPawnScales[1]["subLabels"], v["LocalizedName"] or v["Name"])
+			table.insert(TyGearPawnScales[1]["subLabels"], v["LocalizedName"] or v["Name"])
 		else
-			table.insert(AutoGearPawnScales[2]["subLabels"], v["LocalizedName"] or v["Name"])
+			table.insert(TyGearPawnScales[2]["subLabels"], v["LocalizedName"] or v["Name"])
 		end
 	end
-	return AutoGearPawnScales
+	return TyGearPawnScales
 end
 
-function AutoGearGetPawnScaleName(scaleNameToFind)
-	local realLocalizedClass, realClass, realSpec, realClassID = AutoGearDetectClassAndSpec()
-	local overrideLocalizedClass, overrideClass, overrideSpec, overrideClassID = AutoGearGetClassAndSpec()
+function TyGearGetPawnScaleName(scaleNameToFind)
+	local realLocalizedClass, realClass, realSpec, realClassID = TyGearDetectClassAndSpec()
+	local overrideLocalizedClass, overrideClass, overrideSpec, overrideClassID = TyGearGetClassAndSpec()
 
 	-- Try to find the selected Pawn scale
-	if AutoGearDB.OverridePawnScale and AutoGearDB.PawnScale then
-		if not AutoGearPawnScales then AutoGearGetPawnScales() end
-		scaleNameToFind = scaleNameToFind or AutoGearDB.PawnScale
+	if TyGearDB.OverridePawnScale and TyGearDB.PawnScale then
+		if not TyGearPawnScales then TyGearGetPawnScales() end
+		scaleNameToFind = scaleNameToFind or TyGearDB.PawnScale
 		for trueScaleName, scale in pairs(PawnCommon.Scales) do
 			if ((scaleNameToFind == trueScaleName)
 			or (scale.LocalizedName
@@ -4602,24 +4614,24 @@ function AutoGearGetPawnScaleName(scaleNameToFind)
 		end
 	end
 
-	if AutoGearDB.Override then
+	if TyGearDB.Override then
 
-		-- Try to find a visible scale with name matching the full AutoGearDB.OverrideSpec string (example: "Paladin: Protection")
+		-- Try to find a visible scale with name matching the full TyGearDB.OverrideSpec string (example: "Paladin: Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
 			if PawnIsScaleVisible(scaleName)
-			and AutoGearDB.OverrideSpec
-			and AutoGearDB.OverrideSpec == scaleName
+			and TyGearDB.OverrideSpec
+			and TyGearDB.OverrideSpec == scaleName
 			and scale.Values
 			and next(scale.Values) then
 				return scaleName, scale.LocalizedName
 			end
 		end
 
-		-- Try to find a visible scale with localized name matching the full AutoGearDB.OverrideSpec string (example: "Paladin: Protection")
+		-- Try to find a visible scale with localized name matching the full TyGearDB.OverrideSpec string (example: "Paladin: Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
 			if PawnIsScaleVisible(scaleName)
-			and AutoGearDB.OverrideSpec
-			and AutoGearDB.OverrideSpec == scale.LocalizedName
+			and TyGearDB.OverrideSpec
+			and TyGearDB.OverrideSpec == scale.LocalizedName
 			and scale.Values
 			and next(scale.Values) then
 				return scaleName, scale.LocalizedName
@@ -4629,7 +4641,7 @@ function AutoGearGetPawnScaleName(scaleNameToFind)
 		-- Try to find a visible scale with class ID matching the override class ID and override spec name found in the localized scale name (example: "Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
 			if PawnIsScaleVisible(scaleName)
-			and AutoGearDB.OverrideSpec
+			and TyGearDB.OverrideSpec
 			and overrideClassID == scale.ClassID
 			and scale.LocalizedName
 			and string.find(scale.LocalizedName, overrideSpec)
@@ -4658,20 +4670,20 @@ function AutoGearGetPawnScaleName(scaleNameToFind)
 			end
 		end
 
-		-- Try to find any scale matching the full AutoGearDB.OverrideSpec string (example: "Paladin: Protection")
+		-- Try to find any scale matching the full TyGearDB.OverrideSpec string (example: "Paladin: Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
-			if AutoGearDB.OverrideSpec
-			and AutoGearDB.OverrideSpec == scaleName
+			if TyGearDB.OverrideSpec
+			and TyGearDB.OverrideSpec == scaleName
 			and scale.Values
 			and next(scale.Values) then
 				return scaleName, scale.LocalizedName
 			end
 		end
 
-		-- Try to find any scale with localized name matching the full AutoGearDB.OverrideSpec string (example: "Paladin: Protection")
+		-- Try to find any scale with localized name matching the full TyGearDB.OverrideSpec string (example: "Paladin: Protection")
 		for scaleName, scale in pairs(PawnCommon.Scales) do
-			if AutoGearDB.OverrideSpec
-			and AutoGearDB.OverrideSpec == scale.LocalizedName
+			if TyGearDB.OverrideSpec
+			and TyGearDB.OverrideSpec == scale.LocalizedName
 			and scale.Values
 			and next(scale.Values) then
 				return scaleName, scale.LocalizedName
@@ -4863,14 +4875,14 @@ function AutoGearGetPawnScaleName(scaleNameToFind)
 	end
 end
 
-function AutoGearGetWeaponType(itemClassID, itemSubClassID)
+function TyGearGetWeaponType(itemClassID, itemSubClassID)
 	--ask WoW what type of weapon it is
 	if (itemClassID == Enum.ItemClass.Weapon) or ((itemClassID == Enum.ItemClass.Armor) and (itemSubClassID == Enum.ItemArmorSubclass.Shield)) then
 		return itemSubClassID
 	end
 end
 
-function AutoGearDetermineItemScore(info)
+function TyGearDetermineItemScore(info)
 	if info.empty then return 0 end
 	if info.isMount and (not info.alreadyKnown) then
 		return math.huge
@@ -4885,10 +4897,10 @@ function AutoGearDetermineItemScore(info)
 		return info.numBagSlots + (info.ammoBagRangedAttackSpeed and info.ammoBagRangedAttackSpeed or 0)
 	end
 
-	if AutoGearDB.UsePawn and PawnIsReady and PawnIsReady() then
+	if TyGearDB.UsePawn and PawnIsReady and PawnIsReady() then
 		local pawnItemData = PawnGetItemData(info.link)
 		if pawnItemData then
-			local score = PawnGetSingleValueFromItem(pawnItemData, AutoGearGetPawnScaleName())
+			local score = PawnGetSingleValueFromItem(pawnItemData, TyGearGetPawnScaleName())
 			if score == 0 then
 				return E
 			else
@@ -4897,44 +4909,44 @@ function AutoGearDetermineItemScore(info)
 		end
 	end
 
-	-- This error trap sucks, but execution can reach here with no AutoGearCurrentWeighting and I don't know how
-	if (not AutoGearCurrentWeighting) then
-		AutoGearSetStatWeights()
-		if (not AutoGearCurrentWeighting) then return 0 end
+	-- This error trap sucks, but execution can reach here with no TyGearCurrentWeighting and I don't know how
+	if (not TyGearCurrentWeighting) then
+		TyGearSetStatWeights()
+		if (not TyGearCurrentWeighting) then return 0 end
 	end
 
-	local score = (AutoGearCurrentWeighting.Strength or 0) * (info.Strength or 0) +
-		(AutoGearCurrentWeighting.Agility or 0) * (info.Agility or 0) +
-		(AutoGearCurrentWeighting.Stamina or 0) * (info.Stamina or 0) +
-		(AutoGearCurrentWeighting.Intellect or 0) * (info.Intellect or 0) +
-		(AutoGearCurrentWeighting.Spirit or 0) * (info.Spirit or 0) +
-		(AutoGearCurrentWeighting.Armor or 0) * (info.Armor or 0) +
-		(AutoGearCurrentWeighting.Dodge or 0) * (info.Dodge or 0) +
-		(AutoGearCurrentWeighting.Parry or 0) * (info.Parry or 0) +
-		(AutoGearCurrentWeighting.Block or 0) * (info.Block or 0) +
-		(AutoGearCurrentWeighting.Defense or 0) * (info.Defense or 0) +
-		(AutoGearCurrentWeighting.SpellPower or 0) * (info.SpellPower or 0) +
-		(AutoGearCurrentWeighting.SpellPenetration or 0) * (info.SpellPenetration or 0) +
-		(AutoGearCurrentWeighting.Haste or 0) * (info.Haste or 0) +
-		(AutoGearCurrentWeighting.Mp5 or 0) * (info.Mp5 or 0) +
-		(AutoGearCurrentWeighting.AttackPower or 0) * (info.AttackPower or 0) +
-		(AutoGearCurrentWeighting.ArmorPenetration or 0) * (info.ArmorPenetration or 0) +
-		(AutoGearCurrentWeighting.Crit or 0) * (info.Crit or 0) +
-		(AutoGearCurrentWeighting.SpellCrit or 0) * (info.SpellCrit or 0) +
-		(AutoGearCurrentWeighting.Hit or 0) * (info.Hit or 0) +
-		(AutoGearCurrentWeighting.SpellHit or 0) * (info.SpellHit or 0) +
-		(AutoGearCurrentWeighting.Expertise or 0) * (info.Expertise or 0) +
-		(AutoGearCurrentWeighting.RedSockets or 0) * (info.RedSockets or 0) +
-		(AutoGearCurrentWeighting.YellowSockets or 0) * (info.YellowSockets or 0) +
-		(AutoGearCurrentWeighting.BlueSockets or 0) * (info.BlueSockets or 0) +
-		(AutoGearCurrentWeighting.MetaSockets or 0) * (info.MetaSockets or 0) +
-		(AutoGearCurrentWeighting.Mastery or 0) * (info.Mastery or 0) +
-		(AutoGearCurrentWeighting.Multistrike or 0) * (info.Multistrike or 0) +
-		(AutoGearCurrentWeighting.Versatility or 0) * (info.Versatility or 0) +
-		(AutoGearCurrentWeighting.DPS or 0) * (info.DPS or 0) +
-		(AutoGearCurrentWeighting.Damage or 0) * (info.Damage or 0) +
+	local score = (TyGearCurrentWeighting.Strength or 0) * (info.Strength or 0) +
+		(TyGearCurrentWeighting.Agility or 0) * (info.Agility or 0) +
+		(TyGearCurrentWeighting.Stamina or 0) * (info.Stamina or 0) +
+		(TyGearCurrentWeighting.Intellect or 0) * (info.Intellect or 0) +
+		(TyGearCurrentWeighting.Spirit or 0) * (info.Spirit or 0) +
+		(TyGearCurrentWeighting.Armor or 0) * (info.Armor or 0) +
+		(TyGearCurrentWeighting.Dodge or 0) * (info.Dodge or 0) +
+		(TyGearCurrentWeighting.Parry or 0) * (info.Parry or 0) +
+		(TyGearCurrentWeighting.Block or 0) * (info.Block or 0) +
+		(TyGearCurrentWeighting.Defense or 0) * (info.Defense or 0) +
+		(TyGearCurrentWeighting.SpellPower or 0) * (info.SpellPower or 0) +
+		(TyGearCurrentWeighting.SpellPenetration or 0) * (info.SpellPenetration or 0) +
+		(TyGearCurrentWeighting.Haste or 0) * (info.Haste or 0) +
+		(TyGearCurrentWeighting.Mp5 or 0) * (info.Mp5 or 0) +
+		(TyGearCurrentWeighting.AttackPower or 0) * (info.AttackPower or 0) +
+		(TyGearCurrentWeighting.ArmorPenetration or 0) * (info.ArmorPenetration or 0) +
+		(TyGearCurrentWeighting.Crit or 0) * (info.Crit or 0) +
+		(TyGearCurrentWeighting.SpellCrit or 0) * (info.SpellCrit or 0) +
+		(TyGearCurrentWeighting.Hit or 0) * (info.Hit or 0) +
+		(TyGearCurrentWeighting.SpellHit or 0) * (info.SpellHit or 0) +
+		(TyGearCurrentWeighting.Expertise or 0) * (info.Expertise or 0) +
+		(TyGearCurrentWeighting.RedSockets or 0) * (info.RedSockets or 0) +
+		(TyGearCurrentWeighting.YellowSockets or 0) * (info.YellowSockets or 0) +
+		(TyGearCurrentWeighting.BlueSockets or 0) * (info.BlueSockets or 0) +
+		(TyGearCurrentWeighting.MetaSockets or 0) * (info.MetaSockets or 0) +
+		(TyGearCurrentWeighting.Mastery or 0) * (info.Mastery or 0) +
+		(TyGearCurrentWeighting.Multistrike or 0) * (info.Multistrike or 0) +
+		(TyGearCurrentWeighting.Versatility or 0) * (info.Versatility or 0) +
+		(TyGearCurrentWeighting.DPS or 0) * (info.DPS or 0) +
+		(TyGearCurrentWeighting.Damage or 0) * (info.Damage or 0) +
 		((UnitLevel("player") < maxPlayerLevel and not (IsXPUserDisabled and IsXPUserDisabled())) and
-		(AutoGearCurrentWeighting.ExperienceGained or 0) * (info.ExperienceGained or 0) or 0)
+		(TyGearCurrentWeighting.ExperienceGained or 0) * (info.ExperienceGained or 0) or 0)
 	if score == 0 then
 		return E
 	else
@@ -4942,7 +4954,7 @@ function AutoGearDetermineItemScore(info)
 	end
 end
 
-function AutoGearIsMountItemAlreadyCollected(itemID)
+function TyGearIsMountItemAlreadyCollected(itemID)
 	local mountSpellID = select(2,GetItemSpell(itemID))
 	if GetItemCount(itemID, true) > 0 or
 	(mountSpellID and IsPlayerSpell(mountSpellID)) or
@@ -4960,7 +4972,7 @@ function AutoGearIsMountItemAlreadyCollected(itemID)
 	end
 end
 
-function AutoGearGetAllBagsNumFreeSlots()
+function TyGearGetAllBagsNumFreeSlots()
 	local slotCount = 0
 	for i = 0, NUM_BAG_SLOTS do
 		local freeSlots, bagType = GetContainerNumFreeSlots(i)
@@ -4971,7 +4983,7 @@ function AutoGearGetAllBagsNumFreeSlots()
 	return slotCount
 end
 
-function AutoGearPutItemInEmptyBagSlot()
+function TyGearPutItemInEmptyBagSlot()
 	if GetContainerNumFreeSlots(BACKPACK_CONTAINER) > 0 then PutItemInBackpack() end
 	for i = 1, NUM_BAG_SLOTS do
 		local freeSlots, bagType = GetContainerNumFreeSlots(i)
@@ -4981,32 +4993,32 @@ function AutoGearPutItemInEmptyBagSlot()
 	end
 end
 
-function AutoGearScan()
-	AutoGearSetStatWeights()
-	if (not AutoGearCurrentWeighting) then
-		local localizedClass, class, spec = AutoGearGetClassAndSpec()
-		AutoGearPrint("AutoGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
+function TyGearScan()
+	TyGearSetStatWeights()
+	if (not TyGearCurrentWeighting) then
+		local localizedClass, class, spec = TyGearGetClassAndSpec()
+		TyGearPrint("TyGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
 		return
 	end
-	AutoGearPrint("AutoGear: Scanning bags for upgrades.", 2)
-	if (not AutoGearConsiderAllItems()) then
-		AutoGearPrint("AutoGear: Nothing better was found", 1)
+	TyGearPrint("TyGear: Scanning bags for upgrades.", 2)
+	if (not TyGearConsiderAllItems()) then
+		TyGearPrint("TyGear: Nothing better was found", 1)
 	end
 end
 
---[[ AutoGearRecursivePrint(struct, [limit], [indent])   Recursively print arbitrary data.
+--[[ TyGearRecursivePrint(struct, [limit], [indent])   Recursively print arbitrary data.
 	Set limit (default 100) to stanch infinite loops.
 	Indents tables as [KEY] VALUE, nested tables as [KEY] [KEY]...[KEY] VALUE
 	Set indent ("") to prefix each line:    Mytable [KEY] [KEY]...[KEY] VALUE
 --]]
-function AutoGearRecursivePrint(s, l, i) -- recursive Print (structure, limit, indent)
+function TyGearRecursivePrint(s, l, i) -- recursive Print (structure, limit, indent)
 	l = (l) or 100; i = i or ""	-- default item limit, indent string
 	if (l<1) then print "ERROR: Item limit reached."; return l-1 end;
 	local ts = type(s);
 	if (ts ~= "table") then print (i,ts,s); return l-1 end
 	print (i,ts);           -- print "table"
 	for k,v in pairs(s) do  -- print "[KEY] VALUE"
-		l = AutoGearRecursivePrint(v, l, i.."["..tostring(k).."]");
+		l = TyGearRecursivePrint(v, l, i.."["..tostring(k).."]");
 		if (l < 0) then break end
 	end
 	return l
@@ -5025,70 +5037,70 @@ local function localDump(o)
 	end
 end
 
-function AutoGearDump(o)
-	AutoGearPrint(localDump(o))
+function TyGearDump(o)
+	TyGearPrint(localDump(o))
 end
 
-function AutoGearGetTooltipScoreComparisonInfo(info, equipped)
+function TyGearGetTooltipScoreComparisonInfo(info, equipped)
 	local lowestScoringValidGearSlot
-	local lowestScoringValidGearSlotScore = AutoGearDetermineItemScore(info)
+	local lowestScoringValidGearSlotScore = TyGearDetermineItemScore(info)
 	local lowestScoringValidGearInfo = info
 	local equippedSetScore = 0
 	for i=1,(info.numValidGearSlots or 0) do
-		equippedSetScore = equippedSetScore + (AutoGearEquippedItems[info.validGearSlots[i]].score or 0)
+		equippedSetScore = equippedSetScore + (TyGearEquippedItems[info.validGearSlots[i]].score or 0)
 	end
 	if info.is2hWeapon and (not (CanDualWield() and IsPlayerSpell(46917))) then
-		local mainHandInfo = AutoGearReadItemInfo(INVSLOT_MAINHAND)
-		local mainHandScore = AutoGearDetermineItemScore(mainHandInfo)
-		local offHandScore = AutoGearDetermineItemScore(AutoGearReadItemInfo(INVSLOT_OFFHAND))
+		local mainHandInfo = TyGearReadItemInfo(INVSLOT_MAINHAND)
+		local mainHandScore = TyGearDetermineItemScore(mainHandInfo)
+		local offHandScore = TyGearDetermineItemScore(TyGearReadItemInfo(INVSLOT_OFFHAND))
 		local oneHandedWeaponsScore = mainHandScore + offHandScore
 		lowestScoringValidGearInfo = mainHandInfo
 		lowestScoringValidGearSlot = INVSLOT_MAINHAND
 		lowestScoringValidGearSlotScore = oneHandedWeaponsScore
 		equippedSetScore = oneHandedWeaponsScore
 	elseif info.is1hWeaponOrOffHand
-	and AutoGearIsTwoHandEquipped() then
-		lowestScoringValidGearInfo = AutoGearReadItemInfo(INVSLOT_MAINHAND)
+	and TyGearIsTwoHandEquipped() then
+		lowestScoringValidGearInfo = TyGearReadItemInfo(INVSLOT_MAINHAND)
 		lowestScoringValidGearSlot = INVSLOT_MAINHAND
-		lowestScoringValidGearSlotScore = AutoGearDetermineItemScore(lowestScoringValidGearInfo)
+		lowestScoringValidGearSlotScore = TyGearDetermineItemScore(lowestScoringValidGearInfo)
 		equippedSetScore = lowestScoringValidGearSlotScore
 	else
 		if info.validGearSlots then
 			local firstValidGearSlot = info.validGearSlots[1]
 			lowestScoringValidGearSlot = firstValidGearSlot
-			lowestScoringValidGearSlotScore = AutoGearEquippedItems[firstValidGearSlot].score
-			lowestScoringValidGearInfo = AutoGearEquippedItems[firstValidGearSlot].info
+			lowestScoringValidGearSlotScore = TyGearEquippedItems[firstValidGearSlot].score
+			lowestScoringValidGearInfo = TyGearEquippedItems[firstValidGearSlot].info
 			for _, gearSlot in ipairs(info.validGearSlots) do
 				local skipThisSlot = false
 				for _, otherGearSlot in pairs(info.validGearSlots) do
 					if gearSlot ~= otherGearSlot then
-						if not AutoGearIsGearPairEquippableTogether(info, AutoGearEquippedItems[otherGearSlot].info) then
+						if not TyGearIsGearPairEquippableTogether(info, TyGearEquippedItems[otherGearSlot].info) then
 							skipThisSlot = true
 						end
 					end
 				end
 				if (not skipThisSlot) and
-				(AutoGearEquippedItems[gearSlot].info.empty or
-				(AutoGearEquippedItems[gearSlot].score <= lowestScoringValidGearSlotScore)) then
-					lowestScoringValidGearInfo = AutoGearEquippedItems[gearSlot].info
+				(TyGearEquippedItems[gearSlot].info.empty or
+				(TyGearEquippedItems[gearSlot].score <= lowestScoringValidGearSlotScore)) then
+					lowestScoringValidGearInfo = TyGearEquippedItems[gearSlot].info
 					lowestScoringValidGearSlot = gearSlot
-					lowestScoringValidGearSlotScore = AutoGearEquippedItems[gearSlot].score
+					lowestScoringValidGearSlotScore = TyGearEquippedItems[gearSlot].score
 				end
 			end
 		end
 		if info.is1hWeaponOrOffHand and not equipped then
-			equippedSetScore = AutoGearEquippedItems[INVSLOT_MAINHAND].score + AutoGearEquippedItems[INVSLOT_OFFHAND].score
+			equippedSetScore = TyGearEquippedItems[INVSLOT_MAINHAND].score + TyGearEquippedItems[INVSLOT_OFFHAND].score
 		end
 	end
 	return lowestScoringValidGearInfo, lowestScoringValidGearSlotScore, lowestScoringValidGearSlot, equippedSetScore
 end
 
-function AutoGearGetOppositeHandSlot(invSlot)
+function TyGearGetOppositeHandSlot(invSlot)
 	if (invSlot ~= INVSLOT_MAINHAND) and (invSlot ~= INVSLOT_OFFHAND) then return end
 	return (invSlot == INVSLOT_MAINHAND and INVSLOT_OFFHAND or INVSLOT_MAINHAND)
 end
 
-function AutoGearIsGearPairEquippableTogether(a, b)
+function TyGearIsGearPairEquippableTogether(a, b)
 	if (not a) or (not b) or a.empty or b.empty then return 1 end
 	if (not a.validGearSlots)
 	or (not b.validGearSlots)
@@ -5105,7 +5117,7 @@ function AutoGearIsGearPairEquippableTogether(a, b)
 	or ((weapons == "weapon and shield")
 	and (a.subclassID ~= Enum.ItemArmorSubclass.Shield)
 	and (b.subclassID ~= Enum.ItemArmorSubclass.Shield))) then
-		-- AutoGearPrint("AG: "..a.link.." ("..(a.guid or "missing guid")..") and "..b.link.." ("..(b.guid or "missing guid")..") are not equippable together", 3)
+		-- TyGearPrint("AG: "..a.link.." ("..(a.guid or "missing guid")..") and "..b.link.." ("..(b.guid or "missing guid")..") are not equippable together", 3)
 		return
 	end
 	for _, firstSlot in pairs(a.validGearSlots) do
@@ -5118,16 +5130,16 @@ function AutoGearIsGearPairEquippableTogether(a, b)
 			and ((secondSlot == INVSLOT_MAINHAND)
 			or (secondSlot == INVSLOT_OFFHAND))))
 			then
-				-- AutoGearPrint("AG: "..a.link.." ("..(a.guid or "missing guid")..") and "..b.link.." ("..(b.guid or "missing guid")..") are equippable together", 3)
+				-- TyGearPrint("AG: "..a.link.." ("..(a.guid or "missing guid")..") and "..b.link.." ("..(b.guid or "missing guid")..") are equippable together", 3)
 				return 1
 			end
 		end
 	end
 end
 
-function AutoGearGetBestSetItems(info)
-	if not AutoGearBestItems then AutoGearUpdateBestItems() end
-	local setSlots = AutoGearGetSetSlots(info)
+function TyGearGetBestSetItems(info)
+	if not TyGearBestItems then TyGearUpdateBestItems() end
+	local setSlots = TyGearGetSetSlots(info)
 	local bestSetScore = 0
 	local bestSet = {}
 	local lowestBestItemIndex = 0
@@ -5136,10 +5148,10 @@ function AutoGearGetBestSetItems(info)
 	local thisIsABestItem
 	if setSlots then
 		for i,slot in ipairs(setSlots) do
-			if (not AutoGearBestItems) or (not AutoGearBestItems[slot]) or (AutoGearBestItems[slot].info and AutoGearBestItems[slot].info.empty) then
+			if (not TyGearBestItems) or (not TyGearBestItems[slot]) or (TyGearBestItems[slot].info and TyGearBestItems[slot].info.empty) then
 				return bestSet, bestSetScore, 1, lowestBestItemScore
 			end
-			local bestInfo = AutoGearBestItems[slot].info
+			local bestInfo = TyGearBestItems[slot].info
 			if bestInfo and (
 				(
 					bestInfo.link
@@ -5153,8 +5165,8 @@ function AutoGearGetBestSetItems(info)
 				thisIsABestItem = 1
 			end
 			if bestInfo
-			and AutoGearIsGearPairEquippableTogether(info, bestInfo) then
-				bestItem = AutoGearBestItems[slot]
+			and TyGearIsGearPairEquippableTogether(info, bestInfo) then
+				bestItem = TyGearBestItems[slot]
 				if lowestBestItemScore == 0
 				or bestItem.score < lowestBestItemScore then
 					lowestBestItemIndex = i
@@ -5173,7 +5185,7 @@ function AutoGearGetBestSetItems(info)
 	return bestSet, bestSetScore, thisIsABestItem, lowestBestItemScore
 end
 
-function AutoGearDetectHoveredItemGUID()
+function TyGearDetectHoveredItemGUID()
 	local focus = GetMouseFocus()
 	if (not focus) or (focus:GetObjectType() ~= "Button") then return end
 	local focusParent = focus.GetParent and focus:GetParent()
@@ -5195,15 +5207,15 @@ function AutoGearDetectHoveredItemGUID()
 	end
 end
 
-function AutoGearGetEquippedSlotFromItemGUID(guid)
+function TyGearGetEquippedSlotFromItemGUID(guid)
 	if not guid then return end
-	for slot,item in pairs(AutoGearEquippedItems) do
+	for slot,item in pairs(TyGearEquippedItems) do
 		if (item.info.guid == guid) and item.equipped then return slot end
 	end
 end
 
-function AutoGearTooltipHook(tooltip, tooltipData)
-	if (not AutoGearDB.ScoreInTooltips) then return end
+function TyGearTooltipHook(tooltip, tooltipData)
+	if (not TyGearDB.ScoreInTooltips) then return end
 	local tooltipName = tooltip:GetName()
 	if (not (
 		tooltipName=="GameTooltip"
@@ -5214,31 +5226,31 @@ function AutoGearTooltipHook(tooltip, tooltipData)
 	)) then
 		return
 	end
-	if (not AutoGearCurrentWeighting) then AutoGearSetStatWeights() end
+	if (not TyGearCurrentWeighting) then TyGearSetStatWeights() end
 	local isAComparisonTooltip = (tooltipName ~= "GameTooltip") and (tooltipName ~= "AtlasLootTooltip")
 	local name, link, equipped, guid
 	if tooltip.GetPrimaryTooltipData or tooltip.GetTooltipData then
 		if not tooltipData then
 			tooltipData = tooltip.GetPrimaryTooltipData and tooltip:GetPrimaryTooltipData() or (tooltip.GetTooltipData and tooltip:GetTooltipData())
 		end
-		if not tooltipData then tooltip:AddDoubleLine("AutoGear error:", "no tooltip data") return end
-		guid = tooltipData.guid or ((not isAComparisonTooltip) and AutoGearDetectHoveredItemGUID())
+		if not tooltipData then tooltip:AddDoubleLine("TyGear error:", "no tooltip data") return end
+		guid = tooltipData.guid or ((not isAComparisonTooltip) and TyGearDetectHoveredItemGUID())
 		name = tooltipData.lines[1].leftText
 		link = tooltipData.hyperlink or (guid and C_Item.GetItemLinkByGUID(guid))
-		equipped = guid and AutoGearGetEquippedSlotFromItemGUID(guid)
+		equipped = guid and TyGearGetEquippedSlotFromItemGUID(guid)
 	elseif tooltip.GetItem then
 		name, link = tooltip:GetItem()
-		guid = (not isAComparisonTooltip) and AutoGearDetectHoveredItemGUID()
-		equipped = tooltip.IsEquippedItem and tooltip:IsEquippedItem(tooltip) or (guid and AutoGearGetEquippedSlotFromItemGUID(guid))
+		guid = (not isAComparisonTooltip) and TyGearDetectHoveredItemGUID()
+		equipped = tooltip.IsEquippedItem and tooltip:IsEquippedItem(tooltip) or (guid and TyGearGetEquippedSlotFromItemGUID(guid))
 	end
 	if not link then
 		if not guid then
-			tooltip:AddDoubleLine("AutoGear tooltip error:", "no item link or GUID")
+			tooltip:AddDoubleLine("TyGear tooltip error:", "no item link or GUID")
 		end
-		AutoGearPrint("AutoGear: No item link for "..(name or "(no name)").." on "..tooltipName,3)
+		TyGearPrint("TyGear: No item link for "..(name or "(no name)").." on "..tooltipName,3)
 		return
 	end
-	local info = AutoGearReadItemInfo(nil,nil,nil,nil,nil,link,tooltipData)
+	local info = TyGearReadItemInfo(nil,nil,nil,nil,nil,link,tooltipData)
 
 	if (not isAComparisonTooltip) and (not info.guid) then
 		info.guid = guid
@@ -5246,8 +5258,8 @@ function AutoGearTooltipHook(tooltip, tooltipData)
 	local pawnScaleName
 	local pawnScaleLocalizedName
 	local pawnScaleColor
-	if AutoGearDB.UsePawn and PawnIsReady and PawnIsReady() then
-		pawnScaleName, pawnScaleLocalizedName = AutoGearGetPawnScaleName()
+	if TyGearDB.UsePawn and PawnIsReady and PawnIsReady() then
+		pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
 		pawnScaleColor = PawnGetScaleColor(pawnScaleName)
 	end
 	local lowestScoringEquippedItemInfo
@@ -5263,12 +5275,12 @@ function AutoGearTooltipHook(tooltip, tooltipData)
 		local shouldShowBestSet = ((info.is1hWeaponOrOffHand
 		or (info.numValidGearSlots and info.numValidGearSlots > 1))
 		and (not isAComparisonTooltip))
-		score = AutoGearDetermineItemScore(info)
-		bestSet, bestSetScore = AutoGearGetBestSetItems(info)
+		score = TyGearDetermineItemScore(info)
+		bestSet, bestSetScore = TyGearGetBestSetItems(info)
 		scoreWithBestSet = score + (bestSetScore or 0)
-		lowestScoringEquippedItemInfo, lowestScoringEquippedItemScore, lowestScoringEquippedItemSlot, equippedSetScore = AutoGearGetTooltipScoreComparisonInfo(info, equipped)
+		lowestScoringEquippedItemInfo, lowestScoringEquippedItemScore, lowestScoringEquippedItemSlot, equippedSetScore = TyGearGetTooltipScoreComparisonInfo(info, equipped)
 		local isAnyComparisonTooltipVisible = ItemRefTooltip:IsVisible() or ShoppingTooltip1:IsVisible() or ShoppingTooltip2:IsVisible()
-		local shouldShowComparisonLine = (not isAComparisonTooltip and (not isAnyComparisonTooltipVisible or AutoGearDB.AlwaysShowScoreComparisons)) and not equipped
+		local shouldShowComparisonLine = (not isAComparisonTooltip and (not isAnyComparisonTooltipVisible or TyGearDB.AlwaysShowScoreComparisons)) and not equipped
 		if (scoreWithBestSet > equippedSetScore) then
 			scoreColor = GREEN_FONT_COLOR
 		elseif (scoreWithBestSet < equippedSetScore) then
@@ -5279,10 +5291,10 @@ function AutoGearTooltipHook(tooltip, tooltipData)
 		bestSetScore = math.floor(bestSetScore * 1000) / 1000
 		scoreWithBestSet = math.floor(scoreWithBestSet * 1000) / 1000
 		equippedSetScore = math.floor(equippedSetScore * 1000) / 1000
-		local scoreLinePrefix = (((pawnScaleLocalizedName or pawnScaleName) and pawnScaleColor) and "AutoGear: Pawn \""..pawnScaleColor..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"" or "AutoGear")
+		local scoreLinePrefix = (((pawnScaleLocalizedName or pawnScaleName) and pawnScaleColor) and "TyGear: Pawn \""..pawnScaleColor..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"" or "TyGear")
 		if shouldShowComparisonLine or shouldShowBestSet then
 			lowestScoringEquippedItemScore = math.floor(lowestScoringEquippedItemScore * 1000) / 1000
-			tooltip:AddDoubleLine(scoreLinePrefix.." score".." (equipped"..(((not AutoGearIsTwoHandEquipped()) and info.isWeaponOrOffHand and not info.isRangedWeapon) and " pair" or (shouldShowBestSet and " set" or "")).."):",
+			tooltip:AddDoubleLine(scoreLinePrefix.." score".." (equipped"..(((not TyGearIsTwoHandEquipped()) and info.isWeaponOrOffHand and not info.isRangedWeapon) and " pair" or (shouldShowBestSet and " set" or "")).."):",
 			equippedSetScore,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b)
@@ -5291,14 +5303,14 @@ function AutoGearTooltipHook(tooltip, tooltipData)
 		(((info.unusable == 1) and (RED_FONT_COLOR_CODE.."(won't equip) "..FONT_COLOR_CODE_CLOSE) or "")..scoreWithBestSet) or "nil",
 		HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 		scoreColor.r, scoreColor.g, scoreColor.b)
-		if (AutoGearDB.ReasonsInTooltips == true) and info.unusable then
-			tooltip:AddDoubleLine("AutoGear: won't auto-equip",
+		if (TyGearDB.ReasonsInTooltips == true) and info.unusable then
+			tooltip:AddDoubleLine("TyGear: won't auto-equip",
 			info.reason,
 			RED_FONT_COLOR.r,RED_FONT_COLOR.g,RED_FONT_COLOR.b,
 			RED_FONT_COLOR.r,RED_FONT_COLOR.g,RED_FONT_COLOR.b)
 		end
 		if shouldShowBestSet then
-			local thisScore = math.floor(AutoGearDetermineItemScore(info) * 1000) / 1000
+			local thisScore = math.floor(TyGearDetermineItemScore(info) * 1000) / 1000
 			tooltip:AddDoubleLine(scoreLinePrefix.." score (this; "..info.link.."):",
 			tostring(thisScore or 0),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
@@ -5313,55 +5325,55 @@ function AutoGearTooltipHook(tooltip, tooltipData)
 			end
 		end
 	end
-	if (AutoGearDB.DebugInfoInTooltips == true) then
+	if (TyGearDB.DebugInfoInTooltips == true) then
 		tooltip:AddDoubleLine(
-			"AutoGear: item GUID:",
+			"TyGear: item GUID:",
 			tostring(info.guid or (info.item and info.item:GetItemGUID()) or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: item ID:",
+			"TyGear: item ID:",
 			tostring(info.id or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: item level:",
+			"TyGear: item level:",
 			tostring(GetDetailedItemLevelInfo(info.link) or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: InventoryType:",
+			"TyGear: InventoryType:",
 			tostring(info.invType or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		if PawnIsReady and PawnIsReady() then
-			local pawnScaleName, pawnScaleLocalizedName = AutoGearGetPawnScaleName()
+			local pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
 			tooltip:AddDoubleLine(
-				"AutoGear: Pawn scale name:",
+				"TyGear: Pawn scale name:",
 				(pawnScaleName or "nil"),
 				HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 				HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 			)
 			tooltip:AddDoubleLine(
-				"AutoGear: Pawn scale localized name:",
+				"TyGear: Pawn scale localized name:",
 				(pawnScaleLocalizedName or "nil"),
 				HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 				HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 			)
 			local pawnItemData = PawnGetItemData(info.link)
 			tooltip:AddDoubleLine(
-				"AutoGear: Pawn value:",
+				"TyGear: Pawn value:",
 				tostring(
 					info and (
 						info.link and (
 							PawnCanItemHaveStats(info.link) and (
 								pawnItemData and (
 									PawnGetSingleValueFromItem(
-										pawnItemData,AutoGearGetPawnScaleName()
+										pawnItemData,TyGearGetPawnScaleName()
 									) or "nil Pawn value"
 								) or "nil Pawn item data"
 							) or "Pawn says item can't have stats"
@@ -5373,37 +5385,37 @@ function AutoGearTooltipHook(tooltip, tooltipData)
 			)
 		end
 		tooltip:AddDoubleLine(
-			"AutoGear: info.is1hWeaponOrOffHand:",
+			"TyGear: info.is1hWeaponOrOffHand:",
 			tostring(info.is1hWeaponOrOffHand or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: info.is2hWeapon:",
+			"TyGear: info.is2hWeapon:",
 			tostring(info.is2hWeapon or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: item class ID:",
+			"TyGear: item class ID:",
 			tostring(info.classID or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: item subclass ID:",
+			"TyGear: item subclass ID:",
 			tostring(info.subclassID or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: valid gear slots:",
+			"TyGear: valid gear slots:",
 			table.concat(info.validGearSlots or {}, ", "),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: rarity:",
+			"TyGear: rarity:",
 			tostring(info.rarity or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			info.rarityColor and info.rarityColor.r or HIGHLIGHT_FONT_COLOR.r,
@@ -5416,52 +5428,52 @@ function AutoGearTooltipHook(tooltip, tooltipData)
 			soulbindingTable[2] = "BoP"
 		end
 		tooltip:AddDoubleLine(
-			"AutoGear: soulbinding:",
+			"TyGear: soulbinding:",
 			table.concat(soulbindingTable,", "),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: lowest-scoring equipped item slot:",
+			"TyGear: lowest-scoring equipped item slot:",
 			tostring(lowestScoringEquippedItemSlot or "nil"),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: lowest-scoring equipped item:",
+			"TyGear: lowest-scoring equipped item:",
 			lowestScoringEquippedItemInfo and ((lowestScoringEquippedItemInfo.empty and "nothing") or (lowestScoringEquippedItemInfo.link or lowestScoringEquippedItemInfo.name or "nil")) or "nil",
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
 		tooltip:AddDoubleLine(
-			"AutoGear: lowest-scoring equipped item score:",
+			"TyGear: lowest-scoring equipped item score:",
 			lowestScoringEquippedItemScore or "nil",
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		)
-		-- local rollDecision = AutoGearDecideRoll(info.link)
+		-- local rollDecision = TyGearDecideRoll(info.link)
 		-- tooltip:AddDoubleLine(
-		-- 	"AutoGear: would roll:",
+		-- 	"TyGear: would roll:",
 		-- 	(rollDecision == 1 and GREEN_FONT_COLOR_CODE.."NEED" or (rollDecision == 2 and RED_FONT_COLOR_CODE.."GREED" or HIGHLIGHT_FONT_COLOR_CODE.."no roll"))..FONT_COLOR_CODE_CLOSE,
 		-- 	HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 		-- 	HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b
 		-- )
 	end
-	-- AutoGearPrint("tooltip type:"..tostring(tooltipData))
-	-- AutoGearPrint("name: "..tostring(name).."; link: "..tostring(link).."; guid: "..tostring(guid).."; equipped: "..tostring(AutoGearSlotNames and AutoGearSlotNames[equipped] or equipped))
+	-- TyGearPrint("tooltip type:"..tostring(tooltipData))
+	-- TyGearPrint("name: "..tostring(name).."; link: "..tostring(link).."; guid: "..tostring(guid).."; equipped: "..tostring(TyGearSlotNames and TyGearSlotNames[equipped] or equipped))
 end
 
 --idTip adds its own "ItemID" line to item tooltips unless it's turned off overall or for items in its settings; versions without settings don't define idTipConfig and always add it
-function AutoGearIsIdTipShowingItemIDs()
+function TyGearIsIdTipShowingItemIDs()
 	local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
 	if not isAddOnLoaded("idTip") then return false end
 	if type(idTipConfig) ~= "table" then return true end
 	return (idTipConfig.enabled ~= false) and (idTipConfig.itemEnabled ~= false)
 end
 
---show item IDs in item tooltips while the AutoGear options are open, for filling in the grey selling exclusions
-function AutoGearAddItemIDToTooltip(tooltip)
-	if (tooltip ~= GameTooltip) or (not optionsMenuParent:IsVisible()) or AutoGearIsIdTipShowingItemIDs() then return end
+--show item IDs in item tooltips while the TyGear options are open, for filling in the grey selling exclusions
+function TyGearAddItemIDToTooltip(tooltip)
+	if (tooltip ~= GameTooltip) or (not optionsMenuParent:IsVisible()) or TyGearIsIdTipShowingItemIDs() then return end
 	local _, link = tooltip:GetItem()
 	if (not link) or (issecretvalue and issecretvalue(link)) then return end
 	local itemID = string.match(link, "item:(%d+)")
@@ -5471,37 +5483,37 @@ function AutoGearAddItemIDToTooltip(tooltip)
 end
 
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and C_TooltipInfo then
-	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, AutoGearTooltipHook)
-	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, AutoGearAddItemIDToTooltip)
+	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, TyGearTooltipHook)
+	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, TyGearAddItemIDToTooltip)
 else
-	GameTooltip:HookScript("OnTooltipSetItem", AutoGearTooltipHook)
-	GameTooltip:HookScript("OnTooltipSetItem", AutoGearAddItemIDToTooltip)
-	ShoppingTooltip1:HookScript("OnTooltipSetItem", AutoGearTooltipHook)
-	ShoppingTooltip2:HookScript("OnTooltipSetItem", AutoGearTooltipHook)
-	ItemRefTooltip:HookScript("OnTooltipSetItem", AutoGearTooltipHook)
+	GameTooltip:HookScript("OnTooltipSetItem", TyGearTooltipHook)
+	GameTooltip:HookScript("OnTooltipSetItem", TyGearAddItemIDToTooltip)
+	ShoppingTooltip1:HookScript("OnTooltipSetItem", TyGearTooltipHook)
+	ShoppingTooltip2:HookScript("OnTooltipSetItem", TyGearTooltipHook)
+	ItemRefTooltip:HookScript("OnTooltipSetItem", TyGearTooltipHook)
 	if AtlasLootTooltip then
-		AtlasLootTooltip:HookScript("OnTooltipSetItem", AutoGearTooltipHook)
+		AtlasLootTooltip:HookScript("OnTooltipSetItem", TyGearTooltipHook)
 	end
 end
 
-function AutoGearQueueLocalUpdate()
+function TyGearQueueLocalUpdate()
 	--check if there's already a local update action in queue
 	local localUpdateFound = nil
-	for i, curAction in ipairs(AutoGearActionQueue) do
+	for i, curAction in ipairs(TyGearActionQueue) do
 		if curAction.t and (curAction.action == "localupdate") then
 			localUpdateFound = 1
 		end
 	end
 	if (not localUpdateFound) then
 		--no local update found, so create a new one and set it to run immediately
-		table.insert(AutoGearActionQueue, { action = "localupdate", t = 0.0 })
+		table.insert(TyGearActionQueue, { action = "localupdate", t = 0.0 })
 	end
 end
 
-function AutoGearQueueScan()
+function TyGearQueueScan()
 	--check if there's already a scan action in queue
 	local scanFound = nil
-	for i, curAction in ipairs(AutoGearActionQueue) do
+	for i, curAction in ipairs(TyGearActionQueue) do
 		if curAction.t and (curAction.action == "scan") then
 			--push the time ahead until all the items have arrived
 			curAction.t = GetTime() + 1.0
@@ -5510,40 +5522,40 @@ function AutoGearQueueScan()
 	end
 	if (not scanFound) then
 		--no scan found, so create a new one
-		table.insert(AutoGearActionQueue, { action = "scan", t = GetTime() + 0.5 })
+		table.insert(TyGearActionQueue, { action = "scan", t = GetTime() + 0.5 })
 	end
 end
 
-function AutoGearMain()
+function TyGearMain()
 	if (GetTime() - tUpdate > 0.05) then
 		tUpdate = GetTime()
 		--future actions
-		local queuedActionCount = #AutoGearActionQueue
+		local queuedActionCount = #TyGearActionQueue
 		for i = 1, queuedActionCount do
-			local curAction = AutoGearActionQueue[i]
+			local curAction = TyGearActionQueue[i]
 
 			-- if there's any item data missing, don't do anything that matters and instead try updating again
 			if curAction.t and curAction.action == "localupdate" then
 				if GetTime() > curAction.t then
-					AutoGearSomeItemDataIsMissing = nil
+					TyGearSomeItemDataIsMissing = nil
 					curAction.t = nil
 					queueQueueRebuild = 1
-					AutoGearUpdateBestItems() -- this will set AutoGearSomeItemDataIsMissing again if necessary
+					TyGearUpdateBestItems() -- this will set TyGearSomeItemDataIsMissing again if necessary
 				end
 			end
-			if (not AutoGearSomeItemDataIsMissing) then
+			if (not TyGearSomeItemDataIsMissing) then
 				if curAction.t and curAction.action == "roll" then
 					if GetTime() > curAction.t then
 						if curAction.rollType == 1 then
-							AutoGearPrint("AutoGear: "..(((AutoGearDB.AutoLootRoll == true) and (AutoGearDB.NeverAutoNeed ~= true)) and "Rolling " or "If automatically rolling "..((AutoGearDB.NeverAutoNeed ~= true) and "" or (GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE.." ")).."on loot was enabled, would roll ")..GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE.." on "..curAction.info.link..".", 1)
+							TyGearPrint("TyGear: "..(((TyGearDB.AutoLootRoll == true) and (TyGearDB.NeverAutoNeed ~= true)) and "Rolling " or "If automatically rolling "..((TyGearDB.NeverAutoNeed ~= true) and "" or (GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE.." ")).."on loot was enabled, would roll ")..GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE.." on "..curAction.info.link..".", 1)
 						elseif curAction.rollType == 2 then
-							AutoGearPrint("AutoGear: "..((AutoGearDB.AutoLootRoll == true) and "Rolling " or "If automatically rolling on loot was enabled, would roll ")..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE.." on "..curAction.info.link..".", 1)
+							TyGearPrint("TyGear: "..((TyGearDB.AutoLootRoll == true) and "Rolling " or "If automatically rolling on loot was enabled, would roll ")..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE.." on "..curAction.info.link..".", 1)
 						end
 						local rarity = curAction.info.rarity
-						if ((AutoGearDB.NeverAutoNeed ~= true) or (curAction.rollType ~= 1)) and
-						((((rarity < 3) or (rarity == 3 and not (curAction.info.boe))) and (AutoGearDB.AutoLootRoll == true)) or
-						((rarity == 3) and curAction.info.boe and (AutoGearDB.AutoRollOnBoEBlues == true)) or
-						((rarity == 4) and (AutoGearDB.AutoRollOnEpics == true))) then
+						if ((TyGearDB.NeverAutoNeed ~= true) or (curAction.rollType ~= 1)) and
+						((((rarity < 3) or (rarity == 3 and not (curAction.info.boe))) and (TyGearDB.AutoLootRoll == true)) or
+						((rarity == 3) and curAction.info.boe and (TyGearDB.AutoRollOnBoEBlues == true)) or
+						((rarity == 4) and (TyGearDB.AutoRollOnEpics == true))) then
 							RollOnLoot(curAction.rollID, curAction.rollType)
 						end
 						curAction.t = nil
@@ -5551,34 +5563,34 @@ function AutoGearMain()
 					end
 				elseif curAction.t and (curAction.action == "equip" and not UnitAffectingCombat("player") and not UnitIsDeadOrGhost("player")) then
 					if (GetTime() > curAction.t) then
-						if ((AutoGearDB.Enabled ~= nil) and (AutoGearDB.Enabled == true)) then
+						if ((TyGearDB.Enabled ~= nil) and (TyGearDB.Enabled == true)) then
 							if (not curAction.messageAlready) then
-								AutoGearPrint("AutoGear: Equipping "..(curAction.info.link or curAction.info.name)..".", 2)
+								TyGearPrint("TyGear: Equipping "..(curAction.info.link or curAction.info.name)..".", 2)
 								curAction.messageAlready = 1
 							end
 							if (curAction.removeMainHandFirst) then
-								if (AutoGearGetAllBagsNumFreeSlots() > 0) then
-									AutoGearPrint("AutoGear: Removing the two-hander to equip the off-hand", 1)
+								if (TyGearGetAllBagsNumFreeSlots() > 0) then
+									TyGearPrint("TyGear: Removing the two-hander to equip the off-hand", 1)
 									PickupInventoryItem(INVSLOT_MAINHAND)
-									AutoGearPutItemInEmptyBagSlot()
+									TyGearPutItemInEmptyBagSlot()
 									curAction.removeMainHandFirst = nil
 									curAction.waitingOnEmptyMainHand = 1
 								else
-									AutoGearPrint("AutoGear: Cannot equip the off-hand because bags are too full to remove the two-hander", 0)
+									TyGearPrint("TyGear: Cannot equip the off-hand because bags are too full to remove the two-hander", 0)
 									curAction.t = nil
 									queueQueueRebuild = 1
 								end
-							elseif (curAction.waitingOnEmptyMainHand and not AutoGearEquippedItems[INVSLOT_MAINHAND].info.empty) then
-								AutoGearUpdateEquippedItem(INVSLOT_MAINHAND)
-							elseif (curAction.waitingOnEmptyMainHand and AutoGearEquippedItems[INVSLOT_MAINHAND].info.empty) then
-								AutoGearPrint("AutoGear: Main hand detected to be clear.  Equipping now.", 1)
+							elseif (curAction.waitingOnEmptyMainHand and not TyGearEquippedItems[INVSLOT_MAINHAND].info.empty) then
+								TyGearUpdateEquippedItem(INVSLOT_MAINHAND)
+							elseif (curAction.waitingOnEmptyMainHand and TyGearEquippedItems[INVSLOT_MAINHAND].info.empty) then
+								TyGearPrint("TyGear: Main hand detected to be clear.  Equipping now.", 1)
 								curAction.waitingOnEmptyMainHand = nil
 							elseif (curAction.ensuringEquipped) then
-								-- AutoGearPrint("checking whether equipped: "..curAction.info.link,3)
+								-- TyGearPrint("checking whether equipped: "..curAction.info.link,3)
 								if (GetInventoryItemID("player", curAction.replaceSlot) == curAction.info.id) then
 									curAction.ensuringEquipped = nil
-									if (not AutoGearActionQueue[i+1]) or (not AutoGearActionQueue[i+1].ensuringEquipped) then
-										AutoGearUpdateEquippedItems()
+									if (not TyGearActionQueue[i+1]) or (not TyGearActionQueue[i+1].ensuringEquipped) then
+										TyGearUpdateEquippedItems()
 									end
 									curAction.t = nil
 									queueQueueRebuild = 1
@@ -5590,14 +5602,14 @@ function AutoGearMain()
 									curAction.container, curAction.slot = itemLocation:GetBagAndSlot()
 								end
 								if (not curAction.container) or (not curAction.slot) then
-									AutoGearBrokenAction = curAction
-									AutoGearPrint("Error: The current equip action has either no container or no slot! This should never happen, so it must be a bug. It's now been saved to global variable AutoGearBrokenAction, so try \"/dump AutoGearBrokenAction\" and send the output to the AutoGear author.",0)
+									TyGearBrokenAction = curAction
+									TyGearPrint("Error: The current equip action has either no container or no slot! This should never happen, so it must be a bug. It's now been saved to global variable TyGearBrokenAction, so try \"/dump TyGearBrokenAction\" and send the output to the TyGear author.",0)
 									curAction.t = nil
 									queueQueueRebuild = 1
 								--everything below needs the container and slot, so it only runs when both are known
 								-- prevent equip error when bag is replacing the bag it's inside
-								elseif curAction.replaceSlot >= AutoGearFirstEquippableBagSlot
-								and curAction.container == (curAction.replaceSlot - AutoGearFirstEquippableBagSlot + 1) then
+								elseif curAction.replaceSlot >= TyGearFirstEquippableBagSlot
+								and curAction.container == (curAction.replaceSlot - TyGearFirstEquippableBagSlot + 1) then
 									if not curAction.movedOutOfBag then
 										local destBag, destSlot
 										for b = 0, NUM_BAG_SLOTS do
@@ -5606,7 +5618,7 @@ function AutoGearMain()
 												if bagType == 0 and freeSlots > 0 then
 													local slotMax = GetContainerNumSlots(b)
 													for s = 1, slotMax do
-														if not AutoGearGetContainerItemInfo(b, s) then
+														if not TyGearGetContainerItemInfo(b, s) then
 															destBag = b
 															destSlot = s
 															break
@@ -5623,7 +5635,7 @@ function AutoGearMain()
 											curAction.slot = destSlot
 											curAction.movedOutOfBag = true
 										else
-											AutoGearPrint("AutoGear: Cannot equip bag because there is no empty slot in another bag to move it to.", 0)
+											TyGearPrint("TyGear: Cannot equip bag because there is no empty slot in another bag to move it to.", 0)
 											curAction.t = nil
 											queueQueueRebuild = 1
 										end
@@ -5646,8 +5658,8 @@ function AutoGearMain()
 					end
 				elseif curAction.t and (curAction.action == "scan") then
 					if (GetTime() > curAction.t) then
-						AutoGearConsiderAllItems()
-						if not AutoGearSomeItemDataIsMissing then
+						TyGearConsiderAllItems()
+						if not TyGearSomeItemDataIsMissing then
 							curAction.t = nil
 							queueQueueRebuild = 1
 						end
@@ -5656,17 +5668,17 @@ function AutoGearMain()
 					if (GetTime() > curAction.t) then
 						curAction.t = nil
 						queueQueueRebuild = 1
-						if greySelling then AutoGearSellGreysTick() end
+						if greySelling then TyGearSellGreysTick() end
 					end
 				end
 			end
 		end
 		if queueQueueRebuild then
 			local rebuiltQueue = {}
-			for _, curAction in ipairs(AutoGearActionQueue) do
+			for _, curAction in ipairs(TyGearActionQueue) do
 				if curAction.t then table.insert(rebuiltQueue, curAction) end
 			end
-			AutoGearActionQueue = rebuiltQueue
+			TyGearActionQueue = rebuiltQueue
 			queueQueueRebuild = nil
 		end
 	end

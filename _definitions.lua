@@ -1,4 +1,4 @@
----@class AutoGearAddon
+---@class TyGearAddon
 ---@field public Localization table<string, string> Table used for localization.
 
 ---Returns info for an item
