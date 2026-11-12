@@ -36,7 +36,7 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 
 ## Key bindings
 
-Esc → Key Bindings → TyGear: bind keys to add or remove the hovered item from the vendor **keep list** (on the Ignored gear tab), loot **need list**, or gear **ignore list**.
+Esc → Key Bindings → TyGear: the **ignore list** key keeps the hovered item and skips evaluation. The **need list** key forces NEED.
 
 ## Note
 

@@ -5,13 +5,10 @@
 -->
 <Bindings>
 	<!-- header only on the first binding; repeating it loads TYGEAR twice -->
-	<Binding name="TYGEAR_TOGGLE_VENDOR_KEEP" header="TYGEAR">
-		TyGearBindingToggleVendorKeep();
+	<Binding name="TYGEAR_TOGGLE_IGNORE" header="TYGEAR">
+		TyGearBindingToggleIgnore();
 	</Binding>
 	<Binding name="TYGEAR_TOGGLE_NEED">
 		TyGearBindingToggleNeed();
-	</Binding>
-	<Binding name="TYGEAR_TOGGLE_IGNORE">
-		TyGearBindingToggleIgnore();
 	</Binding>
 </Bindings>

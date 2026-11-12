@@ -149,7 +149,6 @@ local maxPlayerLevel = (GetMaxPlayerLevel and GetMaxPlayerLevel())
 local L = T.Localization
 --Key Bindings UI labels (Bindings.xml); assign keys under Key Bindings → TyGear
 _G["BINDING_HEADER_TYGEAR"] = "TyGear"
-_G["BINDING_NAME_TYGEAR_TOGGLE_VENDOR_KEEP"] = L["Toggle hovered item on keep list"]
 _G["BINDING_NAME_TYGEAR_TOGGLE_NEED"] = L["Toggle hovered item on need list"]
 _G["BINDING_NAME_TYGEAR_TOGGLE_IGNORE"] = L["Toggle hovered item on ignore list"]
 local ContainerIDToInventoryID = ContainerIDToInventoryID or (C_Container and C_Container.ContainerIDToInventoryID)
@@ -908,10 +907,9 @@ function TyGearIsItemIgnored(info)
 	if type(info) == "table" and info.unmeasurableOnly then
 		return true
 	end
+	--any item on the ignore list is kept and left out of evaluation, gear or not
 	if TyGearCharDB and TyGearCharDB.IgnoredItemIDs and TyGearCharDB.IgnoredItemIDs[itemID] then
-		if type(info) ~= "table" or info.isGear then
-			return true
-		end
+		return true
 	end
 end
 
@@ -954,14 +952,6 @@ function TyGearIsAutoUnmeasurable(itemID)
 	if not IS_WOW_FOREVER or not itemID then return false end
 	if TyGearUnmeasurableGear and TyGearUnmeasurableGear[itemID] then return true end
 	if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear and TyGearCharDB.DiscoveredUnmeasurableGear[itemID] then return true end
-end
-
---unknown items are kept so an ID can be ignored before the client has cached it
-function TyGearIsEquipmentItemID(itemID)
-	if not itemID or not GetItemInfoInstant then return false end
-	local classID = select(6, GetItemInfoInstant(itemID))
-	if not classID then return true end
-	return classID == Enum.ItemClass.Weapon or classID == Enum.ItemClass.Armor
 end
 
 function TyGearGetIgnoredItemIDOrder()
@@ -1175,22 +1165,6 @@ function TyGearItemDisplay(link, itemID, name)
 end
 
 --Key Bindings → TyGear: hover an item, then press the assigned key
-function TyGearBindingToggleVendorKeep()
-	local itemID, link, name = TyGearGetHoveredItem()
-	if not itemID then
-		TyGearPrint("TyGear: "..L["Hover an item, then press this key to toggle it on the keep list."], 0)
-		return
-	end
-	local keep = not TyGearIsOnVendorKeepList(itemID)
-	TyGearSetVendorKeepListItem(itemID, keep)
-	local display = TyGearItemDisplay(link, itemID, name)
-	if keep then
-		TyGearPrint("TyGear: "..string.format(L["Added %s to the keep list."], display), 0)
-	else
-		TyGearPrint("TyGear: "..string.format(L["Removed %s from the keep list."], display), 0)
-	end
-end
-
 function TyGearBindingToggleNeed()
 	local itemID, link, name = TyGearGetHoveredItem()
 	if not itemID then
@@ -1207,22 +1181,23 @@ function TyGearBindingToggleNeed()
 	end
 end
 
+--one binding: the ignore list keeps the item and leaves it out of evaluation
 function TyGearBindingToggleIgnore()
 	local itemID, link, name = TyGearGetHoveredItem()
 	if not itemID then
-		TyGearPrint("TyGear: "..L["Hover an item, then press this key to toggle it on the ignore list."], 0)
+		TyGearPrint("TyGear: "..L["Hover an item, then press this key to keep it and skip evaluation."], 0)
 		return
 	end
-	if not TyGearIsEquipmentItemID(itemID) then
-		TyGearPrint("TyGear: "..L["Only armor and weapons can be added to the ignore list."], 0)
+	if TyGearIsAutoUnmeasurable(itemID) then
+		TyGearPrint("TyGear: "..L["TyGear cannot score this item, so it stays ignored."], 0)
 		return
 	end
-	local ignored = TyGearIsItemIgnored({ id = itemID, isGear = true }) and true or false
+	local ignored = TyGearCharDB and TyGearCharDB.IgnoredItemIDs and TyGearCharDB.IgnoredItemIDs[itemID] and true or false
 	TyGearSetItemIgnored(itemID, not ignored)
 	if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
 	local display = TyGearItemDisplay(link, itemID, name)
 	if not ignored then
-		TyGearPrint("TyGear: "..string.format(L["Added %s to the ignore list."], display), 0)
+		TyGearPrint("TyGear: "..string.format(L["Added %s to the ignore list. It will be kept and not evaluated."], display), 0)
 	else
 		TyGearPrint("TyGear: "..string.format(L["Removed %s from the ignore list."], display), 0)
 	end
@@ -1230,10 +1205,9 @@ end
 
 function TyGearAddListBindingHintsToTooltip(tooltip)
 	if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
-	local keepKey = GetBindingKey and GetBindingKey("TYGEAR_TOGGLE_VENDOR_KEEP")
 	local needKey = GetBindingKey and GetBindingKey("TYGEAR_TOGGLE_NEED")
 	local ignoreKey = GetBindingKey and GetBindingKey("TYGEAR_TOGGLE_IGNORE")
-	if not keepKey and not needKey and not ignoreKey then return end
+	if not needKey and not ignoreKey then return end
 	local hasItem = false
 	if tooltip.GetItem then
 		local _, link = tooltip:GetItem()
@@ -1245,14 +1219,11 @@ function TyGearAddListBindingHintsToTooltip(tooltip)
 	end
 	if not hasItem then return end
 	local parts = {}
-	if keepKey then
-		table.insert(parts, keepKey..": "..L["keep list"])
+	if ignoreKey then
+		table.insert(parts, ignoreKey..": "..L["keep and ignore"])
 	end
 	if needKey then
 		table.insert(parts, needKey..": "..L["need list"])
-	end
-	if ignoreKey then
-		table.insert(parts, ignoreKey..": "..L["ignore list"])
 	end
 	tooltip:AddLine("TyGear  "..table.concat(parts, "  "), 0.5, 0.5, 0.5, true)
 end
@@ -3194,7 +3165,7 @@ local function buildIgnoreSection(optionsPage)
 		container.appliedHeight = height
 	end
 
-	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons. New items are added near the top of the list."]
+	local addItemsHelp = L["Item names or IDs separated by commas. Items on this list are kept and not evaluated. Shift-click an item while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 
 	local function manualIDText()
 		local parts = {}
@@ -3209,7 +3180,7 @@ local function buildIgnoreSection(optionsPage)
 		local parsed = TyGearParseItemIDList(text)
 		local nextIDs, seen, newOnes, rest = {}, {}, {}, {}
 		for _, itemID in ipairs(parsed) do
-			if not seen[itemID] and not TyGearIsAutoUnmeasurable(itemID) and TyGearIsEquipmentItemID(itemID) then
+			if not seen[itemID] and not TyGearIsAutoUnmeasurable(itemID) then
 				seen[itemID] = true
 				nextIDs[itemID] = true
 				if previous[itemID] then
@@ -3408,7 +3379,7 @@ local function buildIgnoreSection(optionsPage)
 
 	--keep list and its options live on the ignore list; items here are not sold or evaluated
 	addSubheader(L["Keep List"])
-	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
+	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
 	addNote(keepListDescription)
 
 	local unboundCheck = newCheckbox(
@@ -3663,7 +3634,7 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 		equippedContainer:SetHeight(shown == 0 and 20 or (shown * 28))
 	end
 
-	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons. New items are added near the top of the list."]
+	local addItemsHelp = L["Item names or IDs separated by commas. Items on this list are kept and not evaluated. Shift-click an item while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 
 	local function manualIDText()
 		local parts = {}
@@ -3678,7 +3649,7 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 		local parsed = TyGearParseItemIDList(text)
 		local nextIDs, seen, newOnes, rest = {}, {}, {}, {}
 		for _, itemID in ipairs(parsed) do
-			if not seen[itemID] and not TyGearIsAutoUnmeasurable(itemID) and TyGearIsEquipmentItemID(itemID) then
+			if not seen[itemID] and not TyGearIsAutoUnmeasurable(itemID) then
 				seen[itemID] = true
 				nextIDs[itemID] = true
 				if previous[itemID] then
@@ -4012,7 +3983,7 @@ buildKeepListSection = function(listMenu, anchorBelow)
 	unboundCheck:SetHitRectInsets(0, -280, 0, 0)
 	listMenu.keepUnboundCheck = unboundCheck
 
-	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
+	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
 
 	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	addHeader:SetPoint("TOPLEFT", unboundCheck, "BOTTOMLEFT", 2, -14)
@@ -5304,7 +5275,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["shouldUse"] = false, --the keep list lives on the ignore list
 				["editBox"] = true,
 				["label"] = L["Keep List"],
-				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."],
+				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."],
 				["editBoxPostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
@@ -5634,7 +5605,7 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg sellunsuitable [enable/on/start]/[disable/off/stop]': toggle automatic selling of white gear you can't wear", 0)
 	TyGearPrint("TyGear:    '/tg sellwhitegear [enable/on/start]/[disable/off/stop]': toggle automatic selling of all white gear", 0)
 	TyGearPrint("TyGear:    '/tg verbosity [0/1/2/3]': set allowed verbosity level; valid levels are: 0 ("..TyGearGetAllowedVerbosityName(0).."), 1 ("..TyGearGetAllowedVerbosityName(1).."), 2 ("..TyGearGetAllowedVerbosityName(2).."), 3 ("..TyGearGetAllowedVerbosityName(3)..")", 0)
-	TyGearPrint("TyGear:    Key Bindings → TyGear: assign keys to toggle the hovered item on the keep list, need list, or ignore list", 0)
+	TyGearPrint("TyGear:    Key Bindings → TyGear: the ignore list key keeps the hovered item and skips evaluation; the need list key forces NEED", 0)
 	TyGearPrint("TyGear: Fork of AutoGear by Synthetikaryote and BujuArena. Original: https://github.com/BujuArena/AutoGear (CC BY-NC-SA 4.0).", 0)
 end
 
