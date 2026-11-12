@@ -256,6 +256,15 @@ function TyGearIsManagedGearSlot(slot)
 	end
 end
 
+--equipment slots offered in Locked gear slots; tabard is the virtual 2H slot, and bags are not lockable there
+function TyGearIsLockableGearSlot(slot)
+	if not slot then return nil end
+	if slot == INVSLOT_TABARD then return nil end
+	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
+		return 1
+	end
+end
+
 -- bag index (container id) for an equipped bag inventory slot, or nil for non-bags
 function TyGearGetContainerForEquippedBagSlot(invSlot)
 	if TyGearReagentBagSlot and invSlot == TyGearReagentBagSlot then
@@ -757,8 +766,8 @@ end
 
 function TyGearGetDefaultLockedGearSlots()
 	local lockedGearSlots = {}
-	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
-		if TyGearIsManagedGearSlot(slot) then
+	for slot = INVSLOT_FIRST_EQUIPPED, INVSLOT_LAST_EQUIPPED do
+		if TyGearIsLockableGearSlot(slot) then
 			lockedGearSlots[slot] = {
 				["label"] = TyGearGetLockedGearSlotLabel(slot),
 				["enabled"] = false
@@ -1122,7 +1131,7 @@ end
 function TyGearFixLockedGearSlots() -- finds missing slots and adds them, in case Blizzard changed them around
 	if not TyGearDB.LockedGearSlots then TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots() return end
 	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
-		if TyGearIsManagedGearSlot(slot) then
+		if TyGearIsLockableGearSlot(slot) then
 			if not TyGearDB.LockedGearSlots[slot] then
 				TyGearDB.LockedGearSlots[slot] = {
 					["label"] = TyGearGetLockedGearSlotLabel(slot),
@@ -1131,6 +1140,9 @@ function TyGearFixLockedGearSlots() -- finds missing slots and adds them, in cas
 			elseif TyGearDB.LockedGearSlots[slot].label then
 				TyGearDB.LockedGearSlots[slot].label = TyGearGetLockedGearSlotLabel(slot)
 			end
+		elseif TyGearDB.LockedGearSlots[slot] then
+			--drop tabard and bag entries left over from older defaults
+			TyGearDB.LockedGearSlots[slot] = nil
 		end
 	end
 end
@@ -3915,8 +3927,8 @@ local function optionsSetup(optionsMenu)
 			end
 			local lockedSlots = TyGearGetLockedGearSlots()
 			local slotList = {}
-			for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
-				if TyGearIsManagedGearSlot(slot) then
+			for slot = INVSLOT_FIRST_EQUIPPED, INVSLOT_LAST_EQUIPPED do
+				if TyGearIsLockableGearSlot(slot) then
 					table.insert(slotList, slot)
 				end
 			end
@@ -6101,6 +6113,14 @@ function TyGearIs1hWorthwhile(i)
 	return TyGearBestItems[i].score > minScore and TyGearBestItems[i].score > TyGearBestItems[INVSLOT_TABARD].score * (i == INVSLOT_MAINHAND and 0.15 or 0.05)
 end
 
+--when two bags have the same score (same slot count), prefer the soulbound one
+function TyGearBagShouldReplaceEqualScore(candidate, current)
+	if not candidate or candidate.classID ~= Enum.ItemClass.Container then return false end
+	if not current or current.empty then return true end
+	if candidate.bop and not current.bop then return true end
+	return false
+end
+
 --companion function to TyGearConsiderAllItems
 function TyGearConsiderItem(info, bag, slot, rollOn)
 	if info.empty
@@ -6146,14 +6166,18 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 				end
 			end
 
+			local currentBestInfo = TyGearBestItems[lowestScoringValidGearSlot].info
 			if (
 				((score > lowestScoringValidGearSlotScore) and (not info.isAmmoBag))
-				or TyGearBestItems[lowestScoringValidGearSlot].info.empty
-				or TyGearBestItems[lowestScoringValidGearSlot].info.unusable
+				or ((score == lowestScoringValidGearSlotScore)
+					and (not info.isAmmoBag)
+					and TyGearBagShouldReplaceEqualScore(info, currentBestInfo))
+				or currentBestInfo.empty
+				or currentBestInfo.unusable
 				or (info.isAmmoBag
 					and TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
 					and ((score > lowestScoringValidGearSlotScore)
-					or (not TyGearIsAmmoBagValidForBestKnownRangedWeapon(TyGearBestItems[lowestScoringValidGearSlot].info)))
+					or (not TyGearIsAmmoBagValidForBestKnownRangedWeapon(currentBestInfo)))
 				)
 			) then
 				-- TyGearPrint(info.link.." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
