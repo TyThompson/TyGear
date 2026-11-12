@@ -43,8 +43,8 @@ if GetLocale() == "deDE" then
 
 	-- option: RollOnNonGearLoot
 	T.Localization["Roll on non-gear loot"] = "Auf Beute würfeln, die keine Ausrüstung ist"
-	T.Localization["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."] = "Auf jede Gruppenbeute würfeln, auch auf Beute, die keine Ausrüstung ist.  Ist dies aktiviert, würfelt TyGear GIER auf alles außer Ausrüstung und Reittieren und BEDARF auf Reittiere."
-	T.Localization["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."] = "Würfeln auf Beute, die keine Ausrüstung ist, ist jetzt aktiviert.  TyGear würfelt GIER auf alles außer Ausrüstung und Reittieren und BEDARF auf Reittiere."
+	T.Localization["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."] = "Auf jede Gruppenbeute würfeln, auch auf Beute, die keine Ausrüstung ist.  Ist dies aktiviert, würfelt TyGear GIER auf Beute, die keine Ausrüstung ist.  Auf Reittiere wird nie automatisch gewürfelt."
+	T.Localization["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."] = "Würfeln auf Beute, die keine Ausrüstung ist, ist jetzt aktiviert.  TyGear würfelt GIER auf Beute, die keine Ausrüstung ist.  Auf Reittiere wird nie automatisch gewürfelt."
 	T.Localization["Rolling on non-gear loot is now disabled."] = "Würfeln auf Beute, die keine Ausrüstung ist, ist jetzt deaktiviert."
 
 	-- option: NeverAutoNeed
@@ -174,12 +174,12 @@ if GetLocale() == "deDE" then
 	T.Localization["Nothing is equipped."] = "Nichts ist angelegt."
 	T.Localization["Item IDs"] = "Gegenstands-IDs"
 	T.Localization["Also ignore these item IDs. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons."] = "Diese Gegenstands-IDs zusätzlich ignorieren. Umschalt-Klick auf Ausrüstung fügt sie hinzu, solange dieses Feld den Fokus hat, oder weise unter Tastaturbelegung \"Toggle hovered item on ignore list\" eine Taste zu und drücke sie, während du über Rüstung oder Waffen schwebst."
-	T.Localization["No measurable stats"] = "Keine messbaren Werte"
-	T.Localization["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. Click an icon to toggle it."] = "Diese Gegenstände haben nur Effekte, die TyGear nicht bewerten kann, etwa 4% Chance, dass Furcht verfehlt. Ausrüstung mit einem zusätzlich bewertbaren Wert bleibt in der normalen Bewertung. Ein Klick auf ein Symbol schaltet es um."
+	T.Localization["Ignored gear"] = "Ignorierte Ausrüstung"
+	T.Localization["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."] = "Diese Gegenstände haben nur Effekte, die TyGear nicht bewerten kann, etwa 4% Chance, dass Furcht verfehlt. Ausrüstung mit einem zusätzlich bewertbaren Wert bleibt in der normalen Bewertung. Sie bleiben ignoriert, weil TyGear sie nicht messen kann."
+	T.Localization["No unmeasurable gear has been found yet."] = "Noch keine nicht messbare Ausrüstung gefunden."
+	T.Localization["TyGear cannot score this item, so it stays ignored."] = "TyGear kann diesen Gegenstand nicht bewerten, daher bleibt er ignoriert."
 	T.Localization["ignored"] = "ignoriert"
 	T.Localization["every slot this item can use is ignored"] = "jeder Platz, den dieser Gegenstand nutzen kann, ist ignoriert"
-	T.Localization["Ignored. Click to evaluate this item."] = "Ignoriert. Klicken, um diesen Gegenstand zu bewerten."
-	T.Localization["Click to ignore this item."] = "Klicken, um diesen Gegenstand zu ignorieren."
 
 	-- option: DebugInfoInTooltips
 	T.Localization["Show debug info in item tooltips (%swarning%s: laggy!)"] = "Debug-Infos in Gegenstands-Tooltips anzeigen (%sWarnung%s: verursacht Ruckler!)"

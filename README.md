@@ -27,6 +27,7 @@ TyGear also runs on WoW Forever (interface 16001).
 - Forever has one specialization per class, so TyGear uses the general class profile (`None`). If you heal, tank, or want a more focused damage profile, enable **Override specialization** in `/tg` and choose the closest profile. That choice is saved for the current character. Healers should do this, because the general profile values bonus healing only as spell damage (one third of its value).
 - Forever's combined hit and critical strike, expertise, and armor/spell penetration are read from item tooltips.
 - On Forever, **Use Pawn** and **Roll on non-gear loot** default to off; Pawn has no Forever scales yet.
+- Forever gear with only effects TyGear cannot score (no measurable stats) is always ignored. The **Ignored gear** options tab lists those items.
 - Loot messages and tooltip text can be restricted (secret values) in dungeons and during encounters. TyGear then scans your bags instead of reading the loot message, and treats items it can't read as not evaluable.
 
 Chat commands (`/tygear` is the same as `/tg`):
@@ -41,6 +42,6 @@ Chat commands (`/tygear` is the same as `/tg`):
 
 Key Bindings (Esc → Key Bindings → TyGear): assign keys to toggle the hovered item on the vendor **keep list** or the gear **ignore list**. Hover a bag, character, or chat item tooltip and press the key.
 
-Warning: TyGear currently automatically rolls "greed" on everything that isn't a gear upgrade for the current spec, including mounts and crafting reagents. It works quite well for leveling quickly and conveniently, but you should disable it before loot rolls you want control over. To do so, simply run "/tg toggle" or toggle it from the options menu.
+Warning: TyGear currently automatically rolls "greed" on everything that isn't a gear upgrade for the current spec, including crafting reagents, when "Roll on non-gear loot" is enabled. Mounts are never rolled on automatically. It works quite well for leveling quickly and conveniently, but you should disable it before loot rolls you want control over. To do so, simply run "/tg toggle" or toggle it from the options menu.
 
 Warning: TyGear is not recommended for use at max level. Its weights are not optimal, nor are stat weights ideal for determining upgrades in end-game content. TyGear is meant primarily as a convenience for leveling quickly. Using it at max level, especially in team PvE or PvP, is likely to get you kicked from various groups and guilds. Calculating proper upgrades using [SimulationCraft](https://www.simulationcraft.org/) is preferable. This will be very time-consuming, but worth it for your powerful max-level character.

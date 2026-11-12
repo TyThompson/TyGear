@@ -122,10 +122,93 @@ TyGearWouldRoll = "nil"
 TyGearSomeItemDataIsMissing = nil
 TyGearFirstEquippableBagSlot = ContainerIDToInventoryID(1) or 20
 TyGearLastEquippableBagSlot = ContainerIDToInventoryID(NUM_BAG_SLOTS) or 23
+-- Reagent bags (retail, Dragonflight and later) can only be equipped in the reagent bag slot.
+-- Classic clients may expose Enum.BagIndex.ReagentBag with mainline's number, where that container is a bank bag.
+TyGearReagentBagContainer = nil
+TyGearReagentBagSlot = nil
+if (not IS_WOW_FOREVER)
+and type(TOC_VERSION_CURRENT) == "number"
+and TOC_VERSION_CURRENT >= TOC_VERSION_DF then
+	local reagentContainer = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or nil
+	if not reagentContainer and NUM_REAGENTBAG_SLOTS and NUM_REAGENTBAG_SLOTS > 0 then
+		reagentContainer = (NUM_BAG_SLOTS or 4) + 1
+	end
+	if reagentContainer and ContainerIDToInventoryID then
+		local reagentSlot = ContainerIDToInventoryID(reagentContainer)
+		if not reagentSlot and reagentContainer == 5 then
+			reagentSlot = 35 -- mainline reagent bag inventory slot
+		end
+		-- ignore a result that lands on a normal bag slot; that mapping is not the reagent bag
+		if reagentSlot
+		and (reagentSlot < TyGearFirstEquippableBagSlot or reagentSlot > TyGearLastEquippableBagSlot) then
+			TyGearReagentBagContainer = reagentContainer
+			TyGearReagentBagSlot = reagentSlot
+		end
+	end
+end
+TyGearLastManagedGearSlot = (TyGearReagentBagSlot and math.max(TyGearLastEquippableBagSlot, TyGearReagentBagSlot)) or TyGearLastEquippableBagSlot
 TyGearEquippableBagSlots = {}
---initialize equippable bag slots table
+-- initialize equippable bag slots table. The reagent bag slot is not one of these.
 for i = BACKPACK_CONTAINER+1, NUM_BAG_SLOTS do
-	table.insert(TyGearEquippableBagSlots, TyGearFirstEquippableBagSlot+i-1)
+	if i ~= TyGearReagentBagContainer then
+		local invSlot = TyGearFirstEquippableBagSlot+i-1
+		if invSlot ~= TyGearReagentBagSlot then
+			table.insert(TyGearEquippableBagSlots, invSlot)
+		end
+	end
+end
+
+-- Container (class 1) subclass 11 is "Reagent Bag". There is no Enum.ItemContainerSubclass.
+local REAGENT_BAG_SUBCLASS_ID = 11
+
+function TyGearIsReagentBag(info)
+	if not TyGearReagentBagSlot or not info then return nil end
+	if info.isReagentBag then return 1 end
+	if info.classID == Enum.ItemClass.Container and info.subclassID == REAGENT_BAG_SUBCLASS_ID then
+		return 1
+	end
+end
+
+function TyGearIsManagedGearSlot(slot)
+	if not slot then return nil end
+	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
+		return 1
+	end
+	if slot >= TyGearFirstEquippableBagSlot and slot <= TyGearLastEquippableBagSlot then
+		return 1
+	end
+	if TyGearReagentBagSlot and slot == TyGearReagentBagSlot then
+		return 1
+	end
+end
+
+-- bag index (container id) for an equipped bag inventory slot, or nil for non-bags
+function TyGearGetContainerForEquippedBagSlot(invSlot)
+	if TyGearReagentBagSlot and invSlot == TyGearReagentBagSlot then
+		return TyGearReagentBagContainer
+	end
+	if invSlot and invSlot >= TyGearFirstEquippableBagSlot and invSlot <= TyGearLastEquippableBagSlot then
+		return invSlot - TyGearFirstEquippableBagSlot + 1
+	end
+end
+
+-- backpack through the normal bags, plus the reagent bag when it is the next container
+function TyGearGetLastBagToScan()
+	local lastBag = NUM_BAG_SLOTS or 0
+	if TyGearReagentBagContainer == lastBag + 1 then
+		return TyGearReagentBagContainer
+	end
+	return lastBag
+end
+
+function TyGearGetReagentBagSlotName()
+	if GetItemSubClassInfo and Enum and Enum.ItemClass and Enum.ItemClass.Container then
+		local ok, name = pcall(GetItemSubClassInfo, Enum.ItemClass.Container, REAGENT_BAG_SUBCLASS_ID)
+		if ok and type(name) == "string" and name ~= "" then
+			return name
+		end
+	end
+	return "Reagent Bag"
 end
 
 --initialize gear slot names table
@@ -345,6 +428,17 @@ function TyGearPrint(text, verbosity)
 	end
 end
 
+--Pleasant confirmation chime when TyGear finishes equipping an upgrade (e.g. after winning a party loot roll).
+--Prefer the epic-loot toast when the client has it; fall back to the classic quest-complete ding.
+function TyGearPlayUpgradeEquippedChime()
+	local soundKit = (SOUNDKIT and (
+		SOUNDKIT.UI_EPICLOOT_TOAST
+		or SOUNDKIT.UI_RAID_LOOT_TOAST_LESSER_ITEM_WON
+		or SOUNDKIT.IG_QUEST_LIST_COMPLETE
+	)) or 878
+	pcall(PlaySound, soundKit, "SFX", true)
+end
+
 --initialize table for storing saved variables
 --TyGearDB is shared by every character. Specialization override is stored separately
 --in TyGearCharDB so an alt does not inherit the main's spec.
@@ -373,7 +467,8 @@ function TyGearInitializeCharacterSettings()
 		TyGearCharDB.IgnoredGearSlots = TyGearGetDefaultIgnoredGearSlots()
 	end
 	if not TyGearCharDB.IgnoredItemIDs then TyGearCharDB.IgnoredItemIDs = {} end
-	if not TyGearCharDB.UnmeasurableGearDisabled then TyGearCharDB.UnmeasurableGearDisabled = {} end
+	--older builds could opt unmeasurable Forever gear back into evaluation; that toggle is gone
+	TyGearCharDB.UnmeasurableGearDisabled = nil
 	if not TyGearCharDB.DiscoveredUnmeasurableGear then TyGearCharDB.DiscoveredUnmeasurableGear = {} end
 end
 
@@ -569,6 +664,8 @@ function TyGearGetLockedGearSlotLabel(slot)
 	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
 		local slotName = TyGearGetGearSlotShortLabel(slot)
 		return tostring(slot)..(slotName and ": "..slotName or "")
+	elseif TyGearReagentBagSlot and slot == TyGearReagentBagSlot then
+		return tostring(slot)..": "..TyGearGetReagentBagSlotName()
 	elseif slot >= TyGearFirstEquippableBagSlot and slot <= TyGearLastEquippableBagSlot then
 		local slotName = TyGearGetGearSlotShortLabel(slot)
 		return tostring(slot)..(slotName and ": "..slotName or "")
@@ -579,8 +676,8 @@ end
 
 function TyGearGetDefaultLockedGearSlots()
 	local lockedGearSlots = {}
-	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-		if slot <= INVSLOT_LAST_EQUIPPED or slot >= TyGearFirstEquippableBagSlot then
+	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+		if TyGearIsManagedGearSlot(slot) then
 			lockedGearSlots[slot] = {
 				["label"] = TyGearGetLockedGearSlotLabel(slot),
 				["enabled"] = false
@@ -645,7 +742,6 @@ end
 
 function TyGearIsKnownUnmeasurableGear(itemID)
 	return IS_WOW_FOREVER and itemID and TyGearUnmeasurableGear and TyGearUnmeasurableGear[itemID]
-		and not (TyGearCharDB and TyGearCharDB.UnmeasurableGearDisabled and TyGearCharDB.UnmeasurableGearDisabled[itemID])
 end
 
 --true when this equipment should be left out of rolling, scoring, and equipping
@@ -658,14 +754,14 @@ function TyGearIsItemIgnored(info)
 		itemID = tonumber(info.id)
 	end
 	if not itemID then return false end
-	local disabled = TyGearCharDB and TyGearCharDB.UnmeasurableGearDisabled and TyGearCharDB.UnmeasurableGearDisabled[itemID]
+	--gear TyGear cannot score is always ignored; there is no toggle to evaluate it
 	if TyGearIsKnownUnmeasurableGear(itemID) then
 		return true
 	end
-	if IS_WOW_FOREVER and TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear and TyGearCharDB.DiscoveredUnmeasurableGear[itemID] and not disabled then
+	if IS_WOW_FOREVER and TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear and TyGearCharDB.DiscoveredUnmeasurableGear[itemID] then
 		return true
 	end
-	if type(info) == "table" and info.unmeasurableOnly and not disabled then
+	if type(info) == "table" and info.unmeasurableOnly then
 		return true
 	end
 	if TyGearCharDB and TyGearCharDB.IgnoredItemIDs and TyGearCharDB.IgnoredItemIDs[itemID] then
@@ -727,19 +823,14 @@ end
 function TyGearSetItemIgnored(itemID, shouldIgnore)
 	itemID = tonumber(itemID)
 	if not itemID then return end
+	--unmeasurable Forever gear stays ignored; only manual Item IDs are toggled here
+	if TyGearIsAutoUnmeasurable(itemID) then return end
 	if not TyGearCharDB then TyGearCharDB = {} end
 	TyGearCharDB.IgnoredItemIDs = TyGearCharDB.IgnoredItemIDs or {}
-	TyGearCharDB.UnmeasurableGearDisabled = TyGearCharDB.UnmeasurableGearDisabled or {}
 	if shouldIgnore then
-		TyGearCharDB.UnmeasurableGearDisabled[itemID] = nil
-		if not TyGearIsAutoUnmeasurable(itemID) then
-			TyGearCharDB.IgnoredItemIDs[itemID] = true
-		end
+		TyGearCharDB.IgnoredItemIDs[itemID] = true
 	else
 		TyGearCharDB.IgnoredItemIDs[itemID] = nil
-		if TyGearIsAutoUnmeasurable(itemID) then
-			TyGearCharDB.UnmeasurableGearDisabled[itemID] = true
-		end
 	end
 	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 end
@@ -921,13 +1012,14 @@ function TyGearRememberUnmeasurableGear(info)
 	if not TyGearCharDB.DiscoveredUnmeasurableGear[info.id] then
 		TyGearCharDB.DiscoveredUnmeasurableGear[info.id] = true
 		if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
+		if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
 	end
 end
 
 function TyGearFixLockedGearSlots() -- finds missing slots and adds them, in case Blizzard changed them around
 	if not TyGearDB.LockedGearSlots then TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots() return end
-	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-		if slot <= INVSLOT_LAST_EQUIPPED or slot >= TyGearFirstEquippableBagSlot then
+	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+		if TyGearIsManagedGearSlot(slot) then
 			if not TyGearDB.LockedGearSlots[slot] then
 				TyGearDB.LockedGearSlots[slot] = {
 					["label"] = TyGearGetLockedGearSlotLabel(slot),
@@ -2827,6 +2919,10 @@ local function buildIgnoreSection(optionsPage)
 		row.name:SetWordWrap(false)
 		row.check:SetScript("OnClick", function(self)
 			local itemID = self:GetParent().itemID
+			if TyGearIsAutoUnmeasurable(itemID) then
+				self:SetChecked(true)
+				return
+			end
 			local tick = self:GetChecked() and true or false
 			TyGearSetItemIgnored(itemID, tick)
 			if tick then
@@ -2839,6 +2935,9 @@ local function buildIgnoreSection(optionsPage)
 		row.check:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetHyperlink("item:"..self:GetParent().itemID)
+			if TyGearIsAutoUnmeasurable(self:GetParent().itemID) then
+				GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
+			end
 			GameTooltip:Show()
 		end)
 		row.check:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2861,7 +2960,15 @@ local function buildIgnoreSection(optionsPage)
 				row:ClearAllPoints()
 				row:SetPoint("TOPLEFT", equippedContainer, "TOPLEFT", 0, -((shown - 1) * 28))
 				row.icon:SetTexture(GetInventoryItemTexture("player", slot) or "Interface\\Icons\\INV_Misc_QuestionMark")
+				local autoIgnored = TyGearIsAutoUnmeasurable(itemID)
 				row.check:SetChecked(TyGearIsItemIgnored({ id = itemID, isGear = true }) and true or false)
+				if row.check.SetEnabled then
+					row.check:SetEnabled(not autoIgnored)
+				elseif autoIgnored then
+					row.check:Disable()
+				else
+					row.check:Enable()
+				end
 				local link = GetInventoryItemLink("player", slot)
 				row.name:SetText((link or ("item "..itemID)).."   "..(TyGearGetLockedGearSlotLabel(slot) or ""))
 				row:Show()
@@ -2917,117 +3024,8 @@ local function buildIgnoreSection(optionsPage)
 		hooksecurefunc("ChatEdit_InsertLink", insertItemLink)
 	end
 
-	local iconContainer
-	local rebuildIcons
-	if IS_WOW_FOREVER then
-		iconContainer = CreateFrame("Frame", nil, page)
-		iconContainer:SetSize(500, 20)
-		local iconButtons = {}
-		local iconSize, iconPad, iconColumns = 36, 4, 8
-
-		local function acquireIconButton()
-			local button = CreateFrame("Button", nil, iconContainer)
-			button:SetSize(iconSize, iconSize)
-			button.icon = button:CreateTexture(nil, "ARTWORK")
-			button.icon:SetAllPoints()
-			local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-			highlight:SetAllPoints()
-			highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
-			highlight:SetBlendMode("ADD")
-			button.check = button:CreateTexture(nil, "OVERLAY")
-			button.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-			button.check:SetSize(18, 18)
-			button.check:SetPoint("BOTTOMRIGHT", 4, -4)
-			button:SetScript("OnClick", function(self)
-				local ignored = TyGearIsItemIgnored({ id = self.itemID, isGear = true })
-				TyGearSetItemIgnored(self.itemID, not ignored)
-				if ignored then
-					PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-				else
-					PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-				end
-				if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
-				if GameTooltip:IsOwned(self) then
-					self:GetScript("OnEnter")(self)
-				end
-			end)
-			button:SetScript("OnEnter", function(self)
-				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-				GameTooltip:SetHyperlink("item:"..self.itemID)
-				local ignored = TyGearIsItemIgnored({ id = self.itemID, isGear = true })
-				GameTooltip:AddLine(ignored and L["Ignored. Click to evaluate this item."] or L["Click to ignore this item."], 1, 0.82, 0, true)
-				GameTooltip:Show()
-			end)
-			button:SetScript("OnLeave", function() GameTooltip:Hide() end)
-			optionsPage:EnableWheel(button)
-			return button
-		end
-
-		rebuildIcons = function()
-			local entries = {}
-			local seen = {}
-			if TyGearUnmeasurableGearList then
-				for _, entry in ipairs(TyGearUnmeasurableGearList) do
-					seen[entry.id] = true
-					table.insert(entries, { id = entry.id, icon = entry.icon, name = entry.name })
-				end
-			end
-			if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear then
-				for itemID in pairs(TyGearCharDB.DiscoveredUnmeasurableGear) do
-					if not seen[itemID] then
-						local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
-						local name = GetItemInfo and GetItemInfo(itemID)
-						table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID) })
-					end
-				end
-			end
-			table.sort(entries, function(a, b)
-				return (a.name or "") < (b.name or "")
-			end)
-			for index, entry in ipairs(entries) do
-				local button = iconButtons[index]
-				if not button then
-					button = acquireIconButton()
-					iconButtons[index] = button
-				end
-				local column = (index - 1) % iconColumns
-				local rowIndex = math.floor((index - 1) / iconColumns)
-				button.itemID = entry.id
-				button:ClearAllPoints()
-				button:SetPoint("TOPLEFT", iconContainer, "TOPLEFT", 8 + column * (iconSize + iconPad), -(rowIndex * (iconSize + iconPad)))
-				if entry.icon then
-					button.icon:SetTexture(entry.icon)
-				else
-					button.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-				end
-				local ignored = TyGearIsItemIgnored({ id = entry.id, isGear = true })
-				if button.icon.SetDesaturated then
-					button.icon:SetDesaturated(not ignored)
-				end
-				button.icon:SetAlpha(ignored and 1 or 0.4)
-				button.check:SetShown(ignored)
-				button:Show()
-				if Item and Item.CreateFromItemID then
-					local itemID = entry.id
-					local item = Item:CreateFromItemID(itemID)
-					item:ContinueOnItemLoad(function()
-						if button.itemID ~= itemID or not button:IsShown() then return end
-						local icon = item.GetItemIcon and item:GetItemIcon()
-						if icon then button.icon:SetTexture(icon) end
-					end)
-				end
-			end
-			for index = #entries + 1, #iconButtons do
-				iconButtons[index]:Hide()
-			end
-			local rows = math.max(math.ceil(#entries / iconColumns), 1)
-			trackHeight(iconContainer, rows * (iconSize + iconPad))
-		end
-	end
-
 	function TyGearRefreshIgnoreSection()
 		rebuildEquipped()
-		if rebuildIcons then rebuildIcons() end
 		if not editBox:HasFocus() then
 			showManualIDs()
 		end
@@ -3038,13 +3036,140 @@ local function buildIgnoreSection(optionsPage)
 	addSubheader(L["Item IDs"])
 	addNote(L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons."])
 	optionsPage:AddRow(editRow)
-	if iconContainer then
-		addSubheader(L["No measurable stats"])
-		addNote(L["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. Click an icon to toggle it."])
-		rebuildIcons()
-		optionsPage:AddRow(iconContainer)
-	end
 	showManualIDs()
+end
+
+--read-only list of Forever gear TyGear cannot score; always ignored, no toggles
+local function buildIgnoredGearListPage(listMenu)
+	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", 8, -8)
+	title:SetText(L["Ignored gear"])
+
+	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", 8, -28)
+	note:SetWidth(480)
+	note:SetJustifyH("LEFT")
+	note:SetText(L["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."])
+	listMenu.ignoredGearNote = note
+
+	local listContainer = CreateFrame("Frame", "TyGearIgnoredGearListContainer", listMenu)
+	listContainer:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -12)
+	listContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+	listContainer:SetHeight(20)
+
+	local emptyText = listContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+	emptyText:SetPoint("TOPLEFT", 0, 0)
+	emptyText:SetText(L["No unmeasurable gear has been found yet."])
+
+	local rows = {}
+	local rowHeight = 28
+
+	local function acquireRow()
+		local row = CreateFrame("Frame", nil, listContainer)
+		row:SetSize(500, rowHeight)
+		row.icon = row:CreateTexture(nil, "ARTWORK")
+		row.icon:SetSize(24, 24)
+		row.icon:SetPoint("LEFT", 0, 0)
+		row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		row.name:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+		row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+		row.name:SetJustifyH("LEFT")
+		row.name:SetWordWrap(false)
+		row:EnableMouse(true)
+		row:SetScript("OnEnter", function(self)
+			if not self.itemID then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetHyperlink("item:"..self.itemID)
+			GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
+			GameTooltip:Show()
+		end)
+		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		return row
+	end
+
+	local function collectEntries()
+		local entries = {}
+		local seen = {}
+		if TyGearUnmeasurableGearList then
+			for _, entry in ipairs(TyGearUnmeasurableGearList) do
+				seen[entry.id] = true
+				table.insert(entries, { id = entry.id, icon = entry.icon, name = entry.name })
+			end
+		end
+		if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear then
+			for itemID in pairs(TyGearCharDB.DiscoveredUnmeasurableGear) do
+				if not seen[itemID] then
+					local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
+					local name = GetItemInfo and GetItemInfo(itemID)
+					table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID) })
+				end
+			end
+		end
+		table.sort(entries, function(a, b)
+			return (a.name or "") < (b.name or "")
+		end)
+		return entries
+	end
+
+	local function headerHeight()
+		local noteHeight = note:GetStringHeight() or 40
+		local estimate = math.ceil(math.max(#(note:GetText() or ""), 1) / 80) * 14
+		if noteHeight < estimate then noteHeight = estimate end
+		return 28 + noteHeight + 12
+	end
+
+	function TyGearRefreshIgnoredGearList()
+		if not listMenu:IsShown() and listContainer.builtOnce then
+			listContainer.needsRefresh = true
+			return
+		end
+		listContainer.builtOnce = true
+		listContainer.needsRefresh = false
+		local entries = collectEntries()
+		for index, entry in ipairs(entries) do
+			local row = rows[index]
+			if not row then
+				row = acquireRow()
+				rows[index] = row
+			end
+			row.itemID = entry.id
+			row:ClearAllPoints()
+			row:SetPoint("TOPLEFT", listContainer, "TOPLEFT", 0, -((index - 1) * rowHeight))
+			row:SetPoint("TOPRIGHT", listContainer, "TOPRIGHT", 0, -((index - 1) * rowHeight))
+			row.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+			row.name:SetText(entry.name or ("item "..entry.id))
+			row:Show()
+			if Item and Item.CreateFromItemID then
+				local itemID = entry.id
+				local item = Item:CreateFromItemID(itemID)
+				item:ContinueOnItemLoad(function()
+					if row.itemID ~= itemID or not row:IsShown() then return end
+					local icon = item.GetItemIcon and item:GetItemIcon()
+					local name = item.GetItemName and item:GetItemName()
+					if icon then row.icon:SetTexture(icon) end
+					if name then row.name:SetText(name) end
+				end)
+			end
+		end
+		for index = #entries + 1, #rows do
+			rows[index]:Hide()
+		end
+		emptyText:SetShown(#entries == 0)
+		local height = #entries == 0 and 20 or (#entries * rowHeight)
+		listContainer:SetHeight(height)
+		listMenu:SetHeight(headerHeight() + height + 16)
+		local scrollFrame = listMenu:GetParent()
+		if scrollFrame and scrollFrame.UpdateScrollChildRect then
+			scrollFrame:UpdateScrollChildRect()
+		end
+	end
+
+	listMenu:HookScript("OnShow", function()
+		if listContainer.needsRefresh or not listContainer.builtOnce then
+			TyGearRefreshIgnoredGearList()
+		end
+	end)
+	TyGearRefreshIgnoredGearList()
 end
 
 local function optionsSetup(optionsMenu)
@@ -3454,6 +3579,25 @@ optionsMenuParent.name = "TyGear"
 optionsMenuParent:SetScrollChild(optionsMenu)
 --the Settings shim above returns the registered category; native InterfaceOptions_AddCategory returns nothing
 local optionsCategory = InterfaceOptions_AddCategory(optionsMenuParent)
+
+--second Settings tab: read-only list of Forever gear that has no measurable stats
+local ignoredGearListMenu
+local ignoredGearListMenuParent
+if IS_WOW_FOREVER then
+	ignoredGearListMenu = CreateFrame("Frame", "TyGearIgnoredGearListMenu")
+	ignoredGearListMenu:SetWidth(1)
+	ignoredGearListMenu:SetHeight(1)
+	ignoredGearListMenuParent = CreateFrame("ScrollFrame", "TyGearIgnoredGearListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
+	ignoredGearListMenuParent.name = L["Ignored gear"]
+	ignoredGearListMenuParent:SetScrollChild(ignoredGearListMenu)
+	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
+		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, ignoredGearListMenuParent, ignoredGearListMenuParent.name)
+	else
+		ignoredGearListMenuParent.parent = optionsMenuParent.name
+		InterfaceOptions_AddCategory(ignoredGearListMenuParent)
+	end
+end
+
 if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 
 --white crafting tools kept by the default ignore list for selling white gear.
@@ -3581,8 +3725,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Roll on non-gear loot"],
-				["description"] = L["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."],
-				["toggleDescriptionTrue"] = L["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."],
+				["description"] = L["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."],
+				["toggleDescriptionTrue"] = L["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."],
 				["toggleDescriptionFalse"] = L["Rolling on non-gear loot is now disabled."]
 			},
 			{
@@ -3835,6 +3979,23 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots()
 		end
 		optionsSetup(optionsMenu)
+		if ignoredGearListMenu and not ignoredGearListMenu.built then
+			ignoredGearListMenu.built = true
+			buildIgnoredGearListPage(ignoredGearListMenu)
+			local function layoutIgnoredGearList()
+				local width = math.max((ignoredGearListMenuParent:GetWidth() or 0) - 30, 1)
+				ignoredGearListMenu:SetWidth(width + 8)
+				if ignoredGearListMenu.ignoredGearNote then
+					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 8, 100))
+				end
+				if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
+				if ignoredGearListMenuParent.UpdateScrollChildRect then
+					ignoredGearListMenuParent:UpdateScrollChildRect()
+				end
+			end
+			ignoredGearListMenuParent:HookScript("OnSizeChanged", layoutIgnoredGearList)
+			layoutIgnoredGearList()
+		end
 		if not optionsMenuParent.ignoreSectionHooked then
 			optionsMenuParent.ignoreSectionHooked = true
 			optionsMenuParent:HookScript("OnShow", function()
@@ -3972,7 +4133,7 @@ end
 
 function TyGearPrintHelp()
 	TyGearPrint("TyGear: "..((param1 == "help") and "" or "Unrecognized command.  ").."Recognized commands (also /tygear):", 0)
-	TyGearPrint("TyGear:    '/tg': options menu, including the Ignore section for equipment slots and items", 0)
+	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", and the Ignored gear tab for items TyGear cannot score") or ""), 0)
 	TyGearPrint("TyGear:    '/tg help': command line help", 0)
 	TyGearPrint("TyGear:    '/tg scan': scan all bags for gear upgrades", 0)
 	TyGearPrint("TyGear:    '/tg spec': get name of current talent specialization", 0)
@@ -4136,24 +4297,27 @@ function TyGearDecideRoll(link, lootRollID)
 			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is ignored, so not rolling.", 1)
 			return nil, rollItemInfo, reason
 		end
+		if rollItemInfo.isMount then
+			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is a mount, so not rolling.", 1)
+			return nil, rollItemInfo, reason
+		end
 		local wouldNeed = TyGearConsiderAllItems(lootRollItemID, rollItemInfo, true)
 		if TyGearAllValidGearSlotsProtected(rollItemInfo) then
 			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." only fits ignored slots, so not rolling.", 1)
 			return nil, rollItemInfo, reason
 		end
 		if (TyGearDB.RollOnNonGearLoot == false)
-		and (not rollItemInfo.isGear)
-		and (not rollItemInfo.isMount) then
+		and (not rollItemInfo.isGear) then
 			TyGearPrint("TyGear: "..rollItemInfo.link.." is not gear and \"Roll on non-gear loot\" is disabled, so not rolling.", 3)
 			--local rollDecision is nil, so no roll
 		elseif wouldNeed and canNeed then
-			if rollItemInfo.Within5levels or (rollItemInfo.isMount and (not rollItemInfo.alreadyKnown)) or (not rollItemInfo.unusable) then
-				local maxNumberOfCopiesAllowedToNeed = (rollItemInfo.unique or (rollItemInfo.isMount and (not rollItemInfo.alreadyKnown))) and 1
+			if rollItemInfo.Within5levels or (not rollItemInfo.unusable) then
+				local maxNumberOfCopiesAllowedToNeed = rollItemInfo.unique and 1
 					or rollItemInfo.numEquippable
 					or #rollItemInfo.validGearSlots
 				local numberOfCopiesOwned = GetItemCount(rollItemInfo.id, true)
 				if numberOfCopiesOwned >= maxNumberOfCopiesAllowedToNeed then
-					TyGearPrint("TyGear: "..rollItemInfo.link.." is "..(rollItemInfo.isMount and "a mount" or "an upgrade usable within 5 levels")..", but you already have "..tostring(numberOfCopiesOwned).." cop"..(numberOfCopiesOwned == 1 and "y" or "ies")..", so rolling "..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE..".",3)
+					TyGearPrint("TyGear: "..rollItemInfo.link.." is an upgrade usable within 5 levels, but you already have "..tostring(numberOfCopiesOwned).." cop"..(numberOfCopiesOwned == 1 and "y" or "ies")..", so rolling "..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE..".",3)
 					rollDecision = 2 --greed
 				else
 					rollDecision = 1 --need
@@ -4587,8 +4751,8 @@ function TyGearUpdateEquippedItems()
 	-- TyGearItemInfoCache = {}
 	TyGearEquippedItems = {}
 	local info, score
-	for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-		if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
+	for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+		if TyGearIsManagedGearSlot(invSlot) then
 			TyGearUpdateEquippedItem(invSlot)
 		end
 	end
@@ -4636,9 +4800,9 @@ function TyGearUpdateBestItems()
 	-- table to track whether an item's been added
 	TyGearBestItemsAlreadyAdded = {}
 
-	--consider all items in bags
-	for bag = 0, NUM_BAG_SLOTS do
-		local slotMax = GetContainerNumSlots(bag)
+	--consider all items in bags, including the reagent bag so a reagent bag stored there is seen
+	for bag = 0, TyGearGetLastBagToScan() do
+		local slotMax = GetContainerNumSlots(bag) or 0
 		for slot = 0, slotMax do
 			info = TyGearReadItemInfo(nil, nil, bag, slot)
 			-- TyGearPrint((info.link or info.name or "nil").." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
@@ -4648,10 +4812,6 @@ function TyGearUpdateBestItems()
 end
 
 function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
-	if (arbitraryItemInfo and arbitraryItemInfo.isMount and (not arbitraryItemInfo.alreadyKnown)) then
-		return 1
-	end
-
 	local anythingBetter = nil
 
 	TyGearUpdateBestItems()
@@ -4663,8 +4823,8 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 
 	--create all future equip actions required (only if not rolling currently)
 	if (not lootRollItemID and not noActions) then
-		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
+		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+			if TyGearIsManagedGearSlot(invSlot) then
 				if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND or invSlot == INVSLOT_TABARD then
 					--skip weapons for now
 				else
@@ -4794,8 +4954,8 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 		end
 	elseif (lootRollItemID) then
 		--decide whether to roll on the item or not
-		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
+		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+			if TyGearIsManagedGearSlot(invSlot) then
 				if (TyGearBestItems[invSlot].rollOn and
 				(invSlot ~= INVSLOT_MAINHAND or invSlot ~= INVSLOT_OFFHAND or TyGearIs1hWorthwhile(invSlot)) and
 				(invSlot ~= INVSLOT_TABARD or TyGearIsBest2hBetterThanBestMainAndOff())) then
@@ -4833,7 +4993,6 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 	and (not TyGearIsAmmoBagValidForRangedWeapon(info, TyGearBestItems[INVSLOT_RANGED].info)) then
 		return
 	end
-	if (info.isMount and (not info.alreadyKnown)) then return true end
 	if (info.usable or (rollOn and info.Within5levels)) then
 		local score = TyGearDetermineItemScore(info)
 		if info.isGear and info.validGearSlots then
@@ -4988,7 +5147,7 @@ function TyGearGetValidGearSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = TyGearEquippableBagSlots,
+		[Enum.InventoryType.IndexBagType]            = (TyGearIsReagentBag(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
 		                                               and TyGearEquippableBagSlots
                                                        or nil
@@ -5087,7 +5246,7 @@ function TyGearGetSetSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = TyGearEquippableBagSlots,
+		[Enum.InventoryType.IndexBagType]            = (TyGearIsReagentBag(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
 		                                               and TyGearEquippableBagSlots
                                                        or nil
@@ -5330,15 +5489,21 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
 	info.isGear = info.invType > 0
+	--reagent bags equip only in the reagent bag slot; keep them even if inventory type is missing
+	if TyGearIsReagentBag(info) then
+		info.isReagentBag = 1
+		info.isGear = 1
+		if info.invType == 0 and Enum and Enum.InventoryType then
+			info.invType = Enum.InventoryType.IndexBagType
+		end
+	end
 
 	if (info.classID == Enum.ItemClass.Miscellaneous) and
 	(info.subclassID == Enum.ItemMiscellaneousSubclass.Mount) then
 		info.isMount = 1
-		if TyGearIsMountItemAlreadyCollected(info.id) then
-			info.alreadyKnown = 1
-		end
+		return info -- mounts are never auto-rolled; leave them for the player
 	elseif not info.isGear then
-		return info -- return early if the item isn't a mount or gear
+		return info -- return early if the item isn't gear
 	end
 
 	info.RedSockets = 0
@@ -5718,12 +5883,12 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 
 	info.equipped = not not inventoryID
 
-	if info.isGear or info.isMount then
+	if info.isGear then
 		info.shouldShowScoreInTooltip = 1
 	end
-	if (not info.unusable) and (info.isGear or info.isMount) then
+	if (not info.unusable) and info.isGear then
 		info.usable = 1
-	elseif not (info.isGear or info.isMount) then
+	elseif not info.isGear then
 		info.unusable = 1
 		info.reason = "(item can't be equipped. info.invType = '".. tostring(info.invType) .."')"
 	end
@@ -6066,11 +6231,11 @@ end
 
 function TyGearDetermineItemScore(info)
 	if info.empty then return 0 end
-	if info.isMount and (not info.alreadyKnown) then
-		return math.huge
-	end
 	if info.classID == Enum.ItemClass.Container then
-		if info.subclassID == 0 then -- generic (typical) bag; there's no Enum.ItemContainerSubclass
+		-- normal bags and reagent bags are scored by how many slots they add.
+		-- reagent bags only compete for the reagent bag slot, so a larger one is always an upgrade.
+		-- other specialized bags are almost worthless, so they only replace an empty slot
+		if info.subclassID == 0 or info.isReagentBag or TyGearIsReagentBag(info) then -- generic bag, or reagent bag; there's no Enum.ItemContainerSubclass
 			return info.numBagSlots or 0
 		else
 			return (info.numBagSlots or 0) * E -- specialized bags suck, so consider them only better than nothing
@@ -6133,24 +6298,6 @@ function TyGearDetermineItemScore(info)
 		return E
 	else
 		return score or 0
-	end
-end
-
-function TyGearIsMountItemAlreadyCollected(itemID)
-	local mountSpellID = select(2,GetItemSpell(itemID))
-	if GetItemCount(itemID, true) > 0 or
-	(mountSpellID and IsPlayerSpell(mountSpellID)) or
-	(C_MountJournal and C_MountJournal.GetMountInfoByID and C_MountJournal.GetMountFromItem and
-	select(11,C_MountJournal.GetMountInfoByID(C_MountJournal.GetMountFromItem(itemID)))) then
-		return true
-	elseif GetNumCompanions then
-		local itemName = C_Item.GetItemNameByID(itemID)
-		local numCollectedMounts = GetNumCompanions("MOUNT")
-		for i = 1, numCollectedMounts do
-			if select(2,GetCompanionInfo("MOUNT", i)) == itemName then
-				return true
-			end
-		end
 	end
 end
 
@@ -6785,6 +6932,7 @@ function TyGearMain()
 									curAction.ensuringEquipped = nil
 									if (not TyGearActionQueue[i+1]) or (not TyGearActionQueue[i+1].ensuringEquipped) then
 										TyGearUpdateEquippedItems()
+										TyGearPlayUpgradeEquippedChime()
 									end
 									curAction.t = nil
 									queueQueueRebuild = 1
@@ -6802,8 +6950,8 @@ function TyGearMain()
 									queueQueueRebuild = 1
 								--everything below needs the container and slot, so it only runs when both are known
 								-- prevent equip error when bag is replacing the bag it's inside
-								elseif curAction.replaceSlot >= TyGearFirstEquippableBagSlot
-								and curAction.container == (curAction.replaceSlot - TyGearFirstEquippableBagSlot + 1) then
+								elseif TyGearGetContainerForEquippedBagSlot(curAction.replaceSlot)
+								and curAction.container == TyGearGetContainerForEquippedBagSlot(curAction.replaceSlot) then
 									if not curAction.movedOutOfBag then
 										local destBag, destSlot
 										for b = 0, NUM_BAG_SLOTS do
