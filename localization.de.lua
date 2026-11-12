@@ -43,8 +43,8 @@ if GetLocale() == "deDE" then
 
 	-- option: RollOnNonGearLoot
 	T.Localization["Roll on non-gear loot"] = "Auf Beute würfeln, die keine Ausrüstung ist"
-	T.Localization["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."] = "Auf jede Gruppenbeute würfeln, auch auf Beute, die keine Ausrüstung ist.  Ist dies aktiviert, würfelt TyGear GIER auf alles außer Ausrüstung und Reittieren und BEDARF auf Reittiere."
-	T.Localization["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."] = "Würfeln auf Beute, die keine Ausrüstung ist, ist jetzt aktiviert.  TyGear würfelt GIER auf alles außer Ausrüstung und Reittieren und BEDARF auf Reittiere."
+	T.Localization["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."] = "Auf jede Gruppenbeute würfeln, auch auf Beute, die keine Ausrüstung ist.  Ist dies aktiviert, würfelt TyGear GIER auf Beute, die keine Ausrüstung ist.  Auf Reittiere wird nie automatisch gewürfelt."
+	T.Localization["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."] = "Würfeln auf Beute, die keine Ausrüstung ist, ist jetzt aktiviert.  TyGear würfelt GIER auf Beute, die keine Ausrüstung ist.  Auf Reittiere wird nie automatisch gewürfelt."
 	T.Localization["Rolling on non-gear loot is now disabled."] = "Würfeln auf Beute, die keine Ausrüstung ist, ist jetzt deaktiviert."
 
 	-- option: NeverAutoNeed

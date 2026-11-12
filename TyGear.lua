@@ -3420,8 +3420,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Roll on non-gear loot"],
-				["description"] = L["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."],
-				["toggleDescriptionTrue"] = L["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."],
+				["description"] = L["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."],
+				["toggleDescriptionTrue"] = L["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."],
 				["toggleDescriptionFalse"] = L["Rolling on non-gear loot is now disabled."]
 			},
 			{
@@ -3974,24 +3974,27 @@ function TyGearDecideRoll(link, lootRollID)
 			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is ignored, so not rolling.", 1)
 			return nil, rollItemInfo, reason
 		end
+		if rollItemInfo.isMount then
+			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is a mount, so not rolling.", 1)
+			return nil, rollItemInfo, reason
+		end
 		local wouldNeed = TyGearConsiderAllItems(lootRollItemID, rollItemInfo, true)
 		if TyGearAllValidGearSlotsProtected(rollItemInfo) then
 			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." only fits ignored slots, so not rolling.", 1)
 			return nil, rollItemInfo, reason
 		end
 		if (TyGearDB.RollOnNonGearLoot == false)
-		and (not rollItemInfo.isGear)
-		and (not rollItemInfo.isMount) then
+		and (not rollItemInfo.isGear) then
 			TyGearPrint("TyGear: "..rollItemInfo.link.." is not gear and \"Roll on non-gear loot\" is disabled, so not rolling.", 3)
 			--local rollDecision is nil, so no roll
 		elseif wouldNeed and canNeed then
-			if rollItemInfo.Within5levels or (rollItemInfo.isMount and (not rollItemInfo.alreadyKnown)) or (not rollItemInfo.unusable) then
-				local maxNumberOfCopiesAllowedToNeed = (rollItemInfo.unique or (rollItemInfo.isMount and (not rollItemInfo.alreadyKnown))) and 1
+			if rollItemInfo.Within5levels or (not rollItemInfo.unusable) then
+				local maxNumberOfCopiesAllowedToNeed = rollItemInfo.unique and 1
 					or rollItemInfo.numEquippable
 					or #rollItemInfo.validGearSlots
 				local numberOfCopiesOwned = GetItemCount(rollItemInfo.id, true)
 				if numberOfCopiesOwned >= maxNumberOfCopiesAllowedToNeed then
-					TyGearPrint("TyGear: "..rollItemInfo.link.." is "..(rollItemInfo.isMount and "a mount" or "an upgrade usable within 5 levels")..", but you already have "..tostring(numberOfCopiesOwned).." cop"..(numberOfCopiesOwned == 1 and "y" or "ies")..", so rolling "..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE..".",3)
+					TyGearPrint("TyGear: "..rollItemInfo.link.." is an upgrade usable within 5 levels, but you already have "..tostring(numberOfCopiesOwned).." cop"..(numberOfCopiesOwned == 1 and "y" or "ies")..", so rolling "..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE..".",3)
 					rollDecision = 2 --greed
 				else
 					rollDecision = 1 --need
@@ -4486,10 +4489,6 @@ function TyGearUpdateBestItems()
 end
 
 function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
-	if (arbitraryItemInfo and arbitraryItemInfo.isMount and (not arbitraryItemInfo.alreadyKnown)) then
-		return 1
-	end
-
 	local anythingBetter = nil
 
 	TyGearUpdateBestItems()
@@ -4671,7 +4670,6 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 	and (not TyGearIsAmmoBagValidForRangedWeapon(info, TyGearBestItems[INVSLOT_RANGED].info)) then
 		return
 	end
-	if (info.isMount and (not info.alreadyKnown)) then return true end
 	if (info.usable or (rollOn and info.Within5levels)) then
 		local score = TyGearDetermineItemScore(info)
 		if info.isGear and info.validGearSlots then
@@ -5172,11 +5170,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	if (info.classID == Enum.ItemClass.Miscellaneous) and
 	(info.subclassID == Enum.ItemMiscellaneousSubclass.Mount) then
 		info.isMount = 1
-		if TyGearIsMountItemAlreadyCollected(info.id) then
-			info.alreadyKnown = 1
-		end
+		return info -- mounts are never auto-rolled; leave them for the player
 	elseif not info.isGear then
-		return info -- return early if the item isn't a mount or gear
+		return info -- return early if the item isn't gear
 	end
 
 	info.RedSockets = 0
@@ -5556,12 +5552,12 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 
 	info.equipped = not not inventoryID
 
-	if info.isGear or info.isMount then
+	if info.isGear then
 		info.shouldShowScoreInTooltip = 1
 	end
-	if (not info.unusable) and (info.isGear or info.isMount) then
+	if (not info.unusable) and info.isGear then
 		info.usable = 1
-	elseif not (info.isGear or info.isMount) then
+	elseif not info.isGear then
 		info.unusable = 1
 		info.reason = "(item can't be equipped. info.invType = '".. tostring(info.invType) .."')"
 	end
@@ -5904,9 +5900,6 @@ end
 
 function TyGearDetermineItemScore(info)
 	if info.empty then return 0 end
-	if info.isMount and (not info.alreadyKnown) then
-		return math.huge
-	end
 	if info.classID == Enum.ItemClass.Container then
 		if info.subclassID == 0 then -- generic (typical) bag; there's no Enum.ItemContainerSubclass
 			return info.numBagSlots or 0
@@ -5971,24 +5964,6 @@ function TyGearDetermineItemScore(info)
 		return E
 	else
 		return score or 0
-	end
-end
-
-function TyGearIsMountItemAlreadyCollected(itemID)
-	local mountSpellID = select(2,GetItemSpell(itemID))
-	if GetItemCount(itemID, true) > 0 or
-	(mountSpellID and IsPlayerSpell(mountSpellID)) or
-	(C_MountJournal and C_MountJournal.GetMountInfoByID and C_MountJournal.GetMountFromItem and
-	select(11,C_MountJournal.GetMountInfoByID(C_MountJournal.GetMountFromItem(itemID)))) then
-		return true
-	elseif GetNumCompanions then
-		local itemName = C_Item.GetItemNameByID(itemID)
-		local numCollectedMounts = GetNumCompanions("MOUNT")
-		for i = 1, numCollectedMounts do
-			if select(2,GetCompanionInfo("MOUNT", i)) == itemName then
-				return true
-			end
-		end
 	end
 end
 
