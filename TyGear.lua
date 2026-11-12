@@ -980,6 +980,7 @@ function TyGearRefreshVendorKeepListEditBox()
 		editBox:SetText((TyGearDB and TyGearDB.VendorKeepList) or "")
 		editBox:SetCursorPosition(0)
 	end
+	if TyGearRefreshKeepList then TyGearRefreshKeepList() end
 end
 
 function TyGearSetVendorKeepListItem(itemID, shouldKeep)
@@ -3374,6 +3375,228 @@ local function buildIgnoredGearListPage(listMenu)
 	TyGearRefreshIgnoredGearList()
 end
 
+--Forever Keep list tab: add box near the top, then a visual list of kept greys and whites
+local function buildKeepListPage(listMenu)
+	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", 8, -8)
+	title:SetText(L["Keep list"])
+
+	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", 8, -28)
+	note:SetWidth(480)
+	note:SetJustifyH("LEFT")
+	note:SetText(L["Greys and common (white) items listed here are kept when selling. The list starts with crafting tools that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, and enchanting rods. Every fishing pole is kept even if its item ID is removed from this list."])
+	listMenu.keepListNote = note
+
+	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	addHeader:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -14)
+	addHeader:SetText(L["Add items"])
+
+	local addNote = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	addNote:SetPoint("TOPLEFT", addHeader, "BOTTOMLEFT", 0, -6)
+	addNote:SetWidth(480)
+	addNote:SetJustifyH("LEFT")
+	addNote:SetText(L["Item IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item."])
+	listMenu.keepListAddNote = addNote
+
+	local editRow = CreateFrame("Frame", nil, listMenu)
+	editRow:SetPoint("TOPLEFT", addNote, "BOTTOMLEFT", 0, -8)
+	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+	editRow:SetHeight(24)
+	local editBox = CreateFrame("EditBox", "TyGearVendorKeepListEditBox", editRow, "InputBoxTemplate")
+	editBox:SetAutoFocus(false)
+	editBox:SetHeight(20)
+	editBox:SetPoint("LEFT", 4, 0)
+	editBox:SetPoint("RIGHT", editRow, "RIGHT", -4, 0)
+	local suppressEditBoxSave = false
+	local function showKeepListText()
+		suppressEditBoxSave = true
+		editBox:SetText((TyGearDB and TyGearDB.VendorKeepList) or "")
+		editBox:SetCursorPosition(0)
+		suppressEditBoxSave = false
+	end
+	local function saveKeepListText(text)
+		if not TyGearDB then TyGearDB = {} end
+		TyGearDB.VendorKeepList = table.concat(TyGearParseItemIDList(text or ""), ", ")
+		showKeepListText()
+		if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
+		if TyGearRefreshKeepList then TyGearRefreshKeepList() end
+	end
+	editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	editBox:SetScript("OnEscapePressed", function(self)
+		showKeepListText()
+		self:ClearFocus()
+	end)
+	editBox:SetScript("OnEditFocusLost", function(self)
+		if suppressEditBoxSave then return end
+		saveKeepListText(self:GetText())
+	end)
+	editBox:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_NONE")
+		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+		GameTooltip:AddLine(L["Add items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Item IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:Show()
+	end)
+	editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	local function insertItemLink(text)
+		if editBox:HasFocus() and text and string.find(text, "item:%d+") then
+			editBox:Insert(" "..text)
+		end
+	end
+	if ChatFrameUtil and ChatFrameUtil.InsertLink then
+		hooksecurefunc(ChatFrameUtil, "InsertLink", insertItemLink)
+	elseif ChatEdit_InsertLink then
+		hooksecurefunc("ChatEdit_InsertLink", insertItemLink)
+	end
+	showKeepListText()
+
+	local keptHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	keptHeader:SetPoint("TOPLEFT", editRow, "BOTTOMLEFT", 0, -14)
+	keptHeader:SetText(L["Kept items"])
+
+	local listContainer = CreateFrame("Frame", "TyGearKeepListContainer", listMenu)
+	listContainer:SetPoint("TOPLEFT", keptHeader, "BOTTOMLEFT", 0, -8)
+	listContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+	listContainer:SetHeight(20)
+
+	local emptyText = listContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+	emptyText:SetPoint("TOPLEFT", 0, 0)
+	emptyText:SetText(L["No items are on the keep list."])
+
+	local rows = {}
+	local rowHeight = 28
+	local rowSerial = 0
+
+	local function acquireRow()
+		rowSerial = rowSerial + 1
+		local row = CreateFrame("Frame", nil, listContainer)
+		row:SetSize(500, rowHeight)
+		row.icon = row:CreateTexture(nil, "ARTWORK")
+		row.icon:SetSize(24, 24)
+		row.icon:SetPoint("LEFT", 0, 0)
+		row.check = CreateFrame("CheckButton", "TyGearKeepListRow"..rowSerial.."CheckButton", row, "InterfaceOptionsCheckButtonTemplate")
+		row.check:SetPoint("LEFT", row.icon, "RIGHT", 2, 0)
+		local templateText = _G[row.check:GetName().."Text"]
+		if templateText then templateText:SetText("") end
+		row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
+		row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+		row.name:SetJustifyH("LEFT")
+		row.name:SetWordWrap(false)
+		row.check:SetScript("OnClick", function(self)
+			local itemID = self:GetParent().itemID
+			local keep = self:GetChecked() and true or false
+			TyGearSetVendorKeepListItem(itemID, keep)
+			if keep then
+				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+			else
+				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+			end
+		end)
+		row.check:SetScript("OnEnter", function(self)
+			local parent = self:GetParent()
+			if not parent.itemID then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetHyperlink("item:"..parent.itemID)
+			GameTooltip:AddLine(L["Uncheck to remove this item from the keep list."], 1, 0.82, 0, true)
+			GameTooltip:Show()
+		end)
+		row.check:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		row:EnableMouse(true)
+		row:SetScript("OnEnter", function(self)
+			if not self.itemID then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetHyperlink("item:"..self.itemID)
+			GameTooltip:AddLine(L["Uncheck to remove this item from the keep list."], 1, 0.82, 0, true)
+			GameTooltip:Show()
+		end)
+		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		return row
+	end
+
+	local function collectEntries()
+		local entries = {}
+		for _, itemID in ipairs(TyGearParseItemIDList((TyGearDB and TyGearDB.VendorKeepList) or "")) do
+			local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
+			local name = GetItemInfo and GetItemInfo(itemID)
+			table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID) })
+		end
+		table.sort(entries, function(a, b)
+			return (a.name or "") < (b.name or "")
+		end)
+		return entries
+	end
+
+	local function headerHeight()
+		local function measured(fontString, fallback)
+			local height = fontString:GetStringHeight() or fallback
+			local estimate = math.ceil(math.max(#(fontString:GetText() or ""), 1) / 80) * 14
+			if height < estimate then height = estimate end
+			return height
+		end
+		--title + note + add header + add note + edit row + kept header + spacings
+		return 28 + measured(note, 40) + 14 + 16 + 6 + measured(addNote, 28) + 8 + 24 + 14 + 16 + 8
+	end
+
+	function TyGearRefreshKeepList()
+		if not listMenu:IsShown() and listContainer.builtOnce then
+			listContainer.needsRefresh = true
+			return
+		end
+		listContainer.builtOnce = true
+		listContainer.needsRefresh = false
+		if not editBox:HasFocus() then
+			showKeepListText()
+		end
+		local entries = collectEntries()
+		for index, entry in ipairs(entries) do
+			local row = rows[index]
+			if not row then
+				row = acquireRow()
+				rows[index] = row
+			end
+			row.itemID = entry.id
+			row:ClearAllPoints()
+			row:SetPoint("TOPLEFT", listContainer, "TOPLEFT", 0, -((index - 1) * rowHeight))
+			row:SetPoint("TOPRIGHT", listContainer, "TOPRIGHT", 0, -((index - 1) * rowHeight))
+			row.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+			row.name:SetText(entry.name or ("item "..entry.id))
+			row.check:SetChecked(true)
+			row:Show()
+			if Item and Item.CreateFromItemID then
+				local itemID = entry.id
+				local item = Item:CreateFromItemID(itemID)
+				item:ContinueOnItemLoad(function()
+					if row.itemID ~= itemID or not row:IsShown() then return end
+					local icon = item.GetItemIcon and item:GetItemIcon()
+					local name = item.GetItemName and item:GetItemName()
+					if icon then row.icon:SetTexture(icon) end
+					if name then row.name:SetText(name) end
+				end)
+			end
+		end
+		for index = #entries + 1, #rows do
+			rows[index]:Hide()
+		end
+		emptyText:SetShown(#entries == 0)
+		local height = #entries == 0 and 20 or (#entries * rowHeight)
+		listContainer:SetHeight(height)
+		listMenu:SetHeight(headerHeight() + height + 16)
+		local scrollFrame = listMenu:GetParent()
+		if scrollFrame and scrollFrame.UpdateScrollChildRect then
+			scrollFrame:UpdateScrollChildRect()
+		end
+	end
+
+	listMenu:HookScript("OnShow", function()
+		if listContainer.needsRefresh or not listContainer.builtOnce then
+			TyGearRefreshKeepList()
+		end
+	end)
+	TyGearRefreshKeepList()
+end
+
 local function optionsSetup(optionsMenu)
 	local i = 0
 	local frame = {}
@@ -3826,9 +4049,11 @@ optionsMenuParent:SetScrollChild(optionsMenu)
 --the Settings shim above returns the registered category; native InterfaceOptions_AddCategory returns nothing
 local optionsCategory = InterfaceOptions_AddCategory(optionsMenuParent)
 
---second Settings tab: read-only list of Forever gear that has no measurable stats
+--Settings subtabs used on WoW Forever
 local ignoredGearListMenu
 local ignoredGearListMenuParent
+local keepListMenu
+local keepListMenuParent
 if IS_WOW_FOREVER then
 	ignoredGearListMenu = CreateFrame("Frame", "TyGearIgnoredGearListMenu")
 	ignoredGearListMenu:SetWidth(1)
@@ -3842,13 +4067,27 @@ if IS_WOW_FOREVER then
 		ignoredGearListMenuParent.parent = optionsMenuParent.name
 		InterfaceOptions_AddCategory(ignoredGearListMenuParent)
 	end
+
+	keepListMenu = CreateFrame("Frame", "TyGearKeepListMenu")
+	keepListMenu:SetWidth(1)
+	keepListMenu:SetHeight(1)
+	keepListMenuParent = CreateFrame("ScrollFrame", "TyGearKeepListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
+	keepListMenuParent.name = L["Keep list"]
+	keepListMenuParent:SetScrollChild(keepListMenu)
+	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
+		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, keepListMenuParent, keepListMenuParent.name)
+	else
+		keepListMenuParent.parent = optionsMenuParent.name
+		InterfaceOptions_AddCategory(keepListMenuParent)
+	end
 end
 
 if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 
---white crafting tools kept by the default ignore list for selling white gear.
+--white crafting tools kept by the default keep list for selling greys and white gear.
 --Defined up here because the saved-variable defaults below include this list, and fishing poles of any item ID are also kept later by weapon subclass.
-TyGearCraftingToolItemIDs = {
+--Post-vanilla tools are omitted on WoW Forever, which does not have those professions or items.
+local TyGearCraftingToolItemIDsClassic = {
 	2901, --Mining Pick
 	3567, --Dwarven Fishing Pole
 	4471, --Flint and Tinder
@@ -3867,11 +4106,26 @@ TyGearCraftingToolItemIDs = {
 	11145, --Runed Truesilver Rod
 	12225, --Blump Family Fishing Pole
 	16207, --Runed Arcanite Rod
+}
+local TyGearCraftingToolItemIDsPostClassic = {
 	20815, --Jeweler's Kit
 	39505, --Virtuoso Inking Set
 	40772, --Gnomish Army Knife
 	85663, --Herbalist's Spade
 }
+TyGearCraftingToolItemIDsMissingOnForever = {}
+for _, itemID in ipairs(TyGearCraftingToolItemIDsPostClassic) do
+	TyGearCraftingToolItemIDsMissingOnForever[itemID] = true
+end
+TyGearCraftingToolItemIDs = {}
+for _, itemID in ipairs(TyGearCraftingToolItemIDsClassic) do
+	table.insert(TyGearCraftingToolItemIDs, itemID)
+end
+if not IS_WOW_FOREVER then
+	for _, itemID in ipairs(TyGearCraftingToolItemIDsPostClassic) do
+		table.insert(TyGearCraftingToolItemIDs, itemID)
+	end
+end
 
 --handle PLAYER_ENTERING_WORLD events for initialization
 pcall(optionsMenu.RegisterEvent,optionsMenu,"PLAYER_ENTERING_WORLD")
@@ -3910,6 +4164,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 
 		TyGearInitializeDB(TyGearDBDefaults)
 		TyGearMigrateVendorKeepList()
+		TyGearPruneForeverVendorKeepList()
 		TyGearInitializeCharacterSettings()
 		TyGearFixLockedGearSlots()
 
@@ -4111,6 +4366,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["option"] = "VendorKeepList",
 				["tab"] = L["Vendor"],
 				["section"] = L["Keep"],
+				["shouldUse"] = not IS_WOW_FOREVER, --Forever uses the Keep list Settings tab instead
 				["editBox"] = true,
 				["label"] = L["Keep list"],
 				["description"] = L["Item IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item."],
@@ -4120,6 +4376,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["option"] = "KeepKeeperTahultPetItems",
 				["tab"] = L["Vendor"],
 				["section"] = L["Keep"],
+				["shouldUse"] = not IS_WOW_FOREVER, --Oribos and Keeper Ta'hult are not in WoW Forever
 				["label"] = L["Keep greys needed for Keeper Ta'hult's pets"],
 				["description"] = L["Don't sell the grey items that Keeper Ta'hult in Oribos takes as payment for the Baubleworm pets."],
 				["toggleDescriptionTrue"] = L["Keeping greys needed for Keeper Ta'hult's pets is now enabled."],
@@ -4247,6 +4504,26 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			end
 			ignoredGearListMenuParent:HookScript("OnSizeChanged", layoutIgnoredGearList)
 			layoutIgnoredGearList()
+		end
+		if keepListMenu and not keepListMenu.built then
+			keepListMenu.built = true
+			buildKeepListPage(keepListMenu)
+			local function layoutKeepList()
+				local width = math.max((keepListMenuParent:GetWidth() or 0) - 30, 1)
+				keepListMenu:SetWidth(width + 8)
+				if keepListMenu.keepListNote then
+					keepListMenu.keepListNote:SetWidth(math.max(width - 8, 100))
+				end
+				if keepListMenu.keepListAddNote then
+					keepListMenu.keepListAddNote:SetWidth(math.max(width - 8, 100))
+				end
+				if TyGearRefreshKeepList then TyGearRefreshKeepList() end
+				if keepListMenuParent.UpdateScrollChildRect then
+					keepListMenuParent:UpdateScrollChildRect()
+				end
+			end
+			keepListMenuParent:HookScript("OnSizeChanged", layoutKeepList)
+			layoutKeepList()
 		end
 		if not optionsMenuParent.ignoreSectionHooked then
 			optionsMenuParent.ignoreSectionHooked = true
@@ -4389,7 +4666,7 @@ end
 
 function TyGearPrintHelp()
 	TyGearPrint("TyGear: "..((param1 == "help") and "" or "Unrecognized command.  ").."Recognized commands (also /tygear):", 0)
-	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", and the Ignored gear tab for items TyGear cannot score") or ""), 0)
+	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", the Ignored gear tab for items TyGear cannot score, and the Keep list tab for vendor keep items") or ""), 0)
 	TyGearPrint("TyGear:    '/tg help': command line help", 0)
 	TyGearPrint("TyGear:    '/tg scan': scan all bags for gear upgrades", 0)
 	TyGearPrint("TyGear:    '/tg spec': get name of current talent specialization", 0)
@@ -4685,6 +4962,26 @@ function TyGearMigrateVendorKeepList()
 	TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 	TyGearDB.SellGreysExclusions = nil
 	TyGearDB.SellWhitesIgnoreList = nil
+end
+
+--drop post-vanilla crafting tools that are not in WoW Forever from a saved keep list
+function TyGearPruneForeverVendorKeepList()
+	if not IS_WOW_FOREVER or not TyGearDB or TyGearDB.VendorKeepList == nil then
+		return
+	end
+	if not TyGearCraftingToolItemIDsMissingOnForever then return end
+	local ordered = {}
+	local removed = false
+	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
+		if TyGearCraftingToolItemIDsMissingOnForever[itemID] then
+			removed = true
+		else
+			table.insert(ordered, itemID)
+		end
+	end
+	if removed then
+		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
+	end
 end
 
 --greys which have a sell price but which vendors refuse to buy

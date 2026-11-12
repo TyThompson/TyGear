@@ -16,6 +16,7 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 
 - Upgrades found in combat are equipped when combat ends.
 - Gear TyGear cannot score is ignored (see the **Ignored gear** tab).
+- Vendor greys and whites to keep live on the **Keep list** tab. It starts with Forever crafting tools only; add more near the top of that tab.
 - Weapons your class can never learn are skipped. Untrained weapons still show a score with "(won't equip)".
 - Mounts are never rolled on automatically.
 - **Roll on non-gear loot** is off by default. If you turn it on, TyGear greeds non-upgrade loot (including crafting reagents).
