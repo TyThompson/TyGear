@@ -14,7 +14,6 @@
 -- Greeded in something within 5 levels that was an upgrade.  Specifically, Gauntlets of Divinity versus equipped Algae Fists.
 
 -- accomodate for "no item link received"
--- fix guild repairs
 -- other non-gear it should let you roll
 -- add rolling on offset
 -- factor in racial weapon bonuses
@@ -3344,13 +3343,11 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			AlwaysCompareGear = GetCVarBool("alwaysCompareItems"),
 			AlwaysShowScoreComparisons = false,
 			AutoSellGreys = false,
-			SellGreysExclusions = "",
+			VendorKeepList = table.concat(TyGearCraftingToolItemIDs, ", "),
 			KeepKeeperTahultPetItems = true,
 			KeepUnboundGreyGear = false,
 			AutoSellUnsuitableWhites = false,
 			AutoSellAllWhiteGear = false,
-			SellWhitesIgnoreList = table.concat(TyGearCraftingToolItemIDs, ", "),
-			AutoRepair = false,
 			UsePawn = not IS_WOW_FOREVER, --TyGear built-in weights are deprecated.  We're using Pawn mainly now, so default true.  Pawn has no WoW Forever scales yet, so Forever uses the built-in class profiles.
 			OverridePawnScale = false,
 			PawnScale = "",
@@ -3361,6 +3358,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		}
 
 		TyGearInitializeDB(TyGearDBDefaults)
+		TyGearMigrateVendorKeepList()
 		TyGearInitializeCharacterSettings()
 		TyGearFixLockedGearSlots()
 
@@ -3522,22 +3520,46 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			{
 				["option"] = "AutoSellGreys",
 				["tab"] = L["Vendor"],
-				["section"] = L["Selling greys"],
+				["section"] = L["Selling"],
 				["cliCommands"] = { "sell", "sellgreys", "greys" },
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically sell greys"],
-				["description"] = L["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, and greys vendors refuse to buy.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
+				["description"] = L["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, greys vendors refuse to buy, and item IDs on the keep list.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
 				["toggleDescriptionTrue"] = L["Automatic selling of grey items is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatic selling of grey items is now disabled."]
 			},
 			{
-				["option"] = "SellGreysExclusions",
+				["option"] = "AutoSellUnsuitableWhites",
+				["tab"] = L["Vendor"],
+				["section"] = L["Selling"],
+				["cliCommands"] = { "sellunsuitable", "unsuitablewhites" },
+				["cliTrue"] = { "enable", "on", "start" },
+				["cliFalse"] = { "disable", "off", "stop" },
+				["label"] = L["Automatically sell unsuitable whites"],
+				["description"] = L["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
+				["toggleDescriptionTrue"] = L["Automatic selling of unsuitable white items is now enabled."],
+				["toggleDescriptionFalse"] = L["Automatic selling of unsuitable white items is now disabled."]
+			},
+			{
+				["option"] = "AutoSellAllWhiteGear",
+				["tab"] = L["Vendor"],
+				["section"] = L["Selling"],
+				["cliCommands"] = { "sellwhitegear", "whitegear" },
+				["cliTrue"] = { "enable", "on", "start" },
+				["cliFalse"] = { "disable", "off", "stop" },
+				["label"] = L["Automatically sell all white gear"],
+				["description"] = L["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
+				["toggleDescriptionTrue"] = L["Automatic selling of all white gear is now enabled."],
+				["toggleDescriptionFalse"] = L["Automatic selling of all white gear is now disabled."]
+			},
+			{
+				["option"] = "VendorKeepList",
 				["tab"] = L["Vendor"],
 				["section"] = L["Keep"],
 				["editBox"] = true,
-				["label"] = L["Item IDs"],
-				["description"] = L["Item IDs separated by commas.  Greys listed here are kept, and whites listed here are sold along with the greys.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."]
+				["label"] = L["Keep list"],
+				["description"] = L["Item IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."]
 			},
 			{
 				["option"] = "KeepKeeperTahultPetItems",
@@ -3556,48 +3578,6 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["description"] = L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
 				["toggleDescriptionTrue"] = L["Keeping unbound grey gear is now enabled."],
 				["toggleDescriptionFalse"] = L["Keeping unbound grey gear is now disabled."]
-			},
-			{
-				["option"] = "AutoSellUnsuitableWhites",
-				["tab"] = L["Vendor"],
-				["section"] = L["Selling whites"],
-				["cliCommands"] = { "sellunsuitable", "unsuitablewhites" },
-				["cliTrue"] = { "enable", "on", "start" },
-				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Automatically sell unsuitable whites"],
-				["description"] = L["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the ignore list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
-				["toggleDescriptionTrue"] = L["Automatic selling of unsuitable white items is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic selling of unsuitable white items is now disabled."],
-				["child"] = {
-					["option"] = "SellWhitesIgnoreList",
-					["editBox"] = true,
-					["label"] = L["Ignore list"],
-					["description"] = L["Item IDs separated by commas.  Whites listed here are not sold by either white-gear option.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."]
-				}
-			},
-			{
-				["option"] = "AutoSellAllWhiteGear",
-				["tab"] = L["Vendor"],
-				["section"] = L["Selling whites"],
-				["cliCommands"] = { "sellwhitegear", "whitegear" },
-				["cliTrue"] = { "enable", "on", "start" },
-				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Automatically sell all white gear"],
-				["description"] = L["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the ignore list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
-				["toggleDescriptionTrue"] = L["Automatic selling of all white gear is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic selling of all white gear is now disabled."]
-			},
-			{
-				["option"] = "AutoRepair",
-				["tab"] = L["Vendor"],
-				["section"] = L["Repairing"],
-				["cliCommands"] = { "repair" },
-				["cliTrue"] = { "enable", "on", "start" },
-				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Automatically repair"],
-				["description"] = L["Automatically repair all gear when interacting with a repair-enabled vendor.  If you have a guild bank and guild bank repair funds, this will use guild bank repair funds first."],
-				["toggleDescriptionTrue"] = L["Automatic repairing is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic repairing is now disabled."]
 			},
 			{
 				["option"] = "Override",
@@ -3849,7 +3829,6 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg sell [enable/on/start]/[disable/off/stop]': toggle automatic selling of grey items", 0)
 	TyGearPrint("TyGear:    '/tg sellunsuitable [enable/on/start]/[disable/off/stop]': toggle automatic selling of white gear you can't wear", 0)
 	TyGearPrint("TyGear:    '/tg sellwhitegear [enable/on/start]/[disable/off/stop]': toggle automatic selling of all white gear", 0)
-	TyGearPrint("TyGear:    '/tg repair [enable/on/start]/[disable/off/stop]': toggle automatic repairing", 0)
 	TyGearPrint("TyGear:    '/tg verbosity [0/1/2/3]': set allowed verbosity level; valid levels are: 0 ("..TyGearGetAllowedVerbosityName(0).."), 1 ("..TyGearGetAllowedVerbosityName(1).."), 2 ("..TyGearGetAllowedVerbosityName(2).."), 3 ("..TyGearGetAllowedVerbosityName(3)..")", 0)
 	TyGearPrint("TyGear: Fork of AutoGear by Synthetikaryote and BujuArena. Original: https://github.com/BujuArena/AutoGear (CC BY-NC-SA 4.0).", 0)
 end
@@ -3978,29 +3957,6 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 		or (TyGearDB.AutoSellAllWhiteGear == true) then
 			TyGearStartSellingGreys()
 		end
-		if (TyGearDB.AutoRepair == true) then
-			-- repair all gear
-			local cashString = TyGearCashToString(GetRepairAllCost())
-			if IS_WOW_FOREVER or TOC_VERSION_CURRENT >= TOC_VERSION_TBC then --WoW Forever has guild banks despite its 1.x interface number
-				if (GetRepairAllCost() > 0) then
-					if (CanGuildBankRepair()) then
-						RepairAllItems(1) --guild repair
-						--fix this.  it doesn't see 0 yet, even if it repaired
-						if (GetRepairAllCost() == 0) then
-							TyGearPrint("TyGear: Repaired all items for "..cashString.." using guild funds.", 1)
-						end
-					end
-				end
-			end
-			if (GetRepairAllCost() > 0) then
-				if (GetRepairAllCost() <= GetMoney()) then
-					TyGearPrint("TyGear: Repaired all items for "..cashString..".", 1)
-					RepairAllItems()
-				elseif (GetRepairAllCost() > GetMoney()) then
-					TyGearPrint("TyGear: Not enough money to repair all items ("..cashString..").", 0)
-				end
-			end
-		end
 	elseif event ~= "ADDON_LOADED" then
 		TyGearPrint("TyGear: event fired: "..event, 3)
 	end
@@ -4113,6 +4069,32 @@ function TyGearParseItemIDList(text)
 	return itemIDs
 end
 
+--fold the old greys exclusion list and whites ignore list into one keep list of grey and common item IDs
+function TyGearMigrateVendorKeepList()
+	if (TyGearDB.SellGreysExclusions == nil) and (TyGearDB.SellWhitesIgnoreList == nil) then
+		return
+	end
+	local seen, ordered = {}, {}
+	local function addList(text)
+		for _, itemID in ipairs(TyGearParseItemIDList(text or "")) do
+			if not seen[itemID] then
+				seen[itemID] = true
+				table.insert(ordered, itemID)
+			end
+		end
+	end
+	--preserve a customized whites ignore list; otherwise start from the crafting-tool defaults
+	if TyGearDB.SellWhitesIgnoreList ~= nil then
+		addList(TyGearDB.SellWhitesIgnoreList)
+	else
+		addList(table.concat(TyGearCraftingToolItemIDs, ", "))
+	end
+	addList(TyGearDB.SellGreysExclusions)
+	TyGearDB.VendorKeepList = table.concat(ordered, ", ")
+	TyGearDB.SellGreysExclusions = nil
+	TyGearDB.SellWhitesIgnoreList = nil
+end
+
 --greys which have a sell price but which vendors refuse to buy
 TyGearUnsellableGreyItemIDs = {
 	[200590] = true, --Carefully Rolled Message
@@ -4172,9 +4154,9 @@ function TyGearIsVendorWhiteGear(classID, equipLoc)
 	return true
 end
 
---crafting tools and anything the player added to the white-gear ignore list
-function TyGearIsIgnoredWhiteItem(itemID, classID, subclassID)
-	if greySelling.ignoredWhiteItemIDs[itemID] then return true end
+--crafting tools, the keep list, fishing poles, and profession equipment stay when selling whites
+function TyGearIsKeptVendorItem(itemID, classID, subclassID)
+	if greySelling.keptItemIDs[itemID] then return true end
 	local fishingPoleSubclass = Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Fishingpole
 	if fishingPoleSubclass and (classID == Enum.ItemClass.Weapon) and (subclassID == fishingPoleSubclass) then
 		return true
@@ -4187,12 +4169,12 @@ function TyGearIsIgnoredWhiteItem(itemID, classID, subclassID)
 	return false
 end
 
---whether a white item should be sold by the white-gear options. The grey exclusion list is handled by the caller.
+--whether a white item should be sold by the white-gear options
 function TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc)
 	if (TyGearDB.AutoSellUnsuitableWhites ~= true) and (TyGearDB.AutoSellAllWhiteGear ~= true) then
 		return false
 	end
-	if TyGearIsIgnoredWhiteItem(itemID, classID, subclassID) then return false end
+	if TyGearIsKeptVendorItem(itemID, classID, subclassID) then return false end
 	if greySelling.merchantCostItemIDs[itemID] then return false end
 	if not TyGearIsVendorWhiteGear(classID, equipLoc) then return false end
 	if TyGearDB.AutoSellAllWhiteGear == true then return true end
@@ -4211,12 +4193,13 @@ function TyGearGetItemSaleValue(bag, slot)
 	local _, _, quality, _, _, _, _, _, equipLoc, _, sellPrice, classID, subclassID = GetItemInfo(link)
 	if (not quality) or (not sellPrice) or (sellPrice <= 0) then return end
 
-	local isListed = greySelling.listedItemIDs[itemID]
+	--keep list is all-inclusive for greys and common (white) item IDs
+	if greySelling.keptItemIDs[itemID] then return end
+
 	if quality == 0 then
 		--a white-gear pass must not sell greys unless that option is on
 		if TyGearDB.AutoSellGreys ~= true then return end
-		if isListed
-		or TyGearUnsellableGreyItemIDs[itemID]
+		if TyGearUnsellableGreyItemIDs[itemID]
 		or (TyGearDB.KeepKeeperTahultPetItems and TyGearKeeperTahultPetGreyItemIDs[itemID])
 		or greySelling.merchantCostItemIDs[itemID] then
 			return
@@ -4231,9 +4214,7 @@ function TyGearGetItemSaleValue(bag, slot)
 			if not isBound then return end
 		end
 	elseif quality == 1 then
-		--whites named in the grey exclusion list are sold along with the greys, and only while that option is on
-		local sellBecauseGreyList = (TyGearDB.AutoSellGreys == true) and isListed
-		if (not sellBecauseGreyList) and (not TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc)) then
+		if not TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc) then
 			return
 		end
 	else
@@ -4334,16 +4315,12 @@ function TyGearStartSellingGreys()
 		soldWhiteCount = 0,
 		sellsGreys = (TyGearDB.AutoSellGreys == true),
 		sellsWhites = (TyGearDB.AutoSellUnsuitableWhites == true) or (TyGearDB.AutoSellAllWhiteGear == true),
-		listedItemIDs = {},
-		ignoredWhiteItemIDs = {},
+		keptItemIDs = {},
 		merchantCostItemIDs = {},
 		upgradeBagSlots = {},
 	}
-	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.SellGreysExclusions)) do
-		greySelling.listedItemIDs[itemID] = true
-	end
-	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.SellWhitesIgnoreList or "")) do
-		greySelling.ignoredWhiteItemIDs[itemID] = true
+	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
+		greySelling.keptItemIDs[itemID] = true
 	end
 	--keep items this vendor takes as payment for its goods
 	for merchantIndex = 1, GetMerchantNumItems() do
