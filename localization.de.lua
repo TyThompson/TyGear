@@ -188,6 +188,22 @@ if GetLocale() == "deDE" then
 	T.Localization["Locking specified gear slots is now enabled."] = "Sperren der ausgewählten Ausrüstungsplätze ist jetzt aktiviert."
 	T.Localization["Locking specified gear slots is now disabled."] = "Sperren der ausgewählten Ausrüstungsplätze ist jetzt deaktiviert."
 
+	-- tab: Ignore
+	T.Localization["Ignore"] = "Ignorieren"
+	T.Localization["Gear slots"] = "Ausrüstungsplätze"
+	T.Localization["Ignored slots are left out of rolling, scoring, and equipping."] = "Ignorierte Plätze werden beim Würfeln, Bewerten und Anlegen ausgelassen."
+	T.Localization["Equipped items"] = "Angelegte Gegenstände"
+	T.Localization["Check an equipped item to leave that item out of rolling, scoring, and equipping."] = "Markiere einen angelegten Gegenstand, damit er beim Würfeln, Bewerten und Anlegen ausgelassen wird."
+	T.Localization["Nothing is equipped."] = "Nichts ist angelegt."
+	T.Localization["Item IDs"] = "Gegenstands-IDs"
+	T.Localization["Also ignore these item IDs. Shift-click equipment while this box is focused to add it. Armor and weapons are accepted."] = "Diese Gegenstands-IDs zusätzlich ignorieren. Umschalt-Klick auf Ausrüstung fügt sie hinzu, solange dieses Feld den Fokus hat. Rüstung und Waffen werden übernommen."
+	T.Localization["No measurable stats"] = "Keine messbaren Werte"
+	T.Localization["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. Click an icon to toggle it."] = "Diese Gegenstände haben nur Effekte, die TyGear nicht bewerten kann, etwa 4% Chance, dass Furcht verfehlt. Ausrüstung mit einem zusätzlich bewertbaren Wert bleibt in der normalen Bewertung. Ein Klick auf ein Symbol schaltet es um."
+	T.Localization["ignored"] = "ignoriert"
+	T.Localization["every slot this item can use is ignored"] = "jeder Platz, den dieser Gegenstand nutzen kann, ist ignoriert"
+	T.Localization["Ignored. Click to evaluate this item."] = "Ignoriert. Klicken, um diesen Gegenstand zu bewerten."
+	T.Localization["Click to ignore this item."] = "Klicken, um diesen Gegenstand zu ignorieren."
+
 	-- option: DebugInfoInTooltips
 	T.Localization["Show debug info in item tooltips (%swarning%s: laggy!)"] = "Debug-Infos in Gegenstands-Tooltips anzeigen (%sWarnung%s: verursacht Ruckler!)"
 	T.Localization["This is a test mode to show debug info in tooltips, such as the real roll outcome if the item viewed dropped as a loot roll.  This is to help the developers find and fix bugs in TyGear.  You can use it to help too and report issues.\n\n%sWarning%s: laggy!"] = "Ein Testmodus, der Debug-Infos in Tooltips anzeigt, etwa wie TyGear würfeln würde, wenn der betrachtete Gegenstand als Beutewurf fiele.  Er hilft den Entwicklern, Fehler in TyGear zu finden und zu beheben.  Du kannst damit ebenfalls helfen und Probleme melden.\n\n%sWarnung%s: verursacht Ruckler!"
