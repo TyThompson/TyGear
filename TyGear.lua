@@ -1859,39 +1859,136 @@ TyGearOverrideSpecs = {
 	}
 }
 
+-- Specs with a color of their own. Specs not listed here use their class color.
+-- Chosen only where the spec has a clear identity, such as Frost mage being blue.
+TyGearSpecColors = {
+	["DEATHKNIGHT"] = {
+		["Blood"] = {0.80, 0.08, 0.08},
+		["Frost"] = {0.40, 0.75, 1.00},
+		["Unholy"] = {0.35, 0.85, 0.25},
+	},
+	["DRUID"] = {
+		["Balance"] = {0.68, 0.48, 1.00},
+		["Guardian"] = {0.72, 0.52, 0.28},
+		["Restoration"] = {0.25, 0.85, 0.40},
+	},
+	["EVOKER"] = {
+		["Devastation"] = {0.92, 0.28, 0.24},
+		["Preservation"] = {0.30, 0.82, 0.40},
+		["Augmentation"] = {0.85, 0.60, 0.28},
+	},
+	["MAGE"] = {
+		["Arcane"] = {0.75, 0.42, 1.00},
+		["Fire"] = {1.00, 0.38, 0.10},
+		["Frost"] = {0.30, 0.62, 1.00},
+	},
+	["MONK"] = {
+		["Brewmaster"] = {0.90, 0.60, 0.20},
+		["Mistweaver"] = {0.35, 0.85, 0.75},
+	},
+	["PALADIN"] = {
+		["Holy"] = {1.00, 0.86, 0.30},
+	},
+	["PRIEST"] = {
+		["Holy"] = {1.00, 0.86, 0.30},
+		["Shadow"] = {0.62, 0.38, 0.95},
+	},
+	["ROGUE"] = {
+		["Assassination"] = {0.25, 0.78, 0.30},
+		["Subtlety"] = {0.55, 0.40, 0.95},
+	},
+	["SHAMAN"] = {
+		["Restoration"] = {0.25, 0.80, 0.65},
+	},
+	["WARLOCK"] = {
+		["Demonology"] = {0.30, 0.85, 0.22},
+		["Destruction"] = {1.00, 0.38, 0.10},
+	},
+}
+
+-- These classes are not playable on WoW Forever, so they stay out of the override spec list there.
+local TyGearClassesHiddenOnForever = {
+	["DEATHKNIGHT"] = true,
+	["DEMONHUNTER"] = true,
+	["EVOKER"] = true,
+	["MONK"] = true,
+}
+
+local function TyGearWrapRGB(text, r, g, b)
+	if CreateColor then
+		return CreateColor(r, g, b):WrapTextInColorCode(text)
+	end
+	return string.format("|cff%02x%02x%02x%s|r", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), text)
+end
+
+function TyGearClassColoredText(classToken, text)
+	local color = RAID_CLASS_COLORS and classToken and RAID_CLASS_COLORS[classToken]
+	if not (color and text) then return text end
+	if color.WrapTextInColorCode then
+		return color:WrapTextInColorCode(text)
+	end
+	if color.colorStr then
+		return color.colorStr..text.."|r"
+	end
+	if color.r then
+		return TyGearWrapRGB(text, color.r, color.g, color.b)
+	end
+	return text
+end
+
+function TyGearSpecColoredText(classToken, specName)
+	local rgb = classToken and TyGearSpecColors[classToken] and TyGearSpecColors[classToken][specName]
+	if rgb then
+		return TyGearWrapRGB(specName, rgb[1], rgb[2], rgb[3])
+	end
+	return TyGearClassColoredText(classToken, specName)
+end
+
+-- Colors "Mage: Frost" for the closed dropdown. The saved value stays uncolored.
+function TyGearColorizeSpecChoice(value)
+	if type(value) ~= "string" then return value end
+	local localizedClass, spec = string.match(value, "^(.-): (.+)$")
+	if not (localizedClass and spec and TyGearReverseClassList) then return value end
+	local classToken = TyGearReverseClassList[localizedClass]
+	if not classToken then return value end
+	return TyGearClassColoredText(classToken, localizedClass)..": "..TyGearSpecColoredText(classToken, spec)
+end
+
 function TyGearGetOverrideSpecs()
 	local classOrder = {}
-	for k in pairs(TyGearDefaultWeights) do
-		table.insert(classOrder, k)
+	for className in pairs(TyGearDefaultWeights) do
+		if (not IS_WOW_FOREVER) or (not TyGearClassesHiddenOnForever[className]) then
+			table.insert(classOrder, className)
+		end
 	end
 	table.sort(classOrder)
 
-	for i = 1, #classOrder do (function()
+	local overrideSpecs = {}
+	for i = 1, #classOrder do
 		local className = classOrder[i]
 		local localizedClassName = TyGearClassList[className]
-		if localizedClassName == nil then return end
-		TyGearOverrideSpecs[i] = {
-			["label"] = localizedClassName,
-			["subLabels"] = TyGearOverrideSpecs[i]["subLabels"]
-		}
-		local specOrder = {}
-		for l in pairs(TyGearDefaultWeights[className]) do
-			table.insert(specOrder, l)
-		end
-		table.sort(specOrder, function(a, b)
-			if a == 'None' then
-				return true
-			elseif b == 'None' then
-				return false
-			else
-				return a < b
+		if localizedClassName then
+			local specOrder = {}
+			for specName in pairs(TyGearDefaultWeights[className]) do
+				table.insert(specOrder, specName)
 			end
-		end)
-		for j = 1, #specOrder do
-			local specName = specOrder[j]
-			TyGearOverrideSpecs[i]["subLabels"][j] = specName
+			table.sort(specOrder, function(a, b)
+				if a == "None" then
+					return true
+				elseif b == "None" then
+					return false
+				else
+					return a < b
+				end
+			end)
+			table.insert(overrideSpecs, {
+				["label"] = localizedClassName,
+				["class"] = className,
+				["subLabels"] = specOrder,
+			})
 		end
-	end)() end
+	end
+	TyGearOverrideSpecs = overrideSpecs
 	return TyGearOverrideSpecs
 end
 
@@ -1982,13 +2079,25 @@ end
 local useModernDropdowns = (MenuUtil ~= nil) and (WowStyle1DropdownMixin ~= nil)
 
 local function setDropdownText(dropdown, text)
-	text = TyGearColorize(text)
+	text = TyGearColorize(TyGearColorizeSpecChoice(text))
 	if useModernDropdowns then
 		--OverrideText ignores nil, and it stops the menu from replacing the text with its own selection text
 		dropdown:OverrideText(text or "")
 	else
 		UIDropDownMenu_SetText(dropdown, text)
 	end
+end
+
+-- Class rows use the class color. Spec rows use a spec color where one is defined, otherwise the class color.
+-- Entries that are not a class or spec, such as Pawn scales, keep the general colorizer.
+local function dropdownEntryText(entry, specName)
+	if entry["class"] then
+		if specName then
+			return TyGearSpecColoredText(entry["class"], specName)
+		end
+		return TyGearClassColoredText(entry["class"], entry["label"])
+	end
+	return TyGearColorize(specName or entry["label"])
 end
 
 local function closeDropdownMenu(dropdown)
@@ -2322,7 +2431,7 @@ local function optionsSetup(optionsMenu)
 				_G["TyGear"..v["child"]["option"].."Dropdown"].SetValue = function(self, value)
 					if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
 						TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] = value
-						setDropdownText(_G["TyGear"..v["child"]["option"].."Dropdown"], TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]])
+						setDropdownText(_G["TyGear"..v["child"]["option"].."Dropdown"], value)
 						closeDropdownMenu(_G["TyGear"..v["child"]["option"].."Dropdown"])
 					end
 				end
@@ -2337,12 +2446,12 @@ local function optionsSetup(optionsMenu)
 						if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
 							for _, j in ipairs(v["child"]["options"]) do
 								--the label is selected when the stored value is one of its subLabels; it only opens its submenu, so its responder does nothing
-								local labelDescription = rootDescription:CreateRadio(TyGearColorize(j["label"]), function()
+								local labelDescription = rootDescription:CreateRadio(dropdownEntryText(j), function()
 									return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":")) and true or false
 								end, function() end)
 								for _, z in ipairs(j["subLabels"] or {}) do
 									local value = j["label"]..": "..z
-									labelDescription:CreateRadio(z, function()
+									labelDescription:CreateRadio(dropdownEntryText(j, z), function()
 										return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == value) or (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == z)
 									end, function()
 										dropdown:SetValue(value)
@@ -2378,7 +2487,7 @@ local function optionsSetup(optionsMenu)
 							--display the labels
 							if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
 								for _, j in ipairs(v["child"]["options"]) do
-									info.text = TyGearColorize(j["label"])
+									info.text = dropdownEntryText(j)
 									info.checked = (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and (string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":") and true or false) or false)
 									info.menuList = j
 									info.hasArrow = (j["subLabels"] and true or false)
@@ -2413,7 +2522,7 @@ local function optionsSetup(optionsMenu)
 							info.func = self.SetValue
 							if menuList["subLabels"] then
 								for _, z in ipairs(menuList["subLabels"]) do
-									info.text = z
+									info.text = dropdownEntryText(menuList, z)
 									info.arg1 = menuList["label"]..": "..z
 									info.checked = ((TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == info.arg1) or (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == z))
 									UIDropDownMenu_AddButton(info, level)
