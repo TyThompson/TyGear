@@ -1,0 +1,4 @@
+# BigWigs packager local build output
+.release/
+.env
+*.zip

@@ -2,6 +2,7 @@
 ## Title: TyGear
 ## Notes: Fork of AutoGear by Synthetikaryote and BujuArena. Automatically chooses loot and equips gear.
 ## Author: Ty (fork of AutoGear by Synthetikaryote and BujuArena)
+## Version: @project-version@
 ## OptionalDeps: Pawn, AtlasLoot, AtlasLootClassic, Baganator, Bagnon
 
 TaintLess.xml
@@ -15,7 +16,10 @@ TyGear.lua
 
 # CurseForge project 39179 and WoWInterface ID 26415 belong to the original
 # AutoGear addon. They are intentionally omitted so TyGear releases are not
-# published onto that project.
+# published onto that project. After creating TyGear's own projects, set:
+# ## X-Curse-Project-ID: <id>
+# ## X-WoWI-ID: <id>
+# ## X-Wago-ID: <id>
 ## X-License: CC-BY-NC-SA-4.0
 ## X-Website: https://github.com/TyThompson/TyGear
 ## X-Original-Addon: AutoGear
