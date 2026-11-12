@@ -5650,6 +5650,8 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 	elseif event == "PLAYER_EQUIPMENT_CHANGED" then
 		-- Only refresh the changed equipped slot; avoid a full bag tooltip rescan per equip event
 		TyGearHandleEquipmentChanged(arg1)
+		--re-evaluate junk marks: worn upgrades can free bag whites that were treated as upgrades
+		TyGearQueueVendorJunkRefresh()
 		if TyGearRefreshIgnoreSection then
 			local ignoreShown = (TyGearOptionsMenuScrollFrame and TyGearOptionsMenuScrollFrame:IsShown())
 				or (TyGearIgnoredGearListMenuScrollFrame and TyGearIgnoredGearListMenuScrollFrame:IsShown())
@@ -6106,11 +6108,18 @@ function TyGearBuildVendorSellContext(includeMerchantCosts, refreshUpgrades)
 	end
 	if refreshUpgrades and TyGearUpdateBestItems then
 		TyGearUpdateBestItems()
+	elseif (not TyGearEquippedItems) or (not next(TyGearEquippedItems)) then
+		if TyGearUpdateEquippedItems then TyGearUpdateEquippedItems() end
 	end
 	if TyGearBestItems then
-		for _, bestItem in pairs(TyGearBestItems) do
-			if bestItem.bag and bestItem.slot then
-				context.upgradeBagSlots[bestItem.bag..":"..bestItem.slot] = true
+		for invSlot, bestItem in pairs(TyGearBestItems) do
+			--only protect bag gear that is still better than what is worn
+			if bestItem.bag and bestItem.slot and (not bestItem.equipped) then
+				local equipped = TyGearEquippedItems and TyGearEquippedItems[invSlot]
+				if (not equipped) or (not equipped.info) or equipped.info.empty
+				or ((bestItem.score or 0) > (equipped.score or 0)) then
+					context.upgradeBagSlots[bestItem.bag..":"..bestItem.slot] = true
+				end
 			end
 		end
 	end
@@ -6643,6 +6652,14 @@ function TyGearSyncBestItemWithEquipped(invSlot)
 		best.bag = nil
 		best.slot = nil
 	elseif best.equipped then
+		best.info = equipped.info
+		best.score = equipped.score
+		best.equipped = equipped.equipped
+		best.bag = nil
+		best.slot = nil
+	elseif best.bag and equipped.info and (not equipped.info.empty)
+	and ((best.score or 0) <= (equipped.score or 0)) then
+		--manual equip of better gear: bag candidate is no longer an upgrade
 		best.info = equipped.info
 		best.score = equipped.score
 		best.equipped = equipped.equipped
