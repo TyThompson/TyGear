@@ -6,11 +6,9 @@ if GetLocale() == "deDE" then
 	T.Localization["Loot"] = "Beute"
 	T.Localization["Rolling"] = "Würfeln"
 	T.Localization["Soul-binding"] = "Seelenbindung"
-	T.Localization["Quests & Party"] = "Quests & Gruppe"
 	T.Localization["Tooltips"] = "Tooltips"
 	T.Localization["Vendor"] = "Händler"
-	T.Localization["Selling greys"] = "Graue Gegenstände verkaufen"
-	T.Localization["Repairing"] = "Reparieren"
+	T.Localization["Selling"] = "Verkaufen"
 	T.Localization["Other"] = "Sonstiges"
 
 	-- options window: general texts
@@ -45,8 +43,8 @@ if GetLocale() == "deDE" then
 
 	-- option: RollOnNonGearLoot
 	T.Localization["Roll on non-gear loot"] = "Auf Beute würfeln, die keine Ausrüstung ist"
-	T.Localization["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."] = "Auf jede Gruppenbeute würfeln, auch auf Beute, die keine Ausrüstung ist.  Ist dies aktiviert, würfelt TyGear GIER auf alles außer Ausrüstung und Reittieren und BEDARF auf Reittiere."
-	T.Localization["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear, non-mount loot and NEED on mounts."] = "Würfeln auf Beute, die keine Ausrüstung ist, ist jetzt aktiviert.  TyGear würfelt GIER auf alles außer Ausrüstung und Reittieren und BEDARF auf Reittiere."
+	T.Localization["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."] = "Auf jede Gruppenbeute würfeln, auch auf Beute, die keine Ausrüstung ist.  Ist dies aktiviert, würfelt TyGear GIER auf Beute, die keine Ausrüstung ist.  Auf Reittiere wird nie automatisch gewürfelt."
+	T.Localization["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."] = "Würfeln auf Beute, die keine Ausrüstung ist, ist jetzt aktiviert.  TyGear würfelt GIER auf Beute, die keine Ausrüstung ist.  Auf Reittiere wird nie automatisch gewürfelt."
 	T.Localization["Rolling on non-gear loot is now disabled."] = "Würfeln auf Beute, die keine Ausrüstung ist, ist jetzt deaktiviert."
 
 	-- option: NeverAutoNeed
@@ -72,30 +70,6 @@ if GetLocale() == "deDE" then
 	T.Localization["Automatically confirm soul-binding when equipping an upgrade that has epic rarity, causing it to become soulbound.  If this is disabled, TyGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."] = "Die Seelenbindung automatisch bestätigen, wenn eine epische Verbesserung angelegt wird; der Gegenstand wird dadurch seelengebunden.  Ist dies deaktiviert, versucht TyGear weiterhin, epische bindende Gegenstände anzulegen, aber du musst die Seelenbindung selbst bestätigen."
 	T.Localization["Automatically confirming soul-binding for epics is now enabled."] = "Automatisches Bestätigen der Seelenbindung für epische Gegenstände ist jetzt aktiviert."
 	T.Localization["Automatically confirming soul-binding for epics is now disabled.  TyGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."] = "Automatisches Bestätigen der Seelenbindung für epische Gegenstände ist jetzt deaktiviert.  TyGear versucht weiterhin, epische bindende Gegenstände anzulegen, aber du musst die Seelenbindung selbst bestätigen."
-
-	-- option: AutoAcceptQuests
-	T.Localization["Automatically accept all quests"] = "Alle Quests automatisch annehmen"
-	T.Localization["Automatically accept all quests offered by NPCs and group members.  If this is disabled, TyGear will not accept any quests."] = "Alle Quests von NSCs und Gruppenmitgliedern automatisch annehmen.  Ist dies deaktiviert, nimmt TyGear keine Quests an."
-	T.Localization["Automatically accepting all quests is now enabled."] = "Automatisches Annehmen aller Quests ist jetzt aktiviert."
-	T.Localization["Automatically accepting all quests is now disabled."] = "Automatisches Annehmen aller Quests ist jetzt deaktiviert."
-
-	-- option: AutoCompleteNonItemQuests
-	T.Localization["Automatically complete quests which do not award items"] = "Quests ohne Gegenstandsbelohnung automatisch abschließen"
-	T.Localization["Automatically turn in completed quests which do not offer a choice of item rewards.  If this is disabled, TyGear will not turn in these quests, but it can still complete quests which award items if \"Automatically complete quests which award items\" is enabled."] = "Abgeschlossene Quests, die keine Auswahl an Gegenstandsbelohnungen bieten, automatisch abgeben.  Ist dies deaktiviert, gibt TyGear diese Quests nicht ab, kann aber weiterhin Quests mit Gegenstandsbelohnung abschließen, wenn \"Quests mit Gegenstandsbelohnung automatisch abschließen\" aktiviert ist."
-	T.Localization["Automatically completing quests which do not award items is now enabled."] = "Automatisches Abschließen von Quests ohne Gegenstandsbelohnung ist jetzt aktiviert."
-	T.Localization["Automatically completing quests which do not award items is now disabled."] = "Automatisches Abschließen von Quests ohne Gegenstandsbelohnung ist jetzt deaktiviert."
-
-	-- option: AutoCompleteItemQuests
-	T.Localization["Automatically complete quests which award items"] = "Quests mit Gegenstandsbelohnung automatisch abschließen"
-	T.Localization["Automatically evaluate quest item rewards and choose the best upgrade for your current spec, turning in the quest.  If no upgrade is found, TyGear will choose the most valuable reward in vendor gold.  If this is disabled, TyGear can still interact with quests, but will not complete quests which present item rewards to choose, and you can still view the total TyGear score in item tooltips."] = "Gegenstandsbelohnungen von Quests automatisch bewerten, die beste Verbesserung für deine aktuelle Spezialisierung wählen und die Quest abgeben.  Gibt es keine Verbesserung, wählt TyGear die Belohnung mit dem höchsten Händlerwert.  Ist dies deaktiviert, kann TyGear weiterhin mit Quests interagieren, schließt aber keine Quests mit Belohnungsauswahl ab; die TyGear-Wertung bleibt in den Tooltips sichtbar."
-	T.Localization["Automatically completing quests which award items is now enabled."] = "Automatisches Abschließen von Quests mit Gegenstandsbelohnung ist jetzt aktiviert."
-	T.Localization["Automatically completing quests which award items is now disabled."] = "Automatisches Abschließen von Quests mit Gegenstandsbelohnung ist jetzt deaktiviert."
-
-	-- option: AutoAcceptPartyInvitations
-	T.Localization["Automatically accept party invitations"] = "Gruppeneinladungen automatisch annehmen"
-	T.Localization["Automatically accept party invitations from any player."] = "Gruppeneinladungen von allen Spielern automatisch annehmen."
-	T.Localization["Automatic acceptance of party invitations is now enabled."] = "Automatisches Annehmen von Gruppeneinladungen ist jetzt aktiviert."
-	T.Localization["Automatic acceptance of party invitations is now disabled."] = "Automatisches Annehmen von Gruppeneinladungen ist jetzt deaktiviert."
 
 	-- option: ScoreInTooltips
 	T.Localization["Show TyGear score in item tooltips"] = "TyGear-Wertung in Gegenstands-Tooltips anzeigen"
@@ -123,11 +97,12 @@ if GetLocale() == "deDE" then
 
 	-- option: AutoSellGreys
 	T.Localization["Automatically sell greys"] = "Graue Gegenstände automatisch verkaufen"
-	T.Localization["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, and greys vendors refuse to buy.  It stops selling when the vendor doesn't buy items or you can't hold more gold."] = "Beim Ansprechen eines Händlers automatisch alle grauen Gegenstände verkaufen.  Halte beim Öffnen des Händlers die Umschalttaste gedrückt, um das Verkaufen dieses Mal auszulassen.\n\nTyGear behält graue Gegenstände, die es als Verbesserung anlegen würde, Questgegenstände, graue Gegenstände, die der aktuelle Händler als Bezahlung annimmt, und graue Gegenstände, die Händler nicht ankaufen.  Es hört auf zu verkaufen, wenn der Händler nichts ankauft oder du kein weiteres Gold tragen kannst."
+	T.Localization["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, greys vendors refuse to buy, and item IDs on the keep list.  It stops selling when the vendor doesn't buy items or you can't hold more gold."] = "Beim Ansprechen eines Händlers automatisch alle grauen Gegenstände verkaufen.  Halte beim Öffnen des Händlers die Umschalttaste gedrückt, um das Verkaufen dieses Mal auszulassen.\n\nTyGear behält graue Gegenstände, die es als Verbesserung anlegen würde, Questgegenstände, graue Gegenstände, die der aktuelle Händler als Bezahlung annimmt, graue Gegenstände, die Händler nicht ankaufen, und Gegenstands-IDs auf der Behalten-Liste.  Es hört auf zu verkaufen, wenn der Händler nichts ankauft oder du kein weiteres Gold tragen kannst."
 	T.Localization["Automatic selling of grey items is now enabled."] = "Automatisches Verkaufen grauer Gegenstände ist jetzt aktiviert."
 	T.Localization["Automatic selling of grey items is now disabled."] = "Automatisches Verkaufen grauer Gegenstände ist jetzt deaktiviert."
-	T.Localization["Exclusions"] = "Ausnahmen"
-	T.Localization["Item IDs separated by commas.  Greys listed here are kept, and whites listed here are sold along with the greys.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."] = "Gegenstands-IDs, durch Kommas getrennt.  Hier aufgeführte graue Gegenstände werden behalten, hier aufgeführte weiße Gegenstände werden zusammen mit den grauen verkauft.\n\nKlicke mit gedrückter Umschalttaste auf einen Gegenstand, während dieses Feld den Fokus hat, um ihn hinzuzufügen, oder lies Gegenstands-IDs in den Tooltips ab, während die TyGear-Optionen geöffnet sind."
+	T.Localization["Keep"] = "Behalten"
+	T.Localization["Keep list"] = "Behalten-Liste"
+	T.Localization["Item IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."] = "Gegenstands-IDs, durch Kommas getrennt.  Hier aufgeführte graue und gewöhnliche (weiße) Gegenstände werden beim Verkaufen behalten.\n\nDie Liste enthält anfangs Handwerkszeuge wie Kürschnermesser, Spitzhacke, Schmiedehammer, Angelruten und weitere Berufsgeräte.  Jede Angelrute wird behalten, auch wenn ihre Gegenstands-ID aus dieser Liste entfernt wird.\n\nKlicke mit gedrückter Umschalttaste auf einen Gegenstand, während dieses Feld den Fokus hat, um ihn hinzuzufügen, oder lies Gegenstands-IDs in den Tooltips ab, während die TyGear-Optionen geöffnet sind."
 	T.Localization["Item ID"] = "Gegenstands-ID"
 
 	-- option: KeepKeeperTahultPetItems
@@ -142,11 +117,17 @@ if GetLocale() == "deDE" then
 	T.Localization["Keeping unbound grey gear is now enabled."] = "Behalten ungebundener grauer Ausrüstung ist jetzt aktiviert."
 	T.Localization["Keeping unbound grey gear is now disabled."] = "Behalten ungebundener grauer Ausrüstung ist jetzt deaktiviert."
 
-	-- option: AutoRepair
-	T.Localization["Automatically repair"] = "Automatisch reparieren"
-	T.Localization["Automatically repair all gear when interacting with a repair-enabled vendor.  If you have a guild bank and guild bank repair funds, this will use guild bank repair funds first."] = "Beim Ansprechen eines Händlers mit Reparaturfunktion automatisch alle Ausrüstung reparieren.  Stehen Reparaturgelder aus der Gildenbank zur Verfügung, werden diese zuerst verwendet."
-	T.Localization["Automatic repairing is now enabled."] = "Automatisches Reparieren ist jetzt aktiviert."
-	T.Localization["Automatic repairing is now disabled."] = "Automatisches Reparieren ist jetzt deaktiviert."
+	-- option: AutoSellUnsuitableWhites
+	T.Localization["Automatically sell unsuitable whites"] = "Ungeeignete weiße Gegenstände automatisch verkaufen"
+	T.Localization["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold."] = "Beim Ansprechen eines Händlers automatisch weiße Waffen und Rüstungen verkaufen, die deine Klasse nicht anlegen kann.  Halte beim Öffnen des Händlers die Umschalttaste gedrückt, um das Verkaufen dieses Mal auszulassen.\n\nTyGear behält Questgegenstände, Gegenstände, die der aktuelle Händler als Bezahlung annimmt, Gegenstände, die es als Verbesserung anlegen würde, Wappenröcke und die Behalten-Liste.  Angelruten und Berufsausrüstung werden immer behalten.  Eine reine Stufenanforderung gilt nicht als ungeeignet, weil du den Gegenstand später anlegen kannst.  Es hört auf zu verkaufen, wenn der Händler nichts ankauft oder du kein weiteres Gold tragen kannst."
+	T.Localization["Automatic selling of unsuitable white items is now enabled."] = "Automatisches Verkaufen ungeeigneter weißer Gegenstände ist jetzt aktiviert."
+	T.Localization["Automatic selling of unsuitable white items is now disabled."] = "Automatisches Verkaufen ungeeigneter weißer Gegenstände ist jetzt deaktiviert."
+
+	-- option: AutoSellAllWhiteGear
+	T.Localization["Automatically sell all white gear"] = "Alle weiße Ausrüstung automatisch verkaufen"
+	T.Localization["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold."] = "Beim Ansprechen eines Händlers automatisch alle weißen Waffen und Rüstungen verkaufen, auch solche, die du anlegen kannst.  Halte beim Öffnen des Händlers die Umschalttaste gedrückt, um das Verkaufen dieses Mal auszulassen.\n\nTyGear behält Questgegenstände, Gegenstände, die der aktuelle Händler als Bezahlung annimmt, Gegenstände, die es als Verbesserung anlegen würde, Wappenröcke und die Behalten-Liste.  Angelruten und Berufsausrüstung werden immer behalten.  Es hört auf zu verkaufen, wenn der Händler nichts ankauft oder du kein weiteres Gold tragen kannst."
+	T.Localization["Automatic selling of all white gear is now enabled."] = "Automatisches Verkaufen der gesamten weißen Ausrüstung ist jetzt aktiviert."
+	T.Localization["Automatic selling of all white gear is now disabled."] = "Automatisches Verkaufen der gesamten weißen Ausrüstung ist jetzt deaktiviert."
 
 	-- option: Override
 	T.Localization["Override specialization"] = "Spezialisierung überschreiben"
@@ -172,6 +153,22 @@ if GetLocale() == "deDE" then
 	T.Localization["Lock the specified gear slots, so TyGear will not remove or equip items in those slots.  If this is enabled and any slots are locked, TyGear will still evaluate scores for items in all slots, but will not remove or equip items in the locked slots."] = "Die ausgewählten Ausrüstungsplätze sperren, damit TyGear dort nichts ablegt oder anlegt.  Ist dies aktiviert und sind Plätze gesperrt, bewertet TyGear weiterhin Gegenstände für alle Plätze, legt in gesperrten Plätzen aber nichts an oder ab."
 	T.Localization["Locking specified gear slots is now enabled."] = "Sperren der ausgewählten Ausrüstungsplätze ist jetzt aktiviert."
 	T.Localization["Locking specified gear slots is now disabled."] = "Sperren der ausgewählten Ausrüstungsplätze ist jetzt deaktiviert."
+
+	-- tab: Ignore
+	T.Localization["Ignore"] = "Ignorieren"
+	T.Localization["Gear slots"] = "Ausrüstungsplätze"
+	T.Localization["Ignored slots are left out of rolling, scoring, and equipping."] = "Ignorierte Plätze werden beim Würfeln, Bewerten und Anlegen ausgelassen."
+	T.Localization["Equipped items"] = "Angelegte Gegenstände"
+	T.Localization["Check an equipped item to leave that item out of rolling, scoring, and equipping."] = "Markiere einen angelegten Gegenstand, damit er beim Würfeln, Bewerten und Anlegen ausgelassen wird."
+	T.Localization["Nothing is equipped."] = "Nichts ist angelegt."
+	T.Localization["Item IDs"] = "Gegenstands-IDs"
+	T.Localization["Also ignore these item IDs. Shift-click equipment while this box is focused to add it. Armor and weapons are accepted."] = "Diese Gegenstands-IDs zusätzlich ignorieren. Umschalt-Klick auf Ausrüstung fügt sie hinzu, solange dieses Feld den Fokus hat. Rüstung und Waffen werden übernommen."
+	T.Localization["Ignored gear"] = "Ignorierte Ausrüstung"
+	T.Localization["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."] = "Diese Gegenstände haben nur Effekte, die TyGear nicht bewerten kann, etwa 4% Chance, dass Furcht verfehlt. Ausrüstung mit einem zusätzlich bewertbaren Wert bleibt in der normalen Bewertung. Sie bleiben ignoriert, weil TyGear sie nicht messen kann."
+	T.Localization["No unmeasurable gear has been found yet."] = "Noch keine nicht messbare Ausrüstung gefunden."
+	T.Localization["TyGear cannot score this item, so it stays ignored."] = "TyGear kann diesen Gegenstand nicht bewerten, daher bleibt er ignoriert."
+	T.Localization["ignored"] = "ignoriert"
+	T.Localization["every slot this item can use is ignored"] = "jeder Platz, den dieser Gegenstand nutzen kann, ist ignoriert"
 
 	-- option: DebugInfoInTooltips
 	T.Localization["Show debug info in item tooltips (%swarning%s: laggy!)"] = "Debug-Infos in Gegenstands-Tooltips anzeigen (%sWarnung%s: verursacht Ruckler!)"
