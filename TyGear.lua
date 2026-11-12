@@ -5627,16 +5627,21 @@ function TyGearSetAllowedVerbosity(allowedverbosity)
 end
 
 function TyGearGetContainerItemInfo(bagIndex, bagSlot)
-	if GetContainerItemInfo then
-		local _, count, locked, quality, _, _, link = GetContainerItemInfo(bagIndex, bagSlot)
-		if (link) then
-			return count, locked, link
+	--Forever/Mainline: GetContainerItemInfo returns a ContainerItemInfo table (same as C_Container).
+	--Classic Era multi-return is texture, count, locked, quality, readable, lootable, link.
+	local info
+	if C_Container and C_Container.GetContainerItemInfo then
+		info = C_Container.GetContainerItemInfo(bagIndex, bagSlot)
+	elseif GetContainerItemInfo then
+		local a, b, c, d, e, f, g = GetContainerItemInfo(bagIndex, bagSlot)
+		if type(a) == "table" then
+			info = a
+		elseif g then
+			return b, c, g
 		end
-	elseif C_Container and C_Container.GetContainerItemInfo then
-		local itemInfo = C_Container.GetContainerItemInfo(bagIndex, bagSlot)
-		if itemInfo then
-			return itemInfo.stackCount, itemInfo.isLocked, itemInfo.hyperlink
-		end
+	end
+	if info then
+		return info.stackCount, info.isLocked, info.hyperlink
 	end
 end
 
@@ -6571,18 +6576,25 @@ function TyGearItemContainsText(container, slot, search)
 	TyGearTooltip:SetOwner(UIParent, "ANCHOR_NONE")
 	TyGearTooltip:ClearLines()
 	TyGearTooltip:SetBagItem(container, slot)
+	local sawReadable, sawSecret
 	for i=1, TyGearTooltip:NumLines() do
 		local mytext = _G["TyGearTooltipTextLeft" .. i]
 		if (mytext) then
 			local text = mytext:GetText()
-			--tooltip text can be a secret value under the Midnight addon restrictions; it can't be compared then
+			--tooltip text can be a secret value under the Midnight addon restrictions; skip those lines
 			if issecretvalue and issecretvalue(text) then
-				return nil, true
-			end
-			if (text == search) then
-				return 1
+				sawSecret = true
+			elseif text then
+				sawReadable = true
+				if (text == search) then
+					return 1
+				end
 			end
 		end
+	end
+	--only treat as unreadable when nothing could be compared
+	if sawSecret and (not sawReadable) then
+		return nil, true
 	end
 	return nil
 end
