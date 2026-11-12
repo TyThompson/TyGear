@@ -3723,13 +3723,12 @@ local function buildIgnoredGearListPage(listMenu)
 		row.icon = row:CreateTexture(nil, "ARTWORK")
 		row.icon:SetSize(24, 24)
 		row.icon:SetPoint("LEFT", 0, 0)
+		--checkbox only for user-added items; built-in unmeasurable gear stays listed without a toggle
 		row.check = CreateFrame("CheckButton", "TyGearIgnoredGearRow"..rowSerial.."CheckButton", row, "InterfaceOptionsCheckButtonTemplate")
 		row.check:SetPoint("LEFT", row.icon, "RIGHT", 2, 0)
 		local templateText = _G[row.check:GetName().."Text"]
 		if templateText then templateText:SetText("") end
 		row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-		row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
-		row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
 		row.name:SetJustifyH("LEFT")
 		row.name:SetWordWrap(false)
 		row.check:SetScript("OnClick", function(self)
@@ -3752,11 +3751,7 @@ local function buildIgnoredGearListPage(listMenu)
 			if not parent.itemID then return end
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetHyperlink("item:"..parent.itemID)
-			if parent.builtIn then
-				GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
-			else
-				GameTooltip:AddLine(L["Uncheck to remove this item from the ignored gear list."], 1, 0.82, 0, true)
-			end
+			GameTooltip:AddLine(L["Uncheck to remove this item from the ignored gear list."], 1, 0.82, 0, true)
 			GameTooltip:Show()
 		end)
 		row.check:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3840,15 +3835,17 @@ local function buildIgnoredGearListPage(listMenu)
 			row:SetPoint("TOPLEFT", listContainer, "TOPLEFT", 0, -((index - 1) * rowHeight))
 			row:SetPoint("TOPRIGHT", listContainer, "TOPRIGHT", 0, -((index - 1) * rowHeight))
 			row.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-			row.name:SetText(entry.name or ("item "..entry.id))
-			row.check:SetChecked(true)
-			if row.check.SetEnabled then
-				row.check:SetEnabled(not row.builtIn)
-			elseif row.builtIn then
-				row.check:Disable()
+			row.name:ClearAllPoints()
+			row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+			if row.builtIn then
+				row.check:Hide()
+				row.name:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
 			else
-				row.check:Enable()
+				row.check:Show()
+				row.check:SetChecked(true)
+				row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
 			end
+			row.name:SetText(entry.name or ("item "..entry.id))
 			row:Show()
 			if Item and Item.CreateFromItemID then
 				local itemID = entry.id
