@@ -1,0 +1,22 @@
+## Interface: 11507, 11508, 11509, 16001, 20404, 20505, 20506, 30404, 30405, 38000, 38002, 40402, 50500, 50501, 50502, 50503, 50504, 110107, 110200, 110205, 110207, 120000, 120001, 120100, 120105
+## Title: TyGear
+## Notes: Fork of AutoGear by Synthetikaryote and BujuArena. Automatically chooses loot and equips gear.
+## Author: Ty (fork of AutoGear by Synthetikaryote and BujuArena)
+## OptionalDeps: Pawn, AtlasLoot, AtlasLootClassic
+
+TaintLess.xml
+localization.core.lua
+localization.ru.lua
+localization.de.lua
+TyGear.lua
+## SavedVariables: TyGearDB
+## SavedVariablesPerCharacter: TyGearDB, TyGearCharDB
+
+# CurseForge project 39179 and WoWInterface ID 26415 belong to the original
+# AutoGear addon. They are intentionally omitted so TyGear releases are not
+# published onto that project.
+## X-License: CC-BY-NC-SA-4.0
+## X-Website: https://github.com/TyThompson/TyGear
+## X-Original-Addon: AutoGear
+## X-Original-Author: Synthetikaryote, BujuArena
+## X-Original-Website: https://github.com/BujuArena/AutoGear

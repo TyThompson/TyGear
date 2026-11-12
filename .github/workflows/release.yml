@@ -45,5 +45,7 @@ jobs:
 
       # once cloned, we just run the GitHub Action for the packager project
       # uploading to CurseForge requires the X-Curse-Project-ID field in the toc file, or else no upload
+      # TyGear does not set X-Curse-Project-ID or X-WoWI-ID. Those IDs belong to
+      # the original AutoGear project (CurseForge 39179, WoWInterface 26415).
       - name: Package and Release
         uses: BigWigsMods/packager@master
