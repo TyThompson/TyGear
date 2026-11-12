@@ -2,7 +2,7 @@
 ## Title: TyGear
 ## Notes: Fork of AutoGear by Synthetikaryote and BujuArena. Automatically chooses loot and equips gear.
 ## Author: Ty (fork of AutoGear by Synthetikaryote and BujuArena)
-## OptionalDeps: Pawn, AtlasLoot, AtlasLootClassic
+## OptionalDeps: Pawn, AtlasLoot, AtlasLootClassic, Baganator, Bagnon
 
 TaintLess.xml
 localization.core.lua

@@ -996,6 +996,7 @@ function TyGearSetVendorKeepListItem(itemID, shouldKeep)
 	end
 	TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 	TyGearRefreshVendorKeepListEditBox()
+	if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
 end
 
 function TyGearItemDisplay(link, itemID, name)
@@ -3319,7 +3320,7 @@ local function optionsSetup(optionsMenu)
 		return holder
 	end
 
-	local function addItemIDEditBox(page, optionName, label, description)
+	local function addItemIDEditBox(page, optionName, label, description, editBoxPostHook)
 		local editRow = CreateFrame("Frame", nil, page)
 		editRow:SetSize(500, 24)
 		local labelText = editRow:CreateFontString(nil, "ARTWORK", "GameFontNormal")
@@ -3342,6 +3343,7 @@ local function optionsSetup(optionsMenu)
 		editBox:SetScript("OnEditFocusLost", function(self)
 			TyGearSettingsTable(optionName)[optionName] = table.concat(TyGearParseItemIDList(self:GetText()), ", ")
 			showSavedText()
+			if editBoxPostHook then editBoxPostHook() end
 		end)
 		editBox:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_NONE")
@@ -3386,7 +3388,7 @@ local function optionsSetup(optionsMenu)
 			if v["description"] then
 				addOptionsNote(page, v["description"])
 			end
-			frame[i] = addItemIDEditBox(page, v["option"], v["label"], v["description"] or "")
+			frame[i] = addItemIDEditBox(page, v["option"], v["label"], v["description"] or "", v["editBoxPostHook"])
 			return
 		end
 
@@ -3932,9 +3934,10 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically sell greys"],
-				["description"] = L["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, greys vendors refuse to buy, and item IDs on the keep list.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
+				["description"] = L["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, greys vendors refuse to buy, and item IDs on the keep list.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
 				["toggleDescriptionTrue"] = L["Automatic selling of grey items is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic selling of grey items is now disabled."]
+				["toggleDescriptionFalse"] = L["Automatic selling of grey items is now disabled."],
+				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
 				["option"] = "AutoSellUnsuitableWhites",
@@ -3944,9 +3947,10 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically sell unsuitable whites"],
-				["description"] = L["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
+				["description"] = L["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
 				["toggleDescriptionTrue"] = L["Automatic selling of unsuitable white items is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic selling of unsuitable white items is now disabled."]
+				["toggleDescriptionFalse"] = L["Automatic selling of unsuitable white items is now disabled."],
+				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
 				["option"] = "AutoSellAllWhiteGear",
@@ -3956,9 +3960,10 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically sell all white gear"],
-				["description"] = L["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
+				["description"] = L["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
 				["toggleDescriptionTrue"] = L["Automatic selling of all white gear is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic selling of all white gear is now disabled."]
+				["toggleDescriptionFalse"] = L["Automatic selling of all white gear is now disabled."],
+				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
 				["option"] = "VendorKeepList",
@@ -3966,7 +3971,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["section"] = L["Keep"],
 				["editBox"] = true,
 				["label"] = L["Keep list"],
-				["description"] = L["Item IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item."]
+				["description"] = L["Item IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item."],
+				["editBoxPostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
 				["option"] = "KeepKeeperTahultPetItems",
@@ -3975,7 +3981,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["label"] = L["Keep greys needed for Keeper Ta'hult's pets"],
 				["description"] = L["Don't sell the grey items that Keeper Ta'hult in Oribos takes as payment for the Baubleworm pets."],
 				["toggleDescriptionTrue"] = L["Keeping greys needed for Keeper Ta'hult's pets is now enabled."],
-				["toggleDescriptionFalse"] = L["Keeping greys needed for Keeper Ta'hult's pets is now disabled."]
+				["toggleDescriptionFalse"] = L["Keeping greys needed for Keeper Ta'hult's pets is now disabled."],
+				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
 				["option"] = "KeepUnboundGreyGear",
@@ -3984,7 +3991,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["label"] = L["Keep unbound grey gear"],
 				["description"] = L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
 				["toggleDescriptionTrue"] = L["Keeping unbound grey gear is now enabled."],
-				["toggleDescriptionFalse"] = L["Keeping unbound grey gear is now disabled."]
+				["toggleDescriptionFalse"] = L["Keeping unbound grey gear is now disabled."],
+				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
 				["option"] = "Override",
@@ -4124,6 +4132,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"BAG_CONTAINER_UPDATE")         --Fires when bags are equipped or unequipped from the player
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_SPECIALIZATION_CHANGED")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CONFIRM_DISENCHANT_ROLL")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"ADDON_LOADED")                 --late-loaded Baganator/Bagnon junk plugins
+
+		TyGearSetupVendorJunkIntegrations()
 
 		-- OnUpdate is enabled only while the action queue has work (see TyGearEnsureMainLoop)
 		TyGearEnsureMainLoop()
@@ -4304,9 +4315,13 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 		if TyGearRefreshIgnoreSection and TyGearOptionsMenuScrollFrame and TyGearOptionsMenuScrollFrame:IsShown() then
 			TyGearRefreshIgnoreSection()
 		end
+	elseif event == "BAG_UPDATE" then
+		--only registered while auto-sell is enabled; refreshes junk marks, not a full gear scan
+		TyGearQueueVendorJunkRefresh()
 	elseif event == "MERCHANT_CLOSED" or event == "PLAYER_LEVEL_UP" then
 		if event == "MERCHANT_CLOSED" then
 			TyGearStopSellingGreys()
+			TyGearQueueVendorJunkRefresh()
 		end
 		-- Scan after the merchant closes (not during selling, so bag slots stay stable) and after leveling up.
 		TyGearQueueScan()
@@ -4351,6 +4366,7 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 				-- if it's not gear, return early to avoid scanning for upgrades
 				if (linkInvType == Enum.InventoryType.IndexNonEquipType) then
 					TyGearPrint("TyGear: Skipping scan because looted item "..link.." is not equippable gear.", 3)
+					TyGearQueueVendorJunkRefresh()
 					return
 				--make sure a fishing pole isn't replaced while fishing
 				elseif (TyGearIsInvTypeWeapon(linkInvType) and TyGearIsMainHandAFishingPole()) then
@@ -4376,12 +4392,17 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 			EquipPendingItem(arg1)
 		end
 	elseif event == "MERCHANT_SHOW" then
+		TyGearQueueVendorJunkRefresh()
 		if (TyGearDB.AutoSellGreys == true)
 		or (TyGearDB.AutoSellUnsuitableWhites == true)
 		or (TyGearDB.AutoSellAllWhiteGear == true) then
 			TyGearStartSellingGreys()
 		end
-	elseif event ~= "ADDON_LOADED" then
+	elseif event == "ADDON_LOADED" then
+		if ((arg1 == "Baganator") or (arg1 == "Bagnon")) and TyGearDB then
+			TyGearSetupVendorJunkIntegrations()
+		end
+	else
 		if TyGearDB.AllowedVerbosity and TyGearDB.AllowedVerbosity >= 3 then
 			TyGearPrint("TyGear: event fired: "..event, 3)
 		end
@@ -4583,9 +4604,55 @@ function TyGearIsVendorWhiteGear(classID, equipLoc)
 	return true
 end
 
+function TyGearVendorSellOptionsEnabled()
+	return TyGearDB
+		and ((TyGearDB.AutoSellGreys == true)
+			or (TyGearDB.AutoSellUnsuitableWhites == true)
+			or (TyGearDB.AutoSellAllWhiteGear == true))
+end
+
+--keptItemIDs, merchantCostItemIDs, upgradeBagSlots, questItemCache; includeMerchantCosts reads the open vendor
+function TyGearBuildVendorSellContext(includeMerchantCosts, refreshUpgrades)
+	local context = {
+		keptItemIDs = {},
+		merchantCostItemIDs = {},
+		upgradeBagSlots = {},
+		questItemCache = {},
+		ignoreLocked = true,
+	}
+	if TyGearDB then
+		for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
+			context.keptItemIDs[itemID] = true
+		end
+	end
+	if includeMerchantCosts and GetMerchantNumItems and GetMerchantItemCostInfo and GetMerchantItemCostItem then
+		for merchantIndex = 1, GetMerchantNumItems() do
+			for costIndex = 1, (GetMerchantItemCostInfo(merchantIndex) or 0) do
+				local _, _, costLink = GetMerchantItemCostItem(merchantIndex, costIndex)
+				local costItemID = costLink and tonumber(string.match(costLink, "item:(%d+)"))
+				if costItemID then
+					context.merchantCostItemIDs[costItemID] = true
+				end
+			end
+		end
+	end
+	if refreshUpgrades and TyGearUpdateBestItems then
+		TyGearUpdateBestItems()
+	end
+	if TyGearBestItems then
+		for _, bestItem in pairs(TyGearBestItems) do
+			if bestItem.bag and bestItem.slot then
+				context.upgradeBagSlots[bestItem.bag..":"..bestItem.slot] = true
+			end
+		end
+	end
+	return context
+end
+
 --crafting tools, the keep list, fishing poles, and profession equipment stay when selling whites
-function TyGearIsKeptVendorItem(itemID, classID, subclassID)
-	if greySelling.keptItemIDs[itemID] then return true end
+function TyGearIsKeptVendorItem(itemID, classID, subclassID, context)
+	context = context or greySelling
+	if context and context.keptItemIDs[itemID] then return true end
 	local fishingPoleSubclass = Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Fishingpole
 	if fishingPoleSubclass and (classID == Enum.ItemClass.Weapon) and (subclassID == fishingPoleSubclass) then
 		return true
@@ -4599,12 +4666,13 @@ function TyGearIsKeptVendorItem(itemID, classID, subclassID)
 end
 
 --whether a white item should be sold by the white-gear options
-function TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc)
+function TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc, context)
+	context = context or greySelling
 	if (TyGearDB.AutoSellUnsuitableWhites ~= true) and (TyGearDB.AutoSellAllWhiteGear ~= true) then
 		return false
 	end
-	if TyGearIsKeptVendorItem(itemID, classID, subclassID) then return false end
-	if greySelling.merchantCostItemIDs[itemID] then return false end
+	if TyGearIsKeptVendorItem(itemID, classID, subclassID, context) then return false end
+	if context and context.merchantCostItemIDs[itemID] then return false end
 	if not TyGearIsVendorWhiteGear(classID, equipLoc) then return false end
 	if TyGearDB.AutoSellAllWhiteGear == true then return true end
 	local canEquip = TyGearPlayerCanEquipItem(itemID, link)
@@ -4612,9 +4680,13 @@ function TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc)
 end
 
 --returns the sale value, link, and quality of the item in a bag slot if it should be sold to a vendor, or nil to keep it
-function TyGearGetItemSaleValue(bag, slot)
+--context defaults to the active greySelling session; junk marking passes its own context
+function TyGearGetItemSaleValue(bag, slot, context)
+	context = context or greySelling
+	if not context then return end
 	local count, locked, link = TyGearGetContainerItemInfo(bag, slot)
-	if (not link) or locked then return end
+	if not link then return end
+	if locked and (not context.ignoreLocked) then return end
 	--battle pets have battlepet: links and can't be sold
 	local itemID = tonumber(string.match(link, "item:(%d+)"))
 	if not itemID then return end
@@ -4623,14 +4695,14 @@ function TyGearGetItemSaleValue(bag, slot)
 	if (not quality) or (not sellPrice) or (sellPrice <= 0) then return end
 
 	--keep list is all-inclusive for greys and common (white) item IDs
-	if greySelling.keptItemIDs[itemID] then return end
+	if context.keptItemIDs[itemID] then return end
 
 	if quality == 0 then
 		--a white-gear pass must not sell greys unless that option is on
 		if TyGearDB.AutoSellGreys ~= true then return end
 		if TyGearUnsellableGreyItemIDs[itemID]
 		or (TyGearDB.KeepKeeperTahultPetItems and TyGearKeeperTahultPetGreyItemIDs[itemID])
-		or greySelling.merchantCostItemIDs[itemID] then
+		or context.merchantCostItemIDs[itemID] then
 			return
 		end
 		if TyGearDB.KeepUnboundGreyGear and ((classID == Enum.ItemClass.Weapon) or (classID == Enum.ItemClass.Armor)) then
@@ -4643,7 +4715,7 @@ function TyGearGetItemSaleValue(bag, slot)
 			if not isBound then return end
 		end
 	elseif quality == 1 then
-		if not TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc) then
+		if not TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc, context) then
 			return
 		end
 	else
@@ -4651,15 +4723,15 @@ function TyGearGetItemSaleValue(bag, slot)
 	end
 
 	local bagSlotKey = bag..":"..slot
-	if greySelling.upgradeBagSlots[bagSlotKey] then return end
+	if context.upgradeBagSlots[bagSlotKey] then return end
 	--an item whose tooltip can't be read can't be ruled out as a quest item
-	local cachedQuest = greySelling.questItemCache[bagSlotKey]
+	local cachedQuest = context.questItemCache[bagSlotKey]
 	local isQuestItem, isTooltipUnreadable
 	if cachedQuest ~= nil then
 		isQuestItem, isTooltipUnreadable = cachedQuest[1], cachedQuest[2]
 	else
 		isQuestItem, isTooltipUnreadable = TyGearIsQuestItem(bag, slot)
-		greySelling.questItemCache[bagSlotKey] = { isQuestItem, isTooltipUnreadable }
+		context.questItemCache[bagSlotKey] = { isQuestItem, isTooltipUnreadable }
 	end
 	if isQuestItem or isTooltipUnreadable then return end
 
@@ -4744,39 +4816,16 @@ function TyGearStartSellingGreys()
 		return
 	end
 
-	greySelling = {
-		sales = {},
-		soldValue = 0,
-		soldCount = 0,
-		soldGreyCount = 0,
-		soldWhiteCount = 0,
-		sellsGreys = (TyGearDB.AutoSellGreys == true),
-		sellsWhites = (TyGearDB.AutoSellUnsuitableWhites == true) or (TyGearDB.AutoSellAllWhiteGear == true),
-		keptItemIDs = {},
-		merchantCostItemIDs = {},
-		upgradeBagSlots = {},
-		questItemCache = {},
-	}
-	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
-		greySelling.keptItemIDs[itemID] = true
-	end
-	--keep items this vendor takes as payment for its goods
-	for merchantIndex = 1, GetMerchantNumItems() do
-		for costIndex = 1, (GetMerchantItemCostInfo(merchantIndex) or 0) do
-			local _, _, costLink = GetMerchantItemCostItem(merchantIndex, costIndex)
-			local costItemID = costLink and tonumber(string.match(costLink, "item:(%d+)"))
-			if costItemID then
-				greySelling.merchantCostItemIDs[costItemID] = true
-			end
-		end
-	end
-	--keep gear which TyGear would equip as upgrades, including white gear
-	TyGearUpdateBestItems()
-	for _, bestItem in pairs(TyGearBestItems) do
-		if bestItem.bag and bestItem.slot then
-			greySelling.upgradeBagSlots[bestItem.bag..":"..bestItem.slot] = true
-		end
-	end
+	--refresh upgrades and include this vendor's payment items
+	greySelling = TyGearBuildVendorSellContext(true, true)
+	greySelling.sales = {}
+	greySelling.soldValue = 0
+	greySelling.soldCount = 0
+	greySelling.soldGreyCount = 0
+	greySelling.soldWhiteCount = 0
+	greySelling.sellsGreys = (TyGearDB.AutoSellGreys == true)
+	greySelling.sellsWhites = (TyGearDB.AutoSellUnsuitableWhites == true) or (TyGearDB.AutoSellAllWhiteGear == true)
+	greySelling.ignoreLocked = nil
 
 	TyGearFrame:RegisterEvent("UI_ERROR_MESSAGE")
 	TyGearQueueAction({ action = "sellgreys", t = GetTime() + 0.2 })
@@ -4821,6 +4870,218 @@ function TyGearHandleSellingError(message)
 	elseif message == ERR_TOO_MUCH_GOLD then
 		TyGearStopSellingGreys("you have max gold on this character")
 	end
+end
+
+--bag slots TyGear would sell at a vendor; bag addons such as Baganator read this as junk
+local vendorJunkSlots = {}
+local vendorJunkListeners = {}
+local vendorJunkBagEventRegistered
+local vendorJunkIntegrationsReady
+
+function TyGearIsVendorJunk(bag, slot)
+	return vendorJunkSlots[bag..":"..slot] == true
+end
+
+function TyGearAddVendorJunkListener(callback)
+	if type(callback) == "function" then
+		table.insert(vendorJunkListeners, callback)
+	end
+end
+
+local function TyGearNotifyVendorJunkListeners()
+	for _, callback in ipairs(vendorJunkListeners) do
+		pcall(callback)
+	end
+end
+
+function TyGearSyncVendorJunkBagEvent()
+	if not TyGearFrame then return end
+	local wantEvent = TyGearVendorSellOptionsEnabled() and true or false
+	if wantEvent and not vendorJunkBagEventRegistered then
+		pcall(TyGearFrame.RegisterEvent, TyGearFrame, "BAG_UPDATE")
+		vendorJunkBagEventRegistered = true
+	elseif (not wantEvent) and vendorJunkBagEventRegistered then
+		pcall(TyGearFrame.UnregisterEvent, TyGearFrame, "BAG_UPDATE")
+		vendorJunkBagEventRegistered = nil
+	end
+end
+
+function TyGearRefreshVendorJunkMarks()
+	wipe(vendorJunkSlots)
+	if not TyGearVendorSellOptionsEnabled() then
+		TyGearSyncVendorJunkBagEvent()
+		TyGearNotifyVendorJunkListeners()
+		return
+	end
+	local merchantOpen = MerchantFrame and MerchantFrame:IsShown()
+	--use current best-item slots; selling and localupdate refresh those when upgrades change
+	local context = TyGearBuildVendorSellContext(merchantOpen, false)
+	for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS) do
+		for slot = 1, GetContainerNumSlots(bag) do
+			if TyGearGetItemSaleValue(bag, slot, context) then
+				vendorJunkSlots[bag..":"..slot] = true
+			end
+		end
+	end
+	TyGearSyncVendorJunkBagEvent()
+	TyGearNotifyVendorJunkListeners()
+end
+
+function TyGearQueueVendorJunkRefresh()
+	if not TyGearDB then return end
+	local debounceUntil = GetTime() + 0.35
+	for _, curAction in ipairs(TyGearActionQueue) do
+		if curAction.t and (curAction.action == "vendorjunk") then
+			if curAction.t < debounceUntil then
+				curAction.t = debounceUntil
+			end
+			return
+		end
+	end
+	TyGearQueueAction({ action = "vendorjunk", t = debounceUntil })
+end
+
+local baganatorJunkRegistered
+local bagnonJunkRegistered
+local blizzardJunkRegistered
+
+local function TyGearRegisterBaganatorJunkPlugin()
+	if baganatorJunkRegistered then return end
+	if not (Baganator and Baganator.API and Baganator.API.RegisterJunkPlugin) then return end
+	Baganator.API.RegisterJunkPlugin("TyGear", "tygear", function(bagID, slotID)
+		return TyGearIsVendorJunk(bagID, slotID)
+	end)
+	TyGearAddVendorJunkListener(function()
+		if Baganator.API.RequestItemButtonsRefresh then
+			Baganator.API.RequestItemButtonsRefresh()
+		end
+	end)
+	baganatorJunkRegistered = true
+end
+
+local function TyGearRegisterBagnonJunkMarks()
+	if bagnonJunkRegistered then return end
+	if not (Bagnon and Bagnon.Item and Bagnon.Item.UpdateBorder) then return end
+	local UpdateBorder = Bagnon.Item.UpdateBorder
+	local r, g, b = 0.62, 0.62, 0.62
+	if GetItemQualityColor then
+		r, g, b = GetItemQualityColor(0)
+	end
+	function Bagnon.Item:UpdateBorder(...)
+		UpdateBorder(self, ...)
+		--only override Bagnon's junk icon while TyGear is marking vendor-sell items
+		if not TyGearVendorSellOptionsEnabled() then return end
+		local bag, slot = self.GetBag and self:GetBag(), self.GetID and self:GetID()
+		if (type(bag) ~= "number") or (not slot) then return end
+		if self.JunkIcon then
+			self.JunkIcon:Hide()
+		end
+		if TyGearIsVendorJunk(bag, slot) then
+			if self.IconGlow then
+				self.IconGlow:SetVertexColor(r, g, b, 0.5)
+				self.IconGlow:Show()
+			end
+			if self.JunkIcon then
+				self.JunkIcon:Show()
+			end
+		end
+	end
+	TyGearAddVendorJunkListener(function()
+		if Bagnon.Frames and Bagnon.Frames.Update then
+			Bagnon.Frames:Update()
+		end
+	end)
+	bagnonJunkRegistered = true
+end
+
+local function TyGearRegisterBlizzardBagJunkMarks()
+	if blizzardJunkRegistered then return end
+	--own coin texture: default bags hide JunkIcon on every refresh, and white sell gear needs a mark
+	local coins = setmetatable({}, { __mode = "k" })
+	local function mark(button, bag, slot)
+		if (not button) or (type(bag) ~= "number") or (not slot) then return end
+		local junk = TyGearIsVendorJunk(bag, slot)
+		local coin = coins[button]
+		if not coin then
+			if not junk then return end
+			coin = button:CreateTexture(nil, "OVERLAY", nil, 6)
+			local usedAtlas = coin.SetAtlas and pcall(coin.SetAtlas, coin, "bags-junkcoin", true)
+			if not usedAtlas then
+				coin:SetTexture("Interface\\Buttons\\UI-GroupLoot-Coin-Up")
+				coin:SetSize(16, 16)
+			end
+			coin:SetPoint("TOPLEFT", 1, 0)
+			coins[button] = coin
+		end
+		coin:SetShown(junk)
+	end
+
+	local refresh
+	if _G.ContainerFrameContainer then
+		local frames = { _G.ContainerFrameCombinedBags }
+		for _, frame in ipairs(ContainerFrameContainer.ContainerFrames) do
+			table.insert(frames, frame)
+		end
+		local function refreshFrame(frame)
+			if not (frame and frame.EnumerateValidItems) then return end
+			for _, button in frame:EnumerateValidItems() do
+				if button and button.GetBagID then
+					mark(button, button:GetBagID(), button:GetID())
+				end
+			end
+		end
+		for _, frame in ipairs(frames) do
+			if frame and frame.UpdateItems then
+				hooksecurefunc(frame, "UpdateItems", refreshFrame)
+			end
+		end
+		refresh = function()
+			for _, frame in ipairs(frames) do
+				refreshFrame(frame)
+			end
+		end
+	elseif _G.ContainerFrame_Update then
+		local function refreshFrame(frame)
+			if not frame then return end
+			local name = frame:GetName()
+			for i = 1, frame.size or 0 do
+				local button = _G[name.."Item"..i]
+				if button then
+					mark(button, frame:GetID(), button:GetID())
+				end
+			end
+		end
+		hooksecurefunc("ContainerFrame_Update", refreshFrame)
+		refresh = function()
+			for i = 1, (NUM_CONTAINER_FRAMES or 0) do
+				refreshFrame(_G["ContainerFrame"..i])
+			end
+		end
+	end
+	if refresh then
+		TyGearAddVendorJunkListener(refresh)
+		blizzardJunkRegistered = true
+	end
+end
+
+function TyGearSetupVendorJunkIntegrations()
+	if vendorJunkIntegrationsReady then
+		--bag addons may load later; retry those registrations
+		pcall(TyGearRegisterBaganatorJunkPlugin)
+		pcall(TyGearRegisterBagnonJunkMarks)
+		TyGearQueueVendorJunkRefresh()
+		return
+	end
+	vendorJunkIntegrationsReady = true
+	local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+	if isAddOnLoaded("Baganator") then
+		pcall(TyGearRegisterBaganatorJunkPlugin)
+	end
+	if isAddOnLoaded("Bagnon") then
+		pcall(TyGearRegisterBagnonJunkMarks)
+	end
+	pcall(TyGearRegisterBlizzardBagJunkMarks)
+	TyGearQueueVendorJunkRefresh()
 end
 
 function TyGearIsQuestItem(container, slot)
@@ -7195,6 +7456,7 @@ function TyGearMain()
 					curAction.t = nil
 					queueQueueRebuild = 1
 					TyGearUpdateBestItems() -- this will set TyGearSomeItemDataIsMissing again if necessary
+					TyGearQueueVendorJunkRefresh()
 				end
 			end
 			if (not TyGearSomeItemDataIsMissing) then
@@ -7317,6 +7579,7 @@ function TyGearMain()
 						if not TyGearSomeItemDataIsMissing then
 							curAction.t = nil
 							queueQueueRebuild = 1
+							TyGearQueueVendorJunkRefresh()
 						end
 					end
 				elseif curAction.t and (curAction.action == "sellgreys") then
@@ -7324,6 +7587,12 @@ function TyGearMain()
 						curAction.t = nil
 						queueQueueRebuild = 1
 						if greySelling then TyGearSellGreysTick() end
+					end
+				elseif curAction.t and (curAction.action == "vendorjunk") then
+					if (GetTime() > curAction.t) then
+						curAction.t = nil
+						queueQueueRebuild = 1
+						TyGearRefreshVendorJunkMarks()
 					end
 				end
 			end
