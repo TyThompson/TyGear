@@ -1067,13 +1067,34 @@ function TyGearGetHoveredItem()
 	end
 end
 
+local vendorKeepListCacheKey
+local vendorKeepListCache
+
 function TyGearIsOnVendorKeepList(itemID)
 	itemID = tonumber(itemID)
 	if not itemID or not TyGearDB then return false end
-	for _, listedID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
-		if listedID == itemID then return true end
+	local text = TyGearDB.VendorKeepList or ""
+	if vendorKeepListCacheKey ~= text then
+		vendorKeepListCacheKey = text
+		vendorKeepListCache = {}
+		for _, listedID in ipairs(TyGearParseItemIDList(text)) do
+			vendorKeepListCache[listedID] = true
+		end
 	end
-	return false
+	return vendorKeepListCache[itemID] and true or false
+end
+
+--the ignore list holds the keep list: either set is left out of selling and evaluation.
+--slot protection stays on TyGearIsItemIgnored so a kept crafting tool does not lock its slot
+function TyGearIsLeftOut(info)
+	if TyGearIsItemIgnored(info) then return true end
+	local itemID
+	if type(info) == "number" or type(info) == "string" then
+		itemID = tonumber(info)
+	elseif type(info) == "table" then
+		itemID = tonumber(info.id)
+	end
+	if itemID and TyGearIsOnVendorKeepList(itemID) then return true end
 end
 
 function TyGearIsOnNeedList(itemID)
@@ -1121,6 +1142,7 @@ function TyGearSetVendorKeepListItem(itemID, shouldKeep)
 	TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 	TyGearRefreshVendorKeepListEditBox()
 	if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
+	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 end
 
 function TyGearSetNeedListItem(itemID, shouldNeed)
@@ -3238,7 +3260,7 @@ local function buildIgnoreSection(optionsPage)
 	end
 
 	addSubheader(L["Equipped items"])
-	addNote(L["Check an equipped item to leave that item out of rolling, scoring, and equipping."])
+	addNote(L["Check an equipped item to leave that item out of selling, rolling, scoring, and equipping."])
 	local equippedContainer = CreateFrame("Frame", nil, page)
 	equippedContainer:SetSize(500, 20)
 	equippedContainer.emptyText = equippedContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
@@ -3383,6 +3405,118 @@ local function buildIgnoreSection(optionsPage)
 	addNote(addItemsHelp)
 	optionsPage:AddRow(editRow)
 	showManualIDs()
+
+	--keep list and its options live on the ignore list; items here are not sold or evaluated
+	addSubheader(L["Keep List"])
+	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
+	addNote(keepListDescription)
+
+	local unboundCheck = newCheckbox(
+		"KeepUnboundGreyGear",
+		L["Keep unbound grey gear"],
+		L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
+		function(_, value)
+			if not TyGearDB then TyGearDB = {} end
+			TyGearDB.KeepUnboundGreyGear = value and true or false
+			TyGearPrint("TyGear: "..(TyGearDB.KeepUnboundGreyGear and L["Keeping unbound grey gear is now enabled."] or L["Keeping unbound grey gear is now disabled."]), 0)
+			if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
+		end,
+		page
+	)
+	optionsPage:AddRow(unboundCheck)
+	unboundCheck:SetHitRectInsets(0, -280, 0, 0)
+	unboundCheck:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
+
+	local tahultCheck = newCheckbox(
+		"KeepKeeperTahultPetItems",
+		L["Keep greys needed for Keeper Ta'hult's pets"],
+		L["Don't sell the grey items that Keeper Ta'hult in Oribos takes as payment for the Baubleworm pets."],
+		function(_, value)
+			if not TyGearDB then TyGearDB = {} end
+			TyGearDB.KeepKeeperTahultPetItems = value and true or false
+			TyGearPrint("TyGear: "..(TyGearDB.KeepKeeperTahultPetItems and L["Keeping greys needed for Keeper Ta'hult's pets is now enabled."] or L["Keeping greys needed for Keeper Ta'hult's pets is now disabled."]), 0)
+			if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
+		end,
+		page
+	)
+	optionsPage:AddRow(tahultCheck)
+	tahultCheck:SetHitRectInsets(0, -280, 0, 0)
+	tahultCheck:SetChecked(TyGearDB and TyGearDB.KeepKeeperTahultPetItems)
+
+	local keepEditRow = CreateFrame("Frame", nil, page)
+	keepEditRow:SetSize(500, 24)
+	local keepEditBox = CreateFrame("EditBox", "TyGearVendorKeepListEditBox", keepEditRow, "InputBoxTemplate")
+	keepEditBox:SetAutoFocus(false)
+	keepEditBox:SetSize(320, 20)
+	keepEditBox:SetPoint("LEFT", 12, 0)
+	local suppressKeepEditBoxSave = false
+	local function showKeepListText()
+		suppressKeepEditBoxSave = true
+		keepEditBox:SetText((TyGearDB and TyGearDB.VendorKeepList) or "")
+		keepEditBox:SetCursorPosition(0)
+		suppressKeepEditBoxSave = false
+	end
+	local function saveKeepListText(text)
+		if not TyGearDB then TyGearDB = {} end
+		local previous = {}
+		for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
+			previous[itemID] = true
+		end
+		local parsed = TyGearParseItemIDList(text or "")
+		local seen, newOnes, rest = {}, {}, {}
+		for _, itemID in ipairs(parsed) do
+			if not seen[itemID] then
+				seen[itemID] = true
+				if previous[itemID] then
+					table.insert(rest, itemID)
+				else
+					table.insert(newOnes, itemID)
+				end
+			end
+		end
+		local ordered = {}
+		for _, itemID in ipairs(newOnes) do
+			table.insert(ordered, itemID)
+		end
+		for _, itemID in ipairs(rest) do
+			table.insert(ordered, itemID)
+		end
+		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
+		showKeepListText()
+		if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
+		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+		if TyGearRefreshKeepList then TyGearRefreshKeepList() end
+	end
+	keepEditBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	keepEditBox:SetScript("OnEscapePressed", function(self)
+		showKeepListText()
+		self:ClearFocus()
+	end)
+	keepEditBox:SetScript("OnEditFocusLost", function(self)
+		if suppressKeepEditBoxSave then return end
+		saveKeepListText(self:GetText())
+	end)
+	keepEditBox:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_NONE")
+		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+		GameTooltip:AddLine(L["Keep List"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(keepListDescription, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:Show()
+	end)
+	keepEditBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	optionsPage:EnableWheel(keepEditBox)
+	local function insertKeepItemLink(text)
+		if keepEditBox:HasFocus() and text and string.find(text, "item:%d+") then
+			keepEditBox:Insert(" "..text)
+		end
+	end
+	if ChatFrameUtil and ChatFrameUtil.InsertLink then
+		hooksecurefunc(ChatFrameUtil, "InsertLink", insertKeepItemLink)
+	elseif ChatEdit_InsertLink then
+		hooksecurefunc("ChatEdit_InsertLink", insertKeepItemLink)
+	end
+	optionsPage:AddRow(keepEditRow)
+	showKeepListText()
 end
 
 --Ignore controls for the Forever Ignored List Settings tab (slots, equipped, manual IDs)
@@ -3438,7 +3572,7 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 	slotGrid:SetPoint("TOPLEFT", slotsNote, "BOTTOMLEFT", 0, -4)
 
 	local equippedHeader = addSubheader(slotGrid, L["Equipped items"], 14)
-	local equippedNote = addNote(equippedHeader, L["Check an equipped item to leave that item out of rolling, scoring, and equipping."])
+	local equippedNote = addNote(equippedHeader, L["Check an equipped item to leave that item out of selling, rolling, scoring, and equipping."])
 	local equippedContainer = CreateFrame("Frame", nil, listMenu)
 	equippedContainer:SetPoint("TOPLEFT", equippedNote, "BOTTOMLEFT", 0, -4)
 	equippedContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
@@ -3631,16 +3765,20 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 	return editRow
 end
 
---Forever Ignored List tab: Ignore controls, user-added items first, then out-of-the-box unmeasurable gear
+--the keep list is built below and hosted on this same tab
+local buildKeepListSection
+
+--Forever Ignored List tab: ignore controls, the keep list, then ignored items
 local function buildIgnoredGearListPage(listMenu)
 	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 8, -8)
 	title:SetText(L["Ignored List"])
 
 	local ignoreBottom = buildIgnoreSectionOntoListMenu(listMenu, title)
+	local keepBottom = buildKeepListSection(listMenu, ignoreBottom)
 
 	local listHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	listHeader:SetPoint("TOPLEFT", ignoreBottom, "BOTTOMLEFT", 0, -14)
+	listHeader:SetPoint("TOPLEFT", keepBottom, "BOTTOMLEFT", 0, -18)
 	listHeader:SetText(L["Ignored items"])
 
 	local listContainer = CreateFrame("Frame", "TyGearIgnoredGearListContainer", listMenu)
@@ -3755,21 +3893,7 @@ local function buildIgnoredGearListPage(listMenu)
 		return entries
 	end
 
-	local function headerHeight()
-		local function measured(fontString, fallback)
-			local height = fontString:GetStringHeight() or fallback
-			local estimate = math.ceil(math.max(#(fontString:GetText() or ""), 1) / 80) * 14
-			if height < estimate then height = estimate end
-			return height
-		end
-		local top = listMenu:GetTop()
-		local listTop = listHeader:GetTop()
-		if top and listTop then
-			return (top - listTop) + 8
-		end
-		return 28 + 200 + 14 + 16 + 8
-	end
-
+	local layoutIgnoredGearPage
 	function TyGearRefreshIgnoredGearList()
 		if not listMenu:IsShown() and listContainer.builtOnce then
 			listContainer.needsRefresh = true
@@ -3822,35 +3946,53 @@ local function buildIgnoredGearListPage(listMenu)
 		listContainer:SetHeight(height)
 		note:ClearAllPoints()
 		note:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -14)
-		local noteHeight = note:GetStringHeight() or 40
-		local noteEstimate = math.ceil(math.max(#(note:GetText() or ""), 1) / 80) * 14
-		if noteHeight < noteEstimate then noteHeight = noteEstimate end
-		listMenu:SetHeight(headerHeight() + height + 14 + noteHeight + 16)
+		layoutIgnoredGearPage()
+	end
+
+	layoutIgnoredGearPage = function()
+		local top = listMenu:GetTop()
+		local bottom = note:GetBottom()
+		local height
+		if top and bottom and (top > bottom) then
+			height = (top - bottom) + 24
+		else
+			local keepCount = #TyGearParseItemIDList((TyGearDB and TyGearDB.VendorKeepList) or "")
+			local keepHeight = (keepCount == 0) and 20 or (keepCount * 28)
+			local ignoredCount = #collectEntries()
+			local ignoredHeight = (ignoredCount == 0) and 20 or (ignoredCount * 28)
+			--title, ignore controls, keep options, and both lists before the frames are sized
+			height = 900 + keepHeight + ignoredHeight
+		end
+		listMenu:SetHeight(height)
 		local scrollFrame = listMenu:GetParent()
 		if scrollFrame and scrollFrame.UpdateScrollChildRect then
 			scrollFrame:UpdateScrollChildRect()
 		end
 	end
+	listMenu.layoutIgnoredGearPage = layoutIgnoredGearPage
 
 	listMenu:HookScript("OnShow", function()
+		if TyGearRefreshKeepList then TyGearRefreshKeepList() end
 		if listContainer.needsRefresh or not listContainer.builtOnce then
 			TyGearRefreshIgnoredGearList()
+		else
+			layoutIgnoredGearPage()
 		end
 	end)
 	TyGearRefreshIgnoredGearList()
 end
 
---Forever Keep List tab: unbound-grey option, add box near the top, then kept greys and whites
-local function buildKeepListPage(listMenu)
-	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", 8, -8)
-	title:SetText(L["Keep List"])
+--Keep list and keep options, hosted on the ignore list. Items here are not sold or evaluated.
+buildKeepListSection = function(listMenu, anchorBelow)
+	local header = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	header:SetPoint("TOPLEFT", anchorBelow, "BOTTOMLEFT", 0, -18)
+	header:SetText(L["Keep List"])
 
 	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	note:SetPoint("TOPLEFT", 8, -28)
+	note:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -6)
 	note:SetWidth(480)
 	note:SetJustifyH("LEFT")
-	note:SetText(L["Greys and common (white) items listed here are kept when selling. The list starts with crafting tools that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, and enchanting rods. Every fishing pole is kept even if its item ID is removed from this list."])
+	note:SetText(L["Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated. The list starts with crafting tools that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, and enchanting rods. Every fishing pole is kept even if its item ID is removed from this list."])
 	listMenu.keepListNote = note
 
 	local unboundCheck = newCheckbox(
@@ -3927,6 +4069,7 @@ local function buildKeepListPage(listMenu)
 		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 		showKeepListText()
 		if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
+		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 		if TyGearRefreshKeepList then TyGearRefreshKeepList() end
 	end
 	editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
@@ -4064,17 +4207,6 @@ local function buildKeepListPage(listMenu)
 		return user
 	end
 
-	local function headerHeight()
-		local function measured(fontString, fallback)
-			local height = fontString:GetStringHeight() or fallback
-			local estimate = math.ceil(math.max(#(fontString:GetText() or ""), 1) / 80) * 14
-			if height < estimate then height = estimate end
-			return height
-		end
-		--title + note + unbound checkbox + add header + add note + edit row + kept header + spacings
-		return 28 + measured(note, 40) + 10 + 26 + 14 + 16 + 6 + measured(addNote, 28) + 2 + 24 + 14 + 16 + 8
-	end
-
 	function TyGearRefreshKeepList()
 		if not listMenu:IsShown() and listContainer.builtOnce then
 			listContainer.needsRefresh = true
@@ -4131,19 +4263,13 @@ local function buildKeepListPage(listMenu)
 		emptyText:SetShown(#entries == 0)
 		local height = #entries == 0 and 20 or (#entries * rowHeight)
 		listContainer:SetHeight(height)
-		listMenu:SetHeight(headerHeight() + height + 16)
-		local scrollFrame = listMenu:GetParent()
-		if scrollFrame and scrollFrame.UpdateScrollChildRect then
-			scrollFrame:UpdateScrollChildRect()
+		if listMenu.layoutIgnoredGearPage then
+			listMenu.layoutIgnoredGearPage()
 		end
 	end
 
-	listMenu:HookScript("OnShow", function()
-		if listContainer.needsRefresh or not listContainer.builtOnce then
-			TyGearRefreshKeepList()
-		end
-	end)
 	TyGearRefreshKeepList()
+	return listContainer
 end
 
 --Forever Need List tab: add box near the top, then items TyGear should always NEED on
@@ -4853,11 +4979,9 @@ optionsMenuParent:SetScrollChild(optionsMenu)
 --the Settings shim above returns the registered category; native InterfaceOptions_AddCategory returns nothing
 local optionsCategory = InterfaceOptions_AddCategory(optionsMenuParent)
 
---Settings subtabs used on WoW Forever
+--Settings subtabs used on WoW Forever. The keep list lives on the Ignored gear tab.
 local ignoredGearListMenu
 local ignoredGearListMenuParent
-local keepListMenu
-local keepListMenuParent
 local needListMenu
 local needListMenuParent
 if IS_WOW_FOREVER then
@@ -4885,19 +5009,6 @@ if IS_WOW_FOREVER then
 	else
 		needListMenuParent.parent = optionsMenuParent.name
 		InterfaceOptions_AddCategory(needListMenuParent)
-	end
-
-	keepListMenu = CreateFrame("Frame", "TyGearKeepListMenu")
-	keepListMenu:SetWidth(1)
-	keepListMenu:SetHeight(1)
-	keepListMenuParent = CreateFrame("ScrollFrame", "TyGearKeepListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
-	keepListMenuParent.name = L["Keep List"]
-	keepListMenuParent:SetScrollChild(keepListMenu)
-	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
-		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, keepListMenuParent, keepListMenuParent.name)
-	else
-		keepListMenuParent.parent = optionsMenuParent.name
-		InterfaceOptions_AddCategory(keepListMenuParent)
 	end
 end
 
@@ -5155,7 +5266,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically sell greys"],
-				["description"] = L["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, greys vendors refuse to buy, and item IDs on the keep list.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
+				["description"] = L["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, greys vendors refuse to buy, and item IDs on the ignore list or the keep list.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
 				["toggleDescriptionTrue"] = L["Automatic selling of grey items is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatic selling of grey items is now disabled."],
 				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
@@ -5168,7 +5279,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically sell unsuitable whites"],
-				["description"] = L["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
+				["description"] = L["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, the ignore list, and the keep list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
 				["toggleDescriptionTrue"] = L["Automatic selling of unsuitable white items is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatic selling of unsuitable white items is now disabled."],
 				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
@@ -5181,7 +5292,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically sell all white gear"],
-				["description"] = L["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the keep list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
+				["description"] = L["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, the ignore list, and the keep list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
 				["toggleDescriptionTrue"] = L["Automatic selling of all white gear is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatic selling of all white gear is now disabled."],
 				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
@@ -5190,17 +5301,17 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["option"] = "VendorKeepList",
 				["tab"] = L["Vendor"],
 				["section"] = L["Keep"],
-				["shouldUse"] = not IS_WOW_FOREVER, --Forever uses the Keep List Settings tab instead
+				["shouldUse"] = false, --the keep list lives on the ignore list
 				["editBox"] = true,
 				["label"] = L["Keep List"],
-				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."],
+				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."],
 				["editBoxPostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
 				["option"] = "KeepKeeperTahultPetItems",
 				["tab"] = L["Vendor"],
 				["section"] = L["Keep"],
-				["shouldUse"] = not IS_WOW_FOREVER, --Oribos and Keeper Ta'hult are not in WoW Forever
+				["shouldUse"] = false, --retail hosts this on the ignore list; Oribos is not in WoW Forever
 				["label"] = L["Keep greys needed for Keeper Ta'hult's pets"],
 				["description"] = L["Don't sell the grey items that Keeper Ta'hult in Oribos takes as payment for the Baubleworm pets."],
 				["toggleDescriptionTrue"] = L["Keeping greys needed for Keeper Ta'hult's pets is now enabled."],
@@ -5211,7 +5322,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["option"] = "KeepUnboundGreyGear",
 				["tab"] = L["Vendor"],
 				["section"] = L["Keep"],
-				["shouldUse"] = not IS_WOW_FOREVER, --Forever hosts this on the Keep List Settings tab
+				["shouldUse"] = false, --this option lives on the ignore list
 				["label"] = L["Keep unbound grey gear"],
 				["description"] = L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
 				["toggleDescriptionTrue"] = L["Keeping unbound grey gear is now enabled."],
@@ -5321,6 +5432,13 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				if ignoredGearListMenu.ignoredGearNote then
 					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 8, 100))
 				end
+				if ignoredGearListMenu.keepListNote then
+					ignoredGearListMenu.keepListNote:SetWidth(math.max(width - 8, 100))
+				end
+				if ignoredGearListMenu.keepListAddNote then
+					ignoredGearListMenu.keepListAddNote:SetWidth(math.max(width - 8, 100))
+				end
+				if TyGearRefreshKeepList then TyGearRefreshKeepList() end
 				if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
 				if ignoredGearListMenuParent.UpdateScrollChildRect then
 					ignoredGearListMenuParent:UpdateScrollChildRect()
@@ -5348,26 +5466,6 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			end
 			needListMenuParent:HookScript("OnSizeChanged", layoutNeedList)
 			layoutNeedList()
-		end
-		if keepListMenu and not keepListMenu.built then
-			keepListMenu.built = true
-			buildKeepListPage(keepListMenu)
-			local function layoutKeepList()
-				local width = math.max((keepListMenuParent:GetWidth() or 0) - 30, 1)
-				keepListMenu:SetWidth(width + 8)
-				if keepListMenu.keepListNote then
-					keepListMenu.keepListNote:SetWidth(math.max(width - 8, 100))
-				end
-				if keepListMenu.keepListAddNote then
-					keepListMenu.keepListAddNote:SetWidth(math.max(width - 8, 100))
-				end
-				if TyGearRefreshKeepList then TyGearRefreshKeepList() end
-				if keepListMenuParent.UpdateScrollChildRect then
-					keepListMenuParent:UpdateScrollChildRect()
-				end
-			end
-			keepListMenuParent:HookScript("OnSizeChanged", layoutKeepList)
-			layoutKeepList()
 		end
 		if IS_WOW_FOREVER then
 			if ignoredGearListMenuParent and not ignoredGearListMenuParent.ignoreSectionHooked then
@@ -5517,7 +5615,7 @@ end
 
 function TyGearPrintHelp()
 	TyGearPrint("TyGear: "..((param1 == "help") and "" or "Unrecognized command.  ").."Recognized commands (also /tygear):", 0)
-	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", the Ignored List tab for ignore settings, the Need List tab for forced NEED rolls, and the Keep List tab for vendor keep items") or ""), 0)
+	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", the Ignored List tab for ignore settings and the keep list, and the Need List tab for forced NEED rolls") or ""), 0)
 	TyGearPrint("TyGear:    '/tg help': command line help", 0)
 	TyGearPrint("TyGear:    '/tg scan': scan all bags for gear upgrades", 0)
 	TyGearPrint("TyGear:    '/tg spec': get name of current talent specialization", 0)
@@ -5699,7 +5797,7 @@ function TyGearDecideRoll(link, lootRollID)
 		local rollItemInfo = TyGearReadItemInfo(nil, nil, nil, nil, link)
 		local reason = rollItemInfo.reason or "(no reason set)"
 		local onNeedList = TyGearIsOnNeedList(lootRollItemID or (rollItemInfo and rollItemInfo.id))
-		if TyGearIsItemIgnored(rollItemInfo) then
+		if TyGearIsLeftOut(rollItemInfo) then
 			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is ignored, so not rolling.", 1)
 			return nil, rollItemInfo, reason
 		end
@@ -6088,7 +6186,8 @@ function TyGearGetItemSaleValue(bag, slot, context)
 	--battle pets have battlepet: links and can't be sold
 	local itemID = tonumber(string.match(link, "item:(%d+)"))
 	if not itemID then return end
-	if TyGearIsItemIgnored(itemID) then return end
+	--ignore list items, including the keep list, are not sold
+	if TyGearIsLeftOut(itemID) then return end
 	local _, _, quality, _, _, _, _, _, equipLoc, _, sellPrice, classID, subclassID = GetItemInfo(link)
 	if (not quality) or (not sellPrice) or (sellPrice <= 0) then return end
 
@@ -6887,7 +6986,7 @@ end
 --companion function to TyGearConsiderAllItems
 function TyGearConsiderItem(info, bag, slot, rollOn)
 	if info.empty
-	or TyGearIsItemIgnored(info)
+	or TyGearIsLeftOut(info)
 	or (info.guid and TyGearBestItemsAlreadyAdded[info.guid])
 	or (info.isAmmoBag
 	and	TyGearBestItems[INVSLOT_RANGED].info.isRangedWeapon)
@@ -7525,7 +7624,7 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			if issecretvalue and issecretvalue(textLeftText) then
 				info.unusable = 1
 				info.reason = "(item data is restricted right now)"
-				if TyGearIsItemIgnored(info) then
+				if TyGearIsLeftOut(info) then
 					info.ignored = 1
 					info.usable = nil
 					info.reason = "("..L["ignored"]..")"
@@ -7724,7 +7823,7 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 				if issecretvalue and issecretvalue(textRightText) then
 					info.unusable = 1
 					info.reason = "(item data is restricted right now)"
-					if TyGearIsItemIgnored(info) then
+					if TyGearIsLeftOut(info) then
 						info.ignored = 1
 						info.usable = nil
 						info.reason = "("..L["ignored"]..")"
@@ -7860,7 +7959,7 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 		info.unmeasurableOnly = 1
 		TyGearRememberUnmeasurableGear(info)
 	end
-	if TyGearIsItemIgnored(info) then
+	if TyGearIsLeftOut(info) then
 		info.ignored = 1
 		info.unusable = 1
 		info.usable = nil
