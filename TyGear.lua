@@ -6237,7 +6237,7 @@ function TyGearSettleGreySales()
 					greySelling.soldGreyCount = greySelling.soldGreyCount + 1
 				end
 				if sale.link then
-					table.insert(greySelling.soldLinks, sale.link)
+					table.insert(greySelling.soldItems, { link = sale.link, value = sale.value })
 				end
 			elseif locked then
 				isAnySalePending = true
@@ -6282,9 +6282,14 @@ function TyGearVendorShiftSkipMessage()
 	return "TyGear: Not selling greys this time because Shift was held while opening the vendor."
 end
 
-function TyGearFormatVendorSaleSummary(soldLinks, soldValue)
-	if (not soldLinks) or (#soldLinks == 0) then return end
-	return "TyGear: Sold:\n"..table.concat(soldLinks, "\n").."\nfor "..TyGearCashToString(soldValue).."."
+--one complete chat line per sold item, e.g. TyGear: Sold [Well-stitched Robe] for 55c.
+function TyGearFormatVendorSaleSummary(soldItems)
+	if (not soldItems) or (#soldItems == 0) then return end
+	local lines = {}
+	for _, item in ipairs(soldItems) do
+		lines[#lines + 1] = "TyGear: Sold "..item.link.." for "..TyGearCashToString(item.value).."."
+	end
+	return table.concat(lines, "\n")
 end
 
 function TyGearStartSellingGreys()
@@ -6301,7 +6306,7 @@ function TyGearStartSellingGreys()
 	greySelling.soldCount = 0
 	greySelling.soldGreyCount = 0
 	greySelling.soldWhiteCount = 0
-	greySelling.soldLinks = {}
+	greySelling.soldItems = {}
 	greySelling.sellsGreys = (TyGearDB.AutoSellGreys == true)
 	greySelling.sellsWhites = (TyGearDB.AutoSellUnsuitableWhites == true) or (TyGearDB.AutoSellAllWhiteGear == true)
 	greySelling.ignoreLocked = nil
@@ -6315,7 +6320,7 @@ function TyGearStopSellingGreys(reason)
 	TyGearSettleGreySales()
 	TyGearFrame:UnregisterEvent("UI_ERROR_MESSAGE")
 	if greySelling.soldCount > 0 then
-		TyGearPrint(TyGearFormatVendorSaleSummary(greySelling.soldLinks, greySelling.soldValue), 1)
+		TyGearPrint(TyGearFormatVendorSaleSummary(greySelling.soldItems), 1)
 	end
 	if reason then
 		local what = "greys"
@@ -6385,19 +6390,22 @@ function TyGearSyncVendorJunkBagEvent()
 	end
 end
 
+local vendorJunkContext
+
 function TyGearRefreshVendorJunkMarks()
 	wipe(vendorJunkSlots)
+	vendorJunkContext = nil
 	if not TyGearVendorSellOptionsEnabled() then
 		TyGearSyncVendorJunkBagEvent()
 		TyGearNotifyVendorJunkListeners()
 		return
 	end
 	local merchantOpen = MerchantFrame and MerchantFrame:IsShown()
-	--use current best-item slots; selling and localupdate refresh those when upgrades change
-	local context = TyGearBuildVendorSellContext(merchantOpen, false)
+	--refresh BestItems so bag whites beaten by worn gear are not kept as upgrades
+	vendorJunkContext = TyGearBuildVendorSellContext(merchantOpen, true)
 	for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS) do
 		for slot = 1, GetContainerNumSlots(bag) do
-			if TyGearGetItemSaleValue(bag, slot, context) then
+			if TyGearGetItemSaleValue(bag, slot, vendorJunkContext) then
 				vendorJunkSlots[bag..":"..slot] = true
 			end
 		end
@@ -6428,7 +6436,18 @@ local function TyGearRegisterBaganatorJunkPlugin()
 	if baganatorJunkRegistered then return end
 	if not (Baganator and Baganator.API and Baganator.API.RegisterJunkPlugin) then return end
 	Baganator.API.RegisterJunkPlugin("TyGear", "tygear", function(bagID, slotID)
-		return TyGearIsVendorJunk(bagID, slotID)
+		if not TyGearVendorSellOptionsEnabled() then return false end
+		local key = bagID..":"..slotID
+		if vendorJunkSlots[key] then return true end
+		--Baganator may query before the debounced cache rebuild finishes
+		if not vendorJunkContext then
+			vendorJunkContext = TyGearBuildVendorSellContext(false, true)
+		end
+		local isJunk = TyGearGetItemSaleValue(bagID, slotID, vendorJunkContext) and true or false
+		if isJunk then
+			vendorJunkSlots[key] = true
+		end
+		return isJunk
 	end)
 	TyGearAddVendorJunkListener(function()
 		if Baganator.API.RequestItemButtonsRefresh then
