@@ -6282,21 +6282,9 @@ function TyGearVendorShiftSkipMessage()
 	return "TyGear: Not selling greys this time because Shift was held while opening the vendor."
 end
 
-function TyGearFormatSoldItemList(soldLinks)
-	if (not soldLinks) or (#soldLinks == 0) then return end
-	if #soldLinks == 1 then
-		return soldLinks[1]
-	end
-	if #soldLinks == 2 then
-		return soldLinks[1].." and "..soldLinks[2]
-	end
-	return table.concat(soldLinks, ", ", 1, #soldLinks - 1)..", and "..soldLinks[#soldLinks]
-end
-
 function TyGearFormatVendorSaleSummary(soldLinks, soldValue)
-	local list = TyGearFormatSoldItemList(soldLinks)
-	if not list then return end
-	return "TyGear: Sold "..list.." for "..TyGearCashToString(soldValue).."."
+	if (not soldLinks) or (#soldLinks == 0) then return end
+	return "TyGear: Sold:\n"..table.concat(soldLinks, "\n").."\nfor "..TyGearCashToString(soldValue).."."
 end
 
 function TyGearStartSellingGreys()
