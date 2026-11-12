@@ -2769,13 +2769,17 @@ local function newOptionsPage(optionsMenu)
 	end
 
 	local function enableWheel(frame)
-		if not frame or frame.tyGearWheel or not frame.EnableMouseWheel then return end
-		frame.tyGearWheel = true
+		if not frame or not frame.EnableMouseWheel then return end
 		if frame.EnableMouse and not frame:IsMouseEnabled() then
 			frame:EnableMouse(true)
 		end
 		frame:EnableMouseWheel(true)
+		-- WowStyle1DropdownTemplate cycles radio selections from its OnMouseWheel
+		-- mixin method. Replace both the method and the script so the wheel only
+		-- scrolls this options page, including when the cursor is over a dropdown.
+		frame.OnMouseWheel = onWheel
 		frame:SetScript("OnMouseWheel", onWheel)
+		frame.tyGearWheel = true
 	end
 
 	function optionsPage:EnableWheel(frame)
@@ -3505,7 +3509,6 @@ local function optionsSetup(optionsMenu)
 					frame[i].dropDown:SetPoint("TOPLEFT", frame[i], "TOPRIGHT", width, 0) --attach to parent
 					UIDropDownMenu_SetWidth(frame[i].dropDown, width)
 				end
-				optionsPage:EnableWheel(frame[i].dropDown)
 				--newDropdown(v["child"]["option"], v["child"]["label"], v["child"]["description"], _G["TyGearSelectFrom"..v["child"]["option"].."Dropdown"], v["child"]["options"], optionsMenu)
 				--frame[i].dropDown:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
 				if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
@@ -3628,6 +3631,8 @@ local function optionsSetup(optionsMenu)
 						end
 					end)
 				end
+				--after SetupMenu so the page-scroll handler wins over selection cycling
+				optionsPage:EnableWheel(frame[i].dropDown)
 
 			--if the child is a text box for a list of item IDs, build it that way
 			elseif v["child"]["editBox"] then
