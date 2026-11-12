@@ -341,6 +341,17 @@ function TyGearPrint(text, verbosity)
 	end
 end
 
+--Pleasant confirmation chime when TyGear finishes equipping an upgrade (e.g. after winning a party loot roll).
+--Prefer the epic-loot toast when the client has it; fall back to the classic quest-complete ding.
+function TyGearPlayUpgradeEquippedChime()
+	local soundKit = (SOUNDKIT and (
+		SOUNDKIT.UI_EPICLOOT_TOAST
+		or SOUNDKIT.UI_RAID_LOOT_TOAST_LESSER_ITEM_WON
+		or SOUNDKIT.IG_QUEST_LIST_COMPLETE
+	)) or 878
+	pcall(PlaySound, soundKit, "SFX", true)
+end
+
 --initialize table for storing saved variables
 --TyGearDB is shared by every character. Specialization override is stored separately
 --in TyGearCharDB so an alt does not inherit the main's spec.
@@ -6660,6 +6671,7 @@ function TyGearMain()
 									curAction.ensuringEquipped = nil
 									if (not TyGearActionQueue[i+1]) or (not TyGearActionQueue[i+1].ensuringEquipped) then
 										TyGearUpdateEquippedItems()
+										TyGearPlayUpgradeEquippedChime()
 									end
 									curAction.t = nil
 									queueQueueRebuild = 1
