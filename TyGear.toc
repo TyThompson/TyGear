@@ -8,6 +8,7 @@ TaintLess.xml
 localization.core.lua
 localization.ru.lua
 localization.de.lua
+TyGearUnmeasurableGear.lua
 TyGear.lua
 ## SavedVariables: TyGearDB
 ## SavedVariablesPerCharacter: TyGearDB, TyGearCharDB
