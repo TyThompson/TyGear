@@ -69,6 +69,79 @@ TyGearActionQueue = {}
 local queueQueueRebuild
 local weapons
 local tUpdate = 0
+local TyGearMainLoopActive
+local TyGearCachedPawnScaleName
+local TyGearCachedPawnScaleLocalizedName
+local TyGearPawnScaleCacheKey
+local TyGearScoreCache = {}
+local TyGearCachedClassLocalized
+local TyGearCachedClass
+local TyGearCachedSpec
+local TyGearCachedClassID
+local TyGearClassSpecCacheKey
+local TyGearValidGearSlotsCache = {}
+local TyGearSetSlotsCache = {}
+local TyGearWeaponSlotCacheKey
+local TyGearWeightingCacheKey
+local TyGearColorizeClassNamesCache
+local TyGearLootPatterns
+local EMPTY_SLOT_INFO = { name = "nothing", empty = 1 }
+
+local function TyGearWipeTable(t)
+	if not t then return {} end
+	for k in pairs(t) do
+		t[k] = nil
+	end
+	return t
+end
+
+function TyGearInvalidatePerformanceCaches()
+	TyGearCachedPawnScaleName = nil
+	TyGearCachedPawnScaleLocalizedName = nil
+	TyGearPawnScaleCacheKey = nil
+	TyGearWipeTable(TyGearScoreCache)
+	TyGearClassSpecCacheKey = nil
+	TyGearCachedClassLocalized = nil
+	TyGearCachedClass = nil
+	TyGearCachedSpec = nil
+	TyGearCachedClassID = nil
+	TyGearWipeTable(TyGearValidGearSlotsCache)
+	TyGearWipeTable(TyGearSetSlotsCache)
+	TyGearWeaponSlotCacheKey = nil
+	TyGearWeightingCacheKey = nil
+end
+
+function TyGearEnsureMainLoop()
+	if not TyGearMainLoopActive and TyGearFrame then
+		TyGearFrame:SetScript("OnUpdate", TyGearMain)
+		TyGearMainLoopActive = true
+	end
+end
+
+function TyGearStopMainLoopIfIdle()
+	if TyGearMainLoopActive and (#TyGearActionQueue == 0) and TyGearFrame then
+		TyGearFrame:SetScript("OnUpdate", nil)
+		TyGearMainLoopActive = nil
+	end
+end
+
+function TyGearQueueAction(action)
+	table.insert(TyGearActionQueue, action)
+	TyGearEnsureMainLoop()
+end
+
+function TyGearGetLootPatterns()
+	if TyGearLootPatterns then return TyGearLootPatterns end
+	TyGearLootPatterns = {
+		LOOT_ITEM_SELF_MULTIPLE:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)"):gsub("^", "^"),
+		LOOT_ITEM_PUSHED_SELF_MULTIPLE:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)"):gsub("^", "^"),
+		LOOT_ITEM_CREATED_SELF_MULTIPLE:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)"):gsub("^", "^"),
+		LOOT_ITEM_SELF:gsub("%%s", "(.+)"):gsub("^", "^"),
+		LOOT_ITEM_PUSHED_SELF:gsub("%%s", "(.+)"):gsub("^", "^"),
+		LOOT_ITEM_CREATED_SELF:gsub("%%s", "(.+)"):gsub("^", "^"),
+	}
+	return TyGearLootPatterns
+end
 local shouldPrintHelp = false
 local maxPlayerLevel = (GetMaxPlayerLevel and GetMaxPlayerLevel())
 	or (GetMaxLevelForExpansionLevel and GetExpansionLevel and GetMaxLevelForExpansionLevel(GetExpansionLevel()))
@@ -81,6 +154,7 @@ _G["BINDING_NAME_TYGEAR_TOGGLE_IGNORE"] = L["Toggle hovered item on ignore list"
 local ContainerIDToInventoryID = ContainerIDToInventoryID or (C_Container and C_Container.ContainerIDToInventoryID)
 local GetContainerNumFreeSlots = GetContainerNumFreeSlots or (C_Container and C_Container.GetContainerNumFreeSlots)
 local GetContainerNumSlots = GetContainerNumSlots or (C_Container and C_Container.GetContainerNumSlots)
+local GetContainerItemID = GetContainerItemID or (C_Container and C_Container.GetContainerItemID)
 local GetDetailedItemLevelInfo = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
 local GetItemCount = (C_Item and function(info, includeBank, includeUses, includeReagentBank, includeAccountBank)
 	if info then
@@ -396,15 +470,19 @@ end
 ---Colors class names and item-quality words the way the WoW UI does.
 function TyGearColorize(text)
 	if type(text) ~= "string" or text == "" then return text end
-	local classNames = {}
-	for token, english in pairs(ENGLISH_CLASS_NAMES) do
-		classNames[#classNames + 1] = { token = token, name = english }
-		local localized = TyGearClassList and TyGearClassList[token]
-		if localized and localized ~= english then
-			classNames[#classNames + 1] = { token = token, name = localized }
+	local classNames = TyGearColorizeClassNamesCache
+	if not classNames then
+		classNames = {}
+		for token, english in pairs(ENGLISH_CLASS_NAMES) do
+			classNames[#classNames + 1] = { token = token, name = english }
+			local localized = TyGearClassList and TyGearClassList[token]
+			if localized and localized ~= english then
+				classNames[#classNames + 1] = { token = token, name = localized }
+			end
 		end
+		table.sort(classNames, function(a, b) return #a.name > #b.name end)
+		TyGearColorizeClassNamesCache = classNames
 	end
-	table.sort(classNames, function(a, b) return #a.name > #b.name end)
 	for _, entry in ipairs(classNames) do
 		local markup = colorMarkup(RAID_CLASS_COLORS and RAID_CLASS_COLORS[entry.token], nil)
 		if markup then
@@ -423,9 +501,10 @@ end
 --printing function to check allowed verbosity level
 function TyGearPrint(text, verbosity)
 	if verbosity == nil then verbosity = 0 end
-	if (TyGearDB.AllowedVerbosity == nil) or (verbosity <= TyGearDB.AllowedVerbosity) then
-		print(TyGearColorize(text))
+	if TyGearDB.AllowedVerbosity ~= nil and verbosity > TyGearDB.AllowedVerbosity then
+		return
 	end
+	print(TyGearColorize(text))
 end
 
 --Pleasant confirmation chime when TyGear finishes equipping an upgrade (e.g. after winning a party loot roll).
@@ -2431,6 +2510,10 @@ function TyGearGetOverrideSpecs()
 end
 
 function TyGearGetClassAndSpec()
+	local cacheKey = (TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "1")) or "0"
+	if TyGearClassSpecCacheKey == cacheKey and TyGearCachedClass then
+		return TyGearCachedClassLocalized, TyGearCachedClass, TyGearCachedSpec, TyGearCachedClassID
+	end
 	local localizedClass, class, spec, classID
 
 	-- Override가 켜져 있고 저장된 OverrideSpec 이 있으면 거기서 먼저 시도
@@ -2454,6 +2537,8 @@ function TyGearGetClassAndSpec()
 		localizedClass, class, spec, classID = TyGearDetectClassAndSpec()
 	end
 
+	TyGearClassSpecCacheKey = cacheKey
+	TyGearCachedClassLocalized, TyGearCachedClass, TyGearCachedSpec, TyGearCachedClassID = localizedClass, class, spec, classID
 	return localizedClass, class, spec, classID
 end
 
@@ -2467,9 +2552,26 @@ function TyGearDetectClassAndSpec()
 end
 
 function TyGearSetStatWeights()
-	local localizedClass, class, spec = TyGearGetClassAndSpec()
-	TyGearCurrentWeighting = TyGearDefaultWeights[class] and TyGearDefaultWeights[class][spec] or nil
+	local localizedClass, class, spec, classID = TyGearGetClassAndSpec()
+	local weightingKey = ((TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)).."|"..tostring(TyGearDB and TyGearDB.UsePawn).."|"..tostring(TyGearDB and TyGearDB.OverridePawnScale and TyGearDB.PawnScale or "")
+	if TyGearWeightingCacheKey == weightingKey then
+		return
+	end
+	TyGearInvalidatePerformanceCaches()
+	TyGearCachedClassLocalized, TyGearCachedClass, TyGearCachedSpec, TyGearCachedClassID = localizedClass, class, spec, classID
+	TyGearClassSpecCacheKey = (TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)
+	local baseWeighting = TyGearDefaultWeights[class] and TyGearDefaultWeights[class][spec] or nil
+	if baseWeighting then
+		-- shallow copy so Crit/Hit merges do not mutate the shared defaults table
+		TyGearCurrentWeighting = {}
+		for k, v in pairs(baseWeighting) do
+			TyGearCurrentWeighting[k] = v
+		end
+	else
+		TyGearCurrentWeighting = nil
+	end
 	weapons = TyGearCurrentWeighting and (TyGearCurrentWeighting.weapons or "any") or "any"
+	TyGearWeightingCacheKey = weightingKey
 	if (not TyGearCurrentWeighting) then
 		if (not (TyGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
 			TyGearPrint("TyGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
@@ -4023,7 +4125,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_SPECIALIZATION_CHANGED")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CONFIRM_DISENCHANT_ROLL")
 
-		TyGearFrame:SetScript("OnUpdate", TyGearMain)
+		-- OnUpdate is enabled only while the action queue has work (see TyGearEnsureMainLoop)
+		TyGearEnsureMainLoop()
 	end
 end)
 
@@ -4189,10 +4292,14 @@ end
 TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, ...)
 
 	if event == "PLAYER_SPECIALIZATION_CHANGED" and arg1 == "player" then
+		TyGearSetStatWeights()
 		local localizedClass, class, spec = TyGearGetClassAndSpec()
 		TyGearPrint("TyGear: Talent specialization changed.  Considering all items for gear that's better suited for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 2)
 		TyGearConsiderAllItems()
-	elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "BAG_CONTAINER_UPDATE" then
+	elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+		-- Only refresh the changed equipped slot; avoid a full bag tooltip rescan per equip event
+		TyGearHandleEquipmentChanged(arg1)
+	elseif event == "BAG_CONTAINER_UPDATE" then
 		TyGearQueueLocalUpdate()
 		if TyGearRefreshIgnoreSection and TyGearOptionsMenuScrollFrame and TyGearOptionsMenuScrollFrame:IsShown() then
 			TyGearRefreshIgnoreSection()
@@ -4219,24 +4326,18 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 			TyGearQueueScan()
 			return
 		end
-		local pattern1 = LOOT_ITEM_SELF_MULTIPLE:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)"):gsub("^", "^")
-		local pattern2 = LOOT_ITEM_PUSHED_SELF_MULTIPLE:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)"):gsub("^", "^")
-		local pattern3 = LOOT_ITEM_CREATED_SELF_MULTIPLE:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)"):gsub("^", "^")
-		local pattern4 = LOOT_ITEM_SELF:gsub("%%s", "(.+)"):gsub("^", "^")
-		local pattern5 = LOOT_ITEM_PUSHED_SELF:gsub("%%s", "(.+)"):gsub("^", "^")
-		local pattern6 = LOOT_ITEM_CREATED_SELF:gsub("%%s", "(.+)"):gsub("^", "^")
-
-		local link, quantity = message:match(pattern1)
+		local patterns = TyGearGetLootPatterns()
+		local link, quantity = message:match(patterns[1])
 		if not link then
-			link, quantity = message:match(pattern2)
+			link, quantity = message:match(patterns[2])
 			if not link then
-				link, quantity = message:match(pattern3)
+				link, quantity = message:match(patterns[3])
 				if not link then
-					link, quantity = message:match(pattern4), 1
+					link, quantity = message:match(patterns[4]), 1
 					if not link then
-						link, quantity = message:match(pattern5), 1
+						link, quantity = message:match(patterns[5]), 1
 						if not link then
-							link, quantity = message:match(pattern6), 1
+							link, quantity = message:match(patterns[6]), 1
 						end
 					end
 				end
@@ -4281,7 +4382,9 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 			TyGearStartSellingGreys()
 		end
 	elseif event ~= "ADDON_LOADED" then
-		TyGearPrint("TyGear: event fired: "..event, 3)
+		if TyGearDB.AllowedVerbosity and TyGearDB.AllowedVerbosity >= 3 then
+			TyGearPrint("TyGear: event fired: "..event, 3)
+		end
 	end
 end)
 
@@ -4359,7 +4462,7 @@ function TyGearHandleLootRollCallback(link, lootRollID)
 			newAction.rollID = lootRollID
 			newAction.rollType = rollDecision
 			newAction.info = rollItemInfo
-			table.insert(TyGearActionQueue, newAction)
+			TyGearQueueAction(newAction)
 		end
 end
 
@@ -4547,9 +4650,17 @@ function TyGearGetItemSaleValue(bag, slot)
 		return
 	end
 
-	if greySelling.upgradeBagSlots[bag..":"..slot] then return end
+	local bagSlotKey = bag..":"..slot
+	if greySelling.upgradeBagSlots[bagSlotKey] then return end
 	--an item whose tooltip can't be read can't be ruled out as a quest item
-	local isQuestItem, isTooltipUnreadable = TyGearIsQuestItem(bag, slot)
+	local cachedQuest = greySelling.questItemCache[bagSlotKey]
+	local isQuestItem, isTooltipUnreadable
+	if cachedQuest ~= nil then
+		isQuestItem, isTooltipUnreadable = cachedQuest[1], cachedQuest[2]
+	else
+		isQuestItem, isTooltipUnreadable = TyGearIsQuestItem(bag, slot)
+		greySelling.questItemCache[bagSlotKey] = { isQuestItem, isTooltipUnreadable }
+	end
 	if isQuestItem or isTooltipUnreadable then return end
 
 	return sellPrice * count, link, quality
@@ -4644,6 +4755,7 @@ function TyGearStartSellingGreys()
 		keptItemIDs = {},
 		merchantCostItemIDs = {},
 		upgradeBagSlots = {},
+		questItemCache = {},
 	}
 	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
 		greySelling.keptItemIDs[itemID] = true
@@ -4667,7 +4779,7 @@ function TyGearStartSellingGreys()
 	end
 
 	TyGearFrame:RegisterEvent("UI_ERROR_MESSAGE")
-	table.insert(TyGearActionQueue, { action = "sellgreys", t = 0.0 })
+	TyGearQueueAction({ action = "sellgreys", t = GetTime() + 0.2 })
 end
 
 function TyGearStopSellingGreys(reason)
@@ -4698,7 +4810,7 @@ function TyGearSellGreysTick()
 	if not TyGearSellGreysPass() then
 		TyGearStopSellingGreys()
 	else
-		table.insert(TyGearActionQueue, { action = "sellgreys", t = 0.0 })
+		TyGearQueueAction({ action = "sellgreys", t = GetTime() + 0.2 })
 	end
 end
 
@@ -4737,41 +4849,118 @@ function TyGearItemContainsText(container, slot, search)
 end
 
 function TyGearUpdateEquippedItem(invSlot)
-	local info, score
-	info = TyGearReadItemInfo(invSlot)
-	score = TyGearDetermineItemScore(info)
-	TyGearEquippedItems[invSlot] = {}
-	TyGearEquippedItems[invSlot].info = info
-	TyGearEquippedItems[invSlot].score = score
-	TyGearEquippedItems[invSlot].equipped = 1
+	local info = TyGearReadItemInfo(invSlot)
+	local score = TyGearDetermineItemScore(info)
+	local slotInfo = TyGearEquippedItems[invSlot]
+	if not slotInfo then
+		slotInfo = {}
+		TyGearEquippedItems[invSlot] = slotInfo
+	end
+	slotInfo.info = info
+	slotInfo.score = score
+	slotInfo.equipped = 1
+	slotInfo.bag = nil
+	slotInfo.slot = nil
+end
+
+function TyGearSyncTwoHandTabardSlot()	--pretend the tabard slot is a separate slot for 2-handers
+	if (TyGearEquippedItems[INVSLOT_MAINHAND] and
+	TyGearEquippedItems[INVSLOT_MAINHAND].info and
+	TyGearEquippedItems[INVSLOT_MAINHAND].info.is2hWeapon and
+	(not ((weapons == "2hDW") and CanDualWield() and IsPlayerSpell(46917)))) then
+		local mh = TyGearEquippedItems[INVSLOT_MAINHAND]
+		TyGearEquippedItems[INVSLOT_TABARD] = {
+			info = mh.info,
+			score = mh.score,
+			equipped = mh.equipped,
+		}
+		mh.info = EMPTY_SLOT_INFO
+		mh.score = 0
+		mh.equipped = nil
+	else
+		local tabard = TyGearEquippedItems[INVSLOT_TABARD]
+		if not tabard then
+			tabard = {}
+			TyGearEquippedItems[INVSLOT_TABARD] = tabard
+		end
+		tabard.info = EMPTY_SLOT_INFO
+		tabard.score = 0
+		tabard.equipped = nil
+	end
+end
+
+function TyGearSyncBestItemWithEquipped(invSlot)
+	if (not TyGearBestItems) or (not TyGearEquippedItems) or (not invSlot) then return end
+	local equipped = TyGearEquippedItems[invSlot]
+	local best = TyGearBestItems[invSlot]
+	if not equipped then return end
+	if not best then
+		TyGearBestItems[invSlot] = {
+			info = equipped.info,
+			score = equipped.score,
+			equipped = equipped.equipped,
+		}
+		return
+	end
+	if equipped.info and (not equipped.info.empty) and best.info and (
+		(equipped.info.guid and best.info.guid and equipped.info.guid == best.info.guid) or
+		(equipped.info.link and best.info.link and equipped.info.link == best.info.link) or
+		(equipped.info.id and best.info.id and equipped.info.id == best.info.id and best.equipped)
+	) then
+		best.info = equipped.info
+		best.score = equipped.score
+		best.equipped = 1
+		best.bag = nil
+		best.slot = nil
+	elseif best.equipped then
+		best.info = equipped.info
+		best.score = equipped.score
+		best.equipped = equipped.equipped
+		best.bag = nil
+		best.slot = nil
+	end
+end
+
+function TyGearHandleEquipmentChanged(invSlot)
+	if (not TyGearEquippedItems) or (not next(TyGearEquippedItems)) then
+		TyGearQueueLocalUpdate()
+		return
+	end
+	if not TyGearCurrentWeighting then
+		TyGearSetStatWeights()
+	end
+	if not invSlot then
+		TyGearQueueLocalUpdate()
+		return
+	end
+	TyGearUpdateEquippedItem(invSlot)
+	if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND then
+		-- MH/OH changes can move the pretended 2H tabard slot
+		if invSlot == INVSLOT_OFFHAND then
+			TyGearUpdateEquippedItem(INVSLOT_MAINHAND)
+		end
+		TyGearSyncTwoHandTabardSlot()
+		TyGearSyncBestItemWithEquipped(INVSLOT_MAINHAND)
+		TyGearSyncBestItemWithEquipped(INVSLOT_OFFHAND)
+		TyGearSyncBestItemWithEquipped(INVSLOT_TABARD)
+	else
+		TyGearSyncBestItemWithEquipped(invSlot)
+	end
 end
 
 function TyGearUpdateEquippedItems()
 	TyGearSetStatWeights()
-	-- TyGearItemInfoCache = {}
-	TyGearEquippedItems = {}
-	local info, score
+	if not TyGearEquippedItems then
+		TyGearEquippedItems = {}
+	else
+		TyGearWipeTable(TyGearEquippedItems)
+	end
 	for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
 		if TyGearIsManagedGearSlot(invSlot) then
 			TyGearUpdateEquippedItem(invSlot)
 		end
 	end
-
-	--pretend the tabard slot is a separate slot for 2-handers
-	if (TyGearEquippedItems[INVSLOT_MAINHAND] and
-	TyGearEquippedItems[INVSLOT_MAINHAND].info and
-	TyGearEquippedItems[INVSLOT_MAINHAND].info.is2hWeapon and
-	(not ((weapons == "2hDW") and CanDualWield() and IsPlayerSpell(46917)))) then
-		TyGearEquippedItems[INVSLOT_TABARD] = TyGearDeepCopy(TyGearEquippedItems[INVSLOT_MAINHAND])
-		TyGearEquippedItems[INVSLOT_MAINHAND].info = { name = "nothing", empty = 1 }
-		TyGearEquippedItems[INVSLOT_MAINHAND].score = 0
-		TyGearEquippedItems[INVSLOT_MAINHAND].equipped = nil
-	else
-		TyGearEquippedItems[INVSLOT_TABARD] = {}
-		TyGearEquippedItems[INVSLOT_TABARD].info = { name = "nothing", empty = 1 }
-		TyGearEquippedItems[INVSLOT_TABARD].score = 0
-		TyGearEquippedItems[INVSLOT_TABARD].equipped = nil
-	end
+	TyGearSyncTwoHandTabardSlot()
 end
 
 function TyGearDeepCopy(object)
@@ -4789,32 +4978,70 @@ function TyGearDeepCopy(object)
 	return newObject
 end
 
-function TyGearUpdateBestItems()
-	TyGearUpdateEquippedItems()
+function TyGearResetBestItemsFromEquipped()
+	if (not TyGearEquippedItems) or (not next(TyGearEquippedItems)) then
+		TyGearUpdateEquippedItems()
+	end
+	if not TyGearBestItems then
+		TyGearBestItems = {}
+	else
+		TyGearWipeTable(TyGearBestItems)
+	end
+	for invSlot, data in pairs(TyGearEquippedItems) do
+		TyGearBestItems[invSlot] = {
+			info = data.info,
+			score = data.score,
+			equipped = data.equipped,
+		}
+	end
+	if not TyGearBestItemsAlreadyAdded then
+		TyGearBestItemsAlreadyAdded = {}
+	else
+		TyGearWipeTable(TyGearBestItemsAlreadyAdded)
+	end
+end
 
-	--set starting best scores from all equipped items
-	TyGearBestItems = TyGearDeepCopy(TyGearEquippedItems)
-
+function TyGearScanBagsForBestItems()
 	local info
-
-	-- table to track whether an item's been added
-	TyGearBestItemsAlreadyAdded = {}
-
-	--consider all items in bags, including the reagent bag so a reagent bag stored there is seen
 	for bag = 0, TyGearGetLastBagToScan() do
 		local slotMax = GetContainerNumSlots(bag) or 0
 		for slot = 0, slotMax do
-			info = TyGearReadItemInfo(nil, nil, bag, slot)
-			-- TyGearPrint((info.link or info.name or "nil").." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
-			TyGearConsiderItem(info, bag, slot, nil)
+			local itemID = GetContainerItemID and GetContainerItemID(bag, slot)
+			if itemID then
+				local invType = C_Item.GetItemInventoryTypeByID(itemID) or 0
+				local classID, subclassID = select(6, GetItemInfoInstant(itemID))
+				local isReagentBag = (classID == Enum.ItemClass.Container) and (subclassID == REAGENT_BAG_SUBCLASS_ID)
+				if (invType > 0) or isReagentBag then
+					info = TyGearReadItemInfo(nil, nil, bag, slot)
+					TyGearConsiderItem(info, bag, slot, nil)
+				end
+			end
 		end
+	end
+end
+
+function TyGearUpdateBestItems(skipBagScan)
+	TyGearUpdateEquippedItems()
+	TyGearResetBestItemsFromEquipped()
+	if not skipBagScan then
+		TyGearScanBagsForBestItems()
 	end
 end
 
 function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 	local anythingBetter = nil
 
-	TyGearUpdateBestItems()
+	-- Loot-roll decisions only need equipped gear vs the roll item; skip bag tooltip scans
+	if lootRollItemID and arbitraryItemInfo and noActions then
+		if (not TyGearEquippedItems) or (not next(TyGearEquippedItems)) then
+			TyGearUpdateEquippedItems()
+		elseif not TyGearCurrentWeighting then
+			TyGearSetStatWeights()
+		end
+		TyGearResetBestItemsFromEquipped()
+	else
+		TyGearUpdateBestItems()
+	end
 
 	--consider item being rolled on (if any)
 	if lootRollItemID and arbitraryItemInfo then
@@ -4845,7 +5072,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 							newAction.replaceSlot = invSlot
 							newAction.info = TyGearBestItems[invSlot].info
 							newAction.score = TyGearBestItems[invSlot].score
-							table.insert(TyGearActionQueue, newAction)
+							TyGearQueueAction(newAction)
 						end
 					end
 				end
@@ -4873,7 +5100,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					newAction.replaceSlot = INVSLOT_MAINHAND
 					newAction.info = TyGearBestItems[INVSLOT_MAINHAND].info
 					newAction.score = TyGearBestItems[INVSLOT_MAINHAND].score
-					table.insert(TyGearActionQueue, newAction)
+					TyGearQueueAction(newAction)
 					extraDelay = 0.5
 				end
 			end
@@ -4889,7 +5116,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					newAction.replaceSlot = INVSLOT_OFFHAND
 					newAction.info = TyGearBestItems[INVSLOT_OFFHAND].info
 					newAction.score = TyGearBestItems[INVSLOT_OFFHAND].score
-					table.insert(TyGearActionQueue, newAction)
+					TyGearQueueAction(newAction)
 				end
 			end
 			if (mainSwap or offSwap) then
@@ -4948,7 +5175,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					newAction.replaceSlot = INVSLOT_MAINHAND
 					newAction.info = TyGearBestItems[INVSLOT_TABARD].info
 					newAction.score = TyGearBestItems[INVSLOT_TABARD].score
-					table.insert(TyGearActionQueue, newAction)
+					TyGearQueueAction(newAction)
 				end
 			end
 		end
@@ -4974,12 +5201,12 @@ end
 
 function TyGearIs1hWorthwhile(i)
 	-- 3x the highest weight among the 5 main stats
-	local minScore = 3 * math.max(unpack({
+	local minScore = 3 * math.max(
 		TyGearCurrentWeighting.Strength or 0,
 		TyGearCurrentWeighting.Agility or 0,
 		TyGearCurrentWeighting.Stamina or 0,
 		TyGearCurrentWeighting.Intellect or 0,
-		TyGearCurrentWeighting.Spirit or 0}))
+		TyGearCurrentWeighting.Spirit or 0)
 	return TyGearBestItems[i].score > minScore and TyGearBestItems[i].score > TyGearBestItems[INVSLOT_TABARD].score * (i == INVSLOT_MAINHAND and 0.15 or 0.05)
 end
 
@@ -5062,6 +5289,13 @@ function TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
 end
 
 function TyGearGetValidGearSlots(info)
+	local dualWield = CanDualWield() and 1 or 0
+	local titanGrip = IsPlayerSpell(46917) and 1 or 0
+	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0)
+	local cached = TyGearValidGearSlotsCache[cacheKey]
+	if cached ~= nil then
+		return cached ~= false and cached or nil
+	end
 	local gearSlotTable = {
 		[Enum.InventoryType.IndexNonEquipType]       = nil,
 		[Enum.InventoryType.IndexAmmoType]           = nil, -- ignore ammo because it's hard to match with weapon type
@@ -5153,13 +5387,22 @@ function TyGearGetValidGearSlots(info)
                                                        or nil
 	}
 
-	return gearSlotTable[info.invType]
+	local result = gearSlotTable[info.invType]
+	TyGearValidGearSlotsCache[cacheKey] = result or false
+	return result
 end
 
 -- indicates slots that go together as a set
 -- for example, the set of slots for a shield is { main-hand and off-hand } even though the shield can only be equipped in the off-hand
 -- this is useful to find which slots to use to add scores together from all items in those slots
 function TyGearGetSetSlots(info)
+	local dualWield = CanDualWield() and 1 or 0
+	local titanGrip = IsPlayerSpell(46917) and 1 or 0
+	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0)
+	local cached = TyGearSetSlotsCache[cacheKey]
+	if cached ~= nil then
+		return cached ~= false and cached or nil
+	end
 	local setSlotTable = {
 		[Enum.InventoryType.IndexNonEquipType]       = nil,
 		[Enum.InventoryType.IndexAmmoType]           = nil, -- ignore ammo because it's hard to match with weapon type
@@ -5252,7 +5495,9 @@ function TyGearGetSetSlots(info)
                                                        or nil
 	}
 
-	return setSlotTable[info.invType]
+	local result = setSlotTable[info.invType]
+	TyGearSetSlotsCache[cacheKey] = result or false
+	return result
 end
 
 function TyGearIsInvTypeWeapon(invType)
@@ -5379,14 +5624,9 @@ end
 local ITEM_SET_NAME_PATTERN = "^"..(ITEM_SET_NAME:gsub("[%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"):gsub("%%s", ".+"):gsub("%%d", "%%d+")).."$"
 
 function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tooltipData)
-	if not tooltipData then
-		TyGearTooltip:SetOwner(UIParent, "ANCHOR_NONE")
-		TyGearTooltip:ClearLines()
-	end
-
 	local info = {}
-
 	info.link = link
+	local needsTooltip = not tooltipData
 
 	if container and slot then
 		info.item = Item:CreateFromBagAndSlot(container, slot)
@@ -5398,8 +5638,7 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 		if not info.link then
 			info.link = info.item:GetItemLink()
 		end
-		if not tooltipData then tooltipData = C_TooltipInfo and C_TooltipInfo.GetBagItem(container, slot) end
-		if not tooltipData then TyGearTooltip:SetBagItem(container, slot) end
+		info.id = info.item:GetItemID()
 	elseif inventoryID then
 		info.item = Item:CreateFromEquipmentSlot(inventoryID)
 		if info.item:IsItemEmpty() then
@@ -5410,31 +5649,17 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 		if not info.link then
 			info.link = info.item:GetItemLink()
 		end
-		if not tooltipData then
-			if C_TooltipInfo and C_TooltipInfo.GetInventoryItem then
-				tooltipData = C_TooltipInfo.GetInventoryItem("player", inventoryID)
-			else
-				TyGearTooltip:SetInventoryItem("player", inventoryID)
-			end
-		end
+		info.id = info.item:GetItemID()
 	elseif lootRollID then
 		if not info.link then
 			info.link = GetLootRollItemLink(lootRollID)
 		end
 		info.item = Item:CreateFromItemLink(select(3,ExtractHyperlinkString(info.link)))
-		if C_TooltipInfo and C_TooltipInfo.GetLootRollItem then
-			tooltipData = C_TooltipInfo.GetLootRollItem(lootRollID)
-		else
-			TyGearTooltip:SetLootRollItem(lootRollID)
-		end
+		info.id = info.item:GetItemID()
 	elseif link then
 		info.link = link
 		info.item = Item:CreateFromItemLink(select(3,ExtractHyperlinkString(info.link)))
-		if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
-			tooltipData = C_TooltipInfo.GetHyperlink(info.link)
-		else
-			TyGearTooltip:SetHyperlink(info.link)
-		end
+		info.id = info.item:GetItemID()
 	else
 		TyGearPrint(
 			"inventoryID: "..tostring(inventoryID or "nil")..
@@ -5446,7 +5671,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 		)
 	end
 
-	info.id = info.item:GetItemID()
+	if not info.id and info.item then
+		info.id = info.item:GetItemID()
+	end
 	info.itemLocation = info.item and info.item.HasItemLocation and info.item:HasItemLocation() and info.item:GetItemLocation()
 	if not (info.itemLocation and info.itemLocation.IsValid and info.itemLocation:IsValid() and info.itemLocation:HasAnyLocation()) then
 		info.itemLocation = nil
@@ -5467,28 +5694,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	info.name = C_Item.GetItemNameByID(info.id)
 	info.rarity = info.item:GetItemQuality()
 	info.rarityColor = info.item:GetItemQualityColor()
-	info.guid = tooltipData and tooltipData.guid or info.item:GetItemGUID()
-	if info.link == nil then
-		TyGearPrint("Error: "..tostring(info.name or "nil").." doesn't have a link",3)
-		TyGearPrint(
-			"inventoryID: "..tostring(inventoryID or "nil")..
-			"; lootRollID: "..tostring(lootRollID or "nil")..
-			"; container: "..tostring(container or "nil")..
-			"; slot: "..tostring(slot or "nil")..
-			"; link: "..tostring(info.link or "nil"),
-			3
-		)
-		return info
-	end
-
-	-- EF: this might actually be breaking it as I think it's caching empty tooltips before they're fully loaded
-	-- caching did not show a performance benefit, so commented this and the below out
-	-- info.linkHash = TyGearStringHash(info.link)
-	-- local cachediteminfo = TyGearItemInfoCache[info.linkHash]
-	-- if cachediteminfo then return cachediteminfo end
-
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
 	info.isGear = info.invType > 0
+
 	--reagent bags equip only in the reagent bag slot; keep them even if inventory type is missing
 	if TyGearIsReagentBag(info) then
 		info.isReagentBag = 1
@@ -5501,9 +5709,58 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	if (info.classID == Enum.ItemClass.Miscellaneous) and
 	(info.subclassID == Enum.ItemMiscellaneousSubclass.Mount) then
 		info.isMount = 1
+		if not info.link then
+			info.link = info.item:GetItemLink()
+		end
 		return info -- mounts are never auto-rolled; leave them for the player
 	elseif not info.isGear then
-		return info -- return early if the item isn't gear
+		-- Skip tooltip work for non-gear; bag scans hit this path often
+		if not info.link then
+			info.link = info.item:GetItemLink()
+		end
+		return info
+	end
+
+	-- Deferred tooltip fill: only gear reaches here
+	if needsTooltip then
+		TyGearTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+		TyGearTooltip:ClearLines()
+		if container and slot then
+			tooltipData = C_TooltipInfo and C_TooltipInfo.GetBagItem(container, slot)
+			if not tooltipData then TyGearTooltip:SetBagItem(container, slot) end
+		elseif inventoryID then
+			if C_TooltipInfo and C_TooltipInfo.GetInventoryItem then
+				tooltipData = C_TooltipInfo.GetInventoryItem("player", inventoryID)
+			else
+				TyGearTooltip:SetInventoryItem("player", inventoryID)
+			end
+		elseif lootRollID then
+			if C_TooltipInfo and C_TooltipInfo.GetLootRollItem then
+				tooltipData = C_TooltipInfo.GetLootRollItem(lootRollID)
+			else
+				TyGearTooltip:SetLootRollItem(lootRollID)
+			end
+		elseif info.link then
+			if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
+				tooltipData = C_TooltipInfo.GetHyperlink(info.link)
+			else
+				TyGearTooltip:SetHyperlink(info.link)
+			end
+		end
+	end
+
+	info.guid = tooltipData and tooltipData.guid or info.item:GetItemGUID()
+	if info.link == nil then
+		TyGearPrint("Error: "..tostring(info.name or "nil").." doesn't have a link",3)
+		TyGearPrint(
+			"inventoryID: "..tostring(inventoryID or "nil")..
+			"; lootRollID: "..tostring(lootRollID or "nil")..
+			"; container: "..tostring(container or "nil")..
+			"; slot: "..tostring(slot or "nil")..
+			"; link: "..tostring(info.link or "nil"),
+			3
+		)
+		return info
 	end
 
 	info.RedSockets = 0
@@ -5943,8 +6200,20 @@ function TyGearGetPawnScales()
 end
 
 function TyGearGetPawnScaleName(scaleNameToFind)
+	local cacheKey = tostring(scaleNameToFind or "").."|"..tostring(TyGearDB.OverridePawnScale and TyGearDB.PawnScale or "").."|"..tostring(TyGearCharDB.Override and TyGearCharDB.OverrideSpec or "")
+	if (not scaleNameToFind) and TyGearPawnScaleCacheKey == cacheKey and TyGearCachedPawnScaleName then
+		return TyGearCachedPawnScaleName, TyGearCachedPawnScaleLocalizedName
+	end
 	local realLocalizedClass, realClass, realSpec, realClassID = TyGearDetectClassAndSpec()
 	local overrideLocalizedClass, overrideClass, overrideSpec, overrideClassID = TyGearGetClassAndSpec()
+	local function cacheAndReturn(name, localized)
+		if not scaleNameToFind then
+			TyGearPawnScaleCacheKey = cacheKey
+			TyGearCachedPawnScaleName = name
+			TyGearCachedPawnScaleLocalizedName = localized
+		end
+		return name, localized
+	end
 
 	-- Try to find the selected Pawn scale
 	if TyGearDB.OverridePawnScale and TyGearDB.PawnScale then
@@ -5956,7 +6225,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			and (scaleNameToFind == scale.LocalizedName)))
 			and scale.Values
 			and next(scale.Values) then
-				return trueScaleName, scale.LocalizedName
+				return cacheAndReturn(trueScaleName, scale.LocalizedName)
 			end
 		end
 	end
@@ -5970,7 +6239,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			and TyGearCharDB.OverrideSpec == scaleName
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -5981,7 +6250,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			and TyGearCharDB.OverrideSpec == scale.LocalizedName
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -5993,7 +6262,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			and scale.LocalizedName
 			and string.find(scale.LocalizedName, overrideSpec)
 			and scale.Values and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6003,7 +6272,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			and overrideSpec == scaleName
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6013,7 +6282,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			and overrideLocalizedClass == scaleName
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6023,7 +6292,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			and TyGearCharDB.OverrideSpec == scaleName
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6033,7 +6302,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			and TyGearCharDB.OverrideSpec == scale.LocalizedName
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6043,7 +6312,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			and string.find(scaleName, overrideSpec)
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6052,7 +6321,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			if string.find(scaleName, overrideSpec)
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6061,7 +6330,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			if overrideClassID == scale.ClassID
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6070,7 +6339,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			if string.find(scaleName, overrideLocalizedClass)
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6079,7 +6348,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 			if string.find(scaleName, overrideClass)
 			and scale.Values
 			and next(scale.Values) then
-				return scaleName, scale.LocalizedName
+				return cacheAndReturn(scaleName, scale.LocalizedName)
 			end
 		end
 
@@ -6093,7 +6362,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		and realClassAndSpec == scaleName
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6103,7 +6372,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		and realClassAndSpec == scale.LocalizedName
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6115,7 +6384,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		and string.find(scale.LocalizedName, realSpec)
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6125,7 +6394,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		and realSpec == scaleName
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6135,7 +6404,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		and realLocalizedClass == scaleName
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6144,7 +6413,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		if realClassAndSpec == scaleName
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6153,7 +6422,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		if realClassAndSpec == scale.LocalizedName
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6162,7 +6431,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		if realSpec == scaleName
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6171,7 +6440,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		if realLocalizedClass == scaleName
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6182,7 +6451,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		and string.find(scale.LocalizedName, realSpec)
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6192,7 +6461,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		and string.find(scaleName, realSpec)
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6201,7 +6470,7 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		if scale.ClassID == realClassID
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
@@ -6210,14 +6479,14 @@ function TyGearGetPawnScaleName(scaleNameToFind)
 		if PawnIsScaleVisible(scaleName)
 		and scale.Values
 		and next(scale.Values) then
-			return scaleName, scale.LocalizedName
+			return cacheAndReturn(scaleName, scale.LocalizedName)
 		end
 	end
 
 	-- Just use the first one that has values
 	for ScaleName, Scale in pairs(PawnCommon.Scales) do
 		if Scale.Values and next(Scale.Values) then
-			return ScaleName, Scale.LocalizedName
+			return cacheAndReturn(ScaleName, Scale.LocalizedName)
 		end
 	end
 end
@@ -6231,17 +6500,27 @@ end
 
 function TyGearDetermineItemScore(info)
 	if info.empty then return 0 end
+	local cacheKey = info.link or info.guid or info.id
+	if cacheKey and TyGearScoreCache[cacheKey] ~= nil then
+		return TyGearScoreCache[cacheKey]
+	end
+	local function storeScore(score)
+		if cacheKey then
+			TyGearScoreCache[cacheKey] = score
+		end
+		return score
+	end
 	if info.classID == Enum.ItemClass.Container then
 		-- normal bags and reagent bags are scored by how many slots they add.
 		-- reagent bags only compete for the reagent bag slot, so a larger one is always an upgrade.
 		-- other specialized bags are almost worthless, so they only replace an empty slot
 		if info.subclassID == 0 or info.isReagentBag or TyGearIsReagentBag(info) then -- generic bag, or reagent bag; there's no Enum.ItemContainerSubclass
-			return info.numBagSlots or 0
+			return storeScore(info.numBagSlots or 0)
 		else
-			return (info.numBagSlots or 0) * E -- specialized bags suck, so consider them only better than nothing
+			return storeScore((info.numBagSlots or 0) * E) -- specialized bags suck, so consider them only better than nothing
 		end
 	elseif info.isAmmoBag and info.numBagSlots and (UnitClassBase("player") == "HUNTER") then
-		return info.numBagSlots + (info.ammoBagRangedAttackSpeed and info.ammoBagRangedAttackSpeed or 0)
+		return storeScore(info.numBagSlots + (info.ammoBagRangedAttackSpeed and info.ammoBagRangedAttackSpeed or 0))
 	end
 
 	if TyGearDB.UsePawn and PawnIsReady and PawnIsReady() then
@@ -6249,9 +6528,9 @@ function TyGearDetermineItemScore(info)
 		if pawnItemData then
 			local score = PawnGetSingleValueFromItem(pawnItemData, TyGearGetPawnScaleName())
 			if score == 0 then
-				return E
+				return storeScore(E)
 			else
-				return score or 0
+				return storeScore(score or 0)
 			end
 		end
 	end
@@ -6259,7 +6538,7 @@ function TyGearDetermineItemScore(info)
 	-- This error trap sucks, but execution can reach here with no TyGearCurrentWeighting and I don't know how
 	if (not TyGearCurrentWeighting) then
 		TyGearSetStatWeights()
-		if (not TyGearCurrentWeighting) then return 0 end
+		if (not TyGearCurrentWeighting) then return storeScore(0) end
 	end
 
 	local score = (TyGearCurrentWeighting.Strength or 0) * (info.Strength or 0) +
@@ -6295,9 +6574,9 @@ function TyGearDetermineItemScore(info)
 		((UnitLevel("player") < maxPlayerLevel and not (IsXPUserDisabled and IsXPUserDisabled())) and
 		(TyGearCurrentWeighting.ExperienceGained or 0) * (info.ExperienceGained or 0) or 0)
 	if score == 0 then
-		return E
+		return storeScore(E)
 	else
-		return score or 0
+		return storeScore(score or 0)
 	end
 end
 
@@ -6379,9 +6658,23 @@ function TyGearGetTooltipScoreComparisonInfo(info, equipped)
 		equippedSetScore = equippedSetScore + (TyGearEquippedItems[info.validGearSlots[i]].score or 0)
 	end
 	if info.is2hWeapon and (not (CanDualWield() and IsPlayerSpell(46917))) then
-		local mainHandInfo = TyGearReadItemInfo(INVSLOT_MAINHAND)
-		local mainHandScore = TyGearDetermineItemScore(mainHandInfo)
-		local offHandScore = TyGearDetermineItemScore(TyGearReadItemInfo(INVSLOT_OFFHAND))
+		local mainHandInfo, mainHandScore, offHandScore
+		if TyGearEquippedItems and TyGearEquippedItems[INVSLOT_MAINHAND] and TyGearEquippedItems[INVSLOT_OFFHAND] then
+			-- Prefer pretended 2H tabard slot when present
+			if TyGearEquippedItems[INVSLOT_TABARD] and TyGearEquippedItems[INVSLOT_TABARD].info and not TyGearEquippedItems[INVSLOT_TABARD].info.empty then
+				mainHandInfo = TyGearEquippedItems[INVSLOT_TABARD].info
+				mainHandScore = TyGearEquippedItems[INVSLOT_TABARD].score or 0
+				offHandScore = 0
+			else
+				mainHandInfo = TyGearEquippedItems[INVSLOT_MAINHAND].info
+				mainHandScore = TyGearEquippedItems[INVSLOT_MAINHAND].score or 0
+				offHandScore = TyGearEquippedItems[INVSLOT_OFFHAND].score or 0
+			end
+		else
+			mainHandInfo = TyGearReadItemInfo(INVSLOT_MAINHAND)
+			mainHandScore = TyGearDetermineItemScore(mainHandInfo)
+			offHandScore = TyGearDetermineItemScore(TyGearReadItemInfo(INVSLOT_OFFHAND))
+		end
 		local oneHandedWeaponsScore = mainHandScore + offHandScore
 		lowestScoringValidGearInfo = mainHandInfo
 		lowestScoringValidGearSlot = INVSLOT_MAINHAND
@@ -6389,9 +6682,17 @@ function TyGearGetTooltipScoreComparisonInfo(info, equipped)
 		equippedSetScore = oneHandedWeaponsScore
 	elseif info.is1hWeaponOrOffHand
 	and TyGearIsTwoHandEquipped() then
-		lowestScoringValidGearInfo = TyGearReadItemInfo(INVSLOT_MAINHAND)
+		if TyGearEquippedItems and TyGearEquippedItems[INVSLOT_TABARD] and TyGearEquippedItems[INVSLOT_TABARD].info and not TyGearEquippedItems[INVSLOT_TABARD].info.empty then
+			lowestScoringValidGearInfo = TyGearEquippedItems[INVSLOT_TABARD].info
+			lowestScoringValidGearSlotScore = TyGearEquippedItems[INVSLOT_TABARD].score or 0
+		elseif TyGearEquippedItems and TyGearEquippedItems[INVSLOT_MAINHAND] then
+			lowestScoringValidGearInfo = TyGearEquippedItems[INVSLOT_MAINHAND].info
+			lowestScoringValidGearSlotScore = TyGearEquippedItems[INVSLOT_MAINHAND].score or 0
+		else
+			lowestScoringValidGearInfo = TyGearReadItemInfo(INVSLOT_MAINHAND)
+			lowestScoringValidGearSlotScore = TyGearDetermineItemScore(lowestScoringValidGearInfo)
+		end
 		lowestScoringValidGearSlot = INVSLOT_MAINHAND
-		lowestScoringValidGearSlotScore = TyGearDetermineItemScore(lowestScoringValidGearInfo)
 		equippedSetScore = lowestScoringValidGearSlotScore
 	else
 		if info.validGearSlots then
@@ -6476,7 +6777,11 @@ function TyGearIsGearPairEquippableTogether(a, b)
 end
 
 function TyGearGetBestSetItems(info)
-	if not TyGearBestItems then TyGearUpdateBestItems() end
+	-- Never trigger a full bag scan from tooltip hover; fall back to equipped scores
+	local bestSource = TyGearBestItems or TyGearEquippedItems
+	if not bestSource then
+		return {}, 0, 1, 0
+	end
 	local setSlots = TyGearGetSetSlots(info)
 	local bestSetScore = 0
 	local bestSet = {}
@@ -6486,10 +6791,10 @@ function TyGearGetBestSetItems(info)
 	local thisIsABestItem
 	if setSlots then
 		for i,slot in ipairs(setSlots) do
-			if (not TyGearBestItems) or (not TyGearBestItems[slot]) or (TyGearBestItems[slot].info and TyGearBestItems[slot].info.empty) then
+			if (not bestSource) or (not bestSource[slot]) or (bestSource[slot].info and bestSource[slot].info.empty) then
 				return bestSet, bestSetScore, 1, lowestBestItemScore
 			end
-			local bestInfo = TyGearBestItems[slot].info
+			local bestInfo = bestSource[slot].info
 			if bestInfo and (
 				(
 					bestInfo.link
@@ -6504,7 +6809,7 @@ function TyGearGetBestSetItems(info)
 			end
 			if bestInfo
 			and TyGearIsGearPairEquippableTogether(info, bestInfo) then
-				bestItem = TyGearBestItems[slot]
+				bestItem = bestSource[slot]
 				if lowestBestItemScore == 0
 				or bestItem.score < lowestBestItemScore then
 					lowestBestItemIndex = i
@@ -6840,14 +7145,18 @@ end
 function TyGearQueueLocalUpdate()
 	--check if there's already a local update action in queue
 	local localUpdateFound = nil
+	local debounceUntil = GetTime() + 0.25
 	for i, curAction in ipairs(TyGearActionQueue) do
 		if curAction.t and (curAction.action == "localupdate") then
+			-- Coalesce bursts (multi-slot equip) into one delayed rescan
+			if curAction.t < debounceUntil then
+				curAction.t = debounceUntil
+			end
 			localUpdateFound = 1
 		end
 	end
 	if (not localUpdateFound) then
-		--no local update found, so create a new one and set it to run immediately
-		table.insert(TyGearActionQueue, { action = "localupdate", t = 0.0 })
+		TyGearQueueAction({ action = "localupdate", t = debounceUntil })
 	end
 end
 
@@ -6863,11 +7172,15 @@ function TyGearQueueScan()
 	end
 	if (not scanFound) then
 		--no scan found, so create a new one
-		table.insert(TyGearActionQueue, { action = "scan", t = GetTime() + 0.5 })
+		TyGearQueueAction({ action = "scan", t = GetTime() + 0.5 })
 	end
 end
 
 function TyGearMain()
+	if (#TyGearActionQueue == 0) then
+		TyGearStopMainLoopIfIdle()
+		return
+	end
 	if (GetTime() - tUpdate > 0.05) then
 		tUpdate = GetTime()
 		--future actions
@@ -7016,12 +7329,19 @@ function TyGearMain()
 			end
 		end
 		if queueQueueRebuild then
-			local rebuiltQueue = {}
-			for _, curAction in ipairs(TyGearActionQueue) do
-				if curAction.t then table.insert(rebuiltQueue, curAction) end
+			local writeIndex = 1
+			for readIndex = 1, #TyGearActionQueue do
+				local curAction = TyGearActionQueue[readIndex]
+				if curAction.t then
+					TyGearActionQueue[writeIndex] = curAction
+					writeIndex = writeIndex + 1
+				end
 			end
-			TyGearActionQueue = rebuiltQueue
+			for i = writeIndex, #TyGearActionQueue do
+				TyGearActionQueue[i] = nil
+			end
 			queueQueueRebuild = nil
+			TyGearStopMainLoopIfIdle()
 		end
 	end
 end
