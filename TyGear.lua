@@ -196,13 +196,13 @@ TyGearWouldRoll = "nil"
 TyGearSomeItemDataIsMissing = nil
 TyGearFirstEquippableBagSlot = ContainerIDToInventoryID(1) or 20
 TyGearLastEquippableBagSlot = ContainerIDToInventoryID(NUM_BAG_SLOTS) or 23
--- Reagent bags (retail, Dragonflight and later) can only be equipped in the reagent bag slot.
--- Classic clients may expose Enum.BagIndex.ReagentBag with mainline's number, where that container is a bank bag.
+-- Reagent bags (retail Dragonflight+, and WoW Forever) can only be equipped in the reagent bag slot.
+-- Classic Era/Wrath clients may expose Enum.BagIndex.ReagentBag with mainline's number, where that container is a bank bag.
+-- Forever also lets Warlock Soul Bags use that same dedicated slot.
 TyGearReagentBagContainer = nil
 TyGearReagentBagSlot = nil
-if (not IS_WOW_FOREVER)
-and type(TOC_VERSION_CURRENT) == "number"
-and TOC_VERSION_CURRENT >= TOC_VERSION_DF then
+if IS_WOW_FOREVER
+or (type(TOC_VERSION_CURRENT) == "number" and TOC_VERSION_CURRENT >= TOC_VERSION_DF) then
 	local reagentContainer = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or nil
 	if not reagentContainer and NUM_REAGENTBAG_SLOTS and NUM_REAGENTBAG_SLOTS > 0 then
 		reagentContainer = (NUM_BAG_SLOTS or 4) + 1
@@ -232,13 +232,32 @@ for i = BACKPACK_CONTAINER+1, NUM_BAG_SLOTS do
 	end
 end
 
--- Container (class 1) subclass 11 is "Reagent Bag". There is no Enum.ItemContainerSubclass.
+-- Container (class 1) subclasses. There is no Enum.ItemContainerSubclass.
 local REAGENT_BAG_SUBCLASS_ID = 11
+local SOUL_BAG_SUBCLASS_ID = 1 -- Soul Bag (Warlock soul shards)
+
+function TyGearIsSoulBag(info)
+	if not info then return nil end
+	if info.isSoulBag then return 1 end
+	if info.classID == Enum.ItemClass.Container and info.subclassID == SOUL_BAG_SUBCLASS_ID then
+		return 1
+	end
+end
 
 function TyGearIsReagentBag(info)
 	if not TyGearReagentBagSlot or not info then return nil end
 	if info.isReagentBag then return 1 end
 	if info.classID == Enum.ItemClass.Container and info.subclassID == REAGENT_BAG_SUBCLASS_ID then
+		return 1
+	end
+end
+
+-- bags that TyGear should only evaluate for the dedicated reagent bag slot
+function TyGearUsesReagentBagSlot(info)
+	if not TyGearReagentBagSlot or not info then return nil end
+	if TyGearIsReagentBag(info) then return 1 end
+	-- Forever: Warlock Soul Bags equip in the reagent bag slot
+	if IS_WOW_FOREVER and TyGearIsSoulBag(info) and UnitClassBase("player") == "WARLOCK" then
 		return 1
 	end
 end
@@ -5914,7 +5933,8 @@ function TyGearScanBagsForBestItems()
 				local invType = C_Item.GetItemInventoryTypeByID(itemID) or 0
 				local classID, subclassID = select(6, GetItemInfoInstant(itemID))
 				local isReagentBag = (classID == Enum.ItemClass.Container) and (subclassID == REAGENT_BAG_SUBCLASS_ID)
-				if (invType > 0) or isReagentBag then
+				local isSoulBag = (classID == Enum.ItemClass.Container) and (subclassID == SOUL_BAG_SUBCLASS_ID)
+				if (invType > 0) or isReagentBag or isSoulBag then
 					info = TyGearReadItemInfo(nil, nil, bag, slot)
 					TyGearConsiderItem(info, bag, slot, nil)
 				end
@@ -6113,10 +6133,16 @@ function TyGearIs1hWorthwhile(i)
 	return TyGearBestItems[i].score > minScore and TyGearBestItems[i].score > TyGearBestItems[INVSLOT_TABARD].score * (i == INVSLOT_MAINHAND and 0.15 or 0.05)
 end
 
---when two bags have the same score (same slot count), prefer the soulbound one
+--when two bags have the same score (same slot count), prefer Forever Warlock soul bags, then soulbound
 function TyGearBagShouldReplaceEqualScore(candidate, current)
 	if not candidate or candidate.classID ~= Enum.ItemClass.Container then return false end
 	if not current or current.empty then return true end
+	if IS_WOW_FOREVER and UnitClassBase("player") == "WARLOCK" then
+		local candidateSoul = TyGearIsSoulBag(candidate)
+		local currentSoul = TyGearIsSoulBag(current)
+		if candidateSoul and not currentSoul then return true end
+		if currentSoul and not candidateSoul then return false end
+	end
 	if candidate.bop and not current.bop then return true end
 	return false
 end
@@ -6296,7 +6322,7 @@ function TyGearGetValidGearSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = (TyGearIsReagentBag(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
+		[Enum.InventoryType.IndexBagType]            = (TyGearUsesReagentBagSlot(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
 		                                               and TyGearEquippableBagSlots
                                                        or nil
@@ -6404,7 +6430,7 @@ function TyGearGetSetSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = (TyGearIsReagentBag(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
+		[Enum.InventoryType.IndexBagType]            = (TyGearUsesReagentBagSlot(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
 		                                               and TyGearEquippableBagSlots
                                                        or nil
@@ -6612,9 +6638,16 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
 	info.isGear = info.invType > 0
 
-	--reagent bags equip only in the reagent bag slot; keep them even if inventory type is missing
+	--reagent bags (and Forever Warlock soul bags) equip only in the reagent bag slot;
+	--keep them even if inventory type is missing
 	if TyGearIsReagentBag(info) then
 		info.isReagentBag = 1
+		info.isGear = 1
+		if info.invType == 0 and Enum and Enum.InventoryType then
+			info.invType = Enum.InventoryType.IndexBagType
+		end
+	elseif IS_WOW_FOREVER and TyGearIsSoulBag(info) then
+		info.isSoulBag = 1
 		info.isGear = 1
 		if info.invType == 0 and Enum and Enum.InventoryType then
 			info.invType = Enum.InventoryType.IndexBagType
@@ -7443,10 +7476,13 @@ function TyGearDetermineItemScore(info)
 		return score
 	end
 	if info.classID == Enum.ItemClass.Container then
-		-- normal bags and reagent bags are scored by how many slots they add.
-		-- reagent bags only compete for the reagent bag slot, so a larger one is always an upgrade.
+		-- normal bags, reagent bags, and Forever Warlock soul bags are scored by how many slots they add.
+		-- bags that use the reagent bag slot only compete there, so a larger one is always an upgrade.
 		-- other specialized bags are almost worthless, so they only replace an empty slot
-		if info.subclassID == 0 or info.isReagentBag or TyGearIsReagentBag(info) then -- generic bag, or reagent bag; there's no Enum.ItemContainerSubclass
+		if info.subclassID == 0
+		or info.isReagentBag
+		or TyGearIsReagentBag(info)
+		or TyGearUsesReagentBagSlot(info) then -- generic bag, or reagent-slot bag; there's no Enum.ItemContainerSubclass
 			return storeScore(info.numBagSlots or 0)
 		else
 			return storeScore((info.numBagSlots or 0) * E) -- specialized bags suck, so consider them only better than nothing
