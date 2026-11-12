@@ -3590,7 +3590,7 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 	return editRow
 end
 
---Forever Ignored gear tab: add box near the top, then built-in and discovered unmeasurable gear
+--Forever Ignored gear tab: Ignore controls, then built-in and discovered unmeasurable gear
 local function buildIgnoredGearListPage(listMenu)
 	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 8, -8)
@@ -3609,99 +3609,9 @@ local function buildIgnoredGearListPage(listMenu)
 	note:SetText(L["These items have only effects TyGear cannot score, such as a 4% chance for Fear to miss. Gear that also has a scored stat stays in normal evaluation. They stay ignored because TyGear cannot measure them."])
 	listMenu.ignoredGearNote = note
 
-	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	addHeader:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -14)
-	addHeader:SetText(L["Add items"])
-
-	local addNote = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	addNote:SetPoint("TOPLEFT", addHeader, "BOTTOMLEFT", 0, -6)
-	addNote:SetWidth(480)
-	addNote:SetJustifyH("LEFT")
-	addNote:SetText(L["Item IDs separated by commas. Shift-click equipment while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open. Built-in unmeasurable gear stays listed below and is not edited here."])
-	listMenu.ignoredGearAddNote = addNote
-
-	local editRow = CreateFrame("Frame", nil, listMenu)
-	editRow:SetPoint("TOPLEFT", addNote, "BOTTOMLEFT", 0, -8)
-	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
-	editRow:SetHeight(24)
-	local editBox = CreateFrame("EditBox", "TyGearIgnoredGearAddEditBox", editRow, "InputBoxTemplate")
-	editBox:SetAutoFocus(false)
-	editBox:SetHeight(20)
-	editBox:SetPoint("LEFT", 4, 0)
-	editBox:SetPoint("RIGHT", editRow, "RIGHT", -4, 0)
-	local suppressEditBoxSave = false
-
-	local function manualIgnoredIDsText()
-		local ids = {}
-		if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear then
-			for itemID in pairs(TyGearCharDB.DiscoveredUnmeasurableGear) do
-				local numericID = tonumber(itemID)
-				if numericID and not (TyGearUnmeasurableGear and TyGearUnmeasurableGear[numericID]) then
-					table.insert(ids, numericID)
-				end
-			end
-		end
-		table.sort(ids)
-		local parts = {}
-		for _, itemID in ipairs(ids) do
-			table.insert(parts, tostring(itemID))
-		end
-		return table.concat(parts, ", ")
-	end
-
-	local function showManualIgnoredIDs()
-		suppressEditBoxSave = true
-		editBox:SetText(manualIgnoredIDsText())
-		editBox:SetCursorPosition(0)
-		suppressEditBoxSave = false
-	end
-
-	local function saveManualIgnoredIDs(text)
-		if not TyGearCharDB then TyGearCharDB = {} end
-		local nextIDs = {}
-		for _, itemID in ipairs(TyGearParseItemIDList(text or "")) do
-			if not (TyGearUnmeasurableGear and TyGearUnmeasurableGear[itemID]) and TyGearIsEquipmentItemID(itemID) then
-				nextIDs[itemID] = true
-			end
-		end
-		TyGearCharDB.DiscoveredUnmeasurableGear = nextIDs
-		showManualIgnoredIDs()
-		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
-		if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
-		if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
-	end
-
-	editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-	editBox:SetScript("OnEscapePressed", function(self)
-		showManualIgnoredIDs()
-		self:ClearFocus()
-	end)
-	editBox:SetScript("OnEditFocusLost", function(self)
-		if suppressEditBoxSave then return end
-		saveManualIgnoredIDs(self:GetText())
-	end)
-	editBox:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_NONE")
-		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(L["Add items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Item IDs separated by commas. Shift-click equipment while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open. Built-in unmeasurable gear stays listed below and is not edited here."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-		GameTooltip:Show()
-	end)
-	editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	local function insertItemLink(text)
-		if editBox:HasFocus() and text and string.find(text, "item:%d+") then
-			editBox:Insert(" "..text)
-		end
-	end
-	if ChatFrameUtil and ChatFrameUtil.InsertLink then
-		hooksecurefunc(ChatFrameUtil, "InsertLink", insertItemLink)
-	elseif ChatEdit_InsertLink then
-		hooksecurefunc("ChatEdit_InsertLink", insertItemLink)
-	end
-	showManualIgnoredIDs()
-
+	--one Item IDs box lives in the Ignore section above; unmeasurable gear is listed here only
 	local listHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	listHeader:SetPoint("TOPLEFT", editRow, "BOTTOMLEFT", 0, -14)
+	listHeader:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -14)
 	listHeader:SetText(L["Ignored items"])
 
 	local listContainer = CreateFrame("Frame", "TyGearIgnoredGearListContainer", listMenu)
@@ -3726,9 +3636,6 @@ local function buildIgnoredGearListPage(listMenu)
 			TyGearCharDB.DiscoveredUnmeasurableGear[itemID] = true
 		else
 			TyGearCharDB.DiscoveredUnmeasurableGear[itemID] = nil
-		end
-		if not editBox:HasFocus() then
-			showManualIgnoredIDs()
 		end
 		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 		if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
@@ -3824,11 +3731,11 @@ local function buildIgnoredGearListPage(listMenu)
 		local top = listMenu:GetTop()
 		local listTop = listHeader:GetTop()
 		if top and listTop then
-			--ignore section + unmeasurable header/note/add controls above the item list
+			--ignore section + unmeasurable header/note above the item list
 			return (top - listTop) + 8
 		end
 		--fallback before frames are sized
-		return 28 + 200 + measured(note, 40) + 14 + 16 + 6 + measured(addNote, 28) + 8 + 24 + 14 + 16 + 8
+		return 28 + 200 + measured(note, 40) + 14 + 16 + 8
 	end
 
 	function TyGearRefreshIgnoredGearList()
@@ -3838,9 +3745,6 @@ local function buildIgnoredGearListPage(listMenu)
 		end
 		listContainer.builtOnce = true
 		listContainer.needsRefresh = false
-		if not editBox:HasFocus() then
-			showManualIgnoredIDs()
-		end
 		local entries = collectEntries()
 		for index, entry in ipairs(entries) do
 			local row = rows[index]
@@ -5290,9 +5194,6 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				ignoredGearListMenu:SetWidth(width + 8)
 				if ignoredGearListMenu.ignoredGearNote then
 					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 8, 100))
-				end
-				if ignoredGearListMenu.ignoredGearAddNote then
-					ignoredGearListMenu.ignoredGearAddNote:SetWidth(math.max(width - 8, 100))
 				end
 				if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
 				if ignoredGearListMenuParent.UpdateScrollChildRect then
