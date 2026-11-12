@@ -10,6 +10,7 @@ if GetLocale() == "deDE" then
 	T.Localization["Tooltips"] = "Tooltips"
 	T.Localization["Vendor"] = "Händler"
 	T.Localization["Selling greys"] = "Graue Gegenstände verkaufen"
+	T.Localization["Selling whites"] = "Weiße Ausrüstung verkaufen"
 	T.Localization["Repairing"] = "Reparieren"
 	T.Localization["Other"] = "Sonstiges"
 
@@ -140,6 +141,20 @@ if GetLocale() == "deDE" then
 	T.Localization["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."] = "Graue Waffen und Rüstungen, die nicht seelengebunden sind, nicht verkaufen, zum Beispiel um sie stattdessen im Auktionshaus zu verkaufen."
 	T.Localization["Keeping unbound grey gear is now enabled."] = "Behalten ungebundener grauer Ausrüstung ist jetzt aktiviert."
 	T.Localization["Keeping unbound grey gear is now disabled."] = "Behalten ungebundener grauer Ausrüstung ist jetzt deaktiviert."
+
+	-- option: AutoSellUnsuitableWhites
+	T.Localization["Automatically sell unsuitable whites"] = "Ungeeignete weiße Gegenstände automatisch verkaufen"
+	T.Localization["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nAutoGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the ignore list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold."] = "Beim Ansprechen eines Händlers automatisch weiße Waffen und Rüstungen verkaufen, die deine Klasse nicht anlegen kann.  Halte beim Öffnen des Händlers die Umschalttaste gedrückt, um das Verkaufen dieses Mal auszulassen.\n\nAutoGear behält Questgegenstände, Gegenstände, die der aktuelle Händler als Bezahlung annimmt, Gegenstände, die es als Verbesserung anlegen würde, Wappenröcke und die Ignorierliste.  Angelruten und Berufsausrüstung werden immer behalten.  Eine reine Stufenanforderung gilt nicht als ungeeignet, weil du den Gegenstand später anlegen kannst.  Es hört auf zu verkaufen, wenn der Händler nichts ankauft oder du kein weiteres Gold tragen kannst."
+	T.Localization["Automatic selling of unsuitable white items is now enabled."] = "Automatisches Verkaufen ungeeigneter weißer Gegenstände ist jetzt aktiviert."
+	T.Localization["Automatic selling of unsuitable white items is now disabled."] = "Automatisches Verkaufen ungeeigneter weißer Gegenstände ist jetzt deaktiviert."
+	T.Localization["Ignore list"] = "Ignorierliste"
+	T.Localization["Item IDs separated by commas.  Whites listed here are not sold by either white-gear option.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the AutoGear options are open."] = "Gegenstands-IDs, durch Kommas getrennt.  Hier aufgeführte weiße Gegenstände werden von keiner der beiden Optionen zum Verkaufen weißer Ausrüstung verkauft.\n\nDie Liste enthält anfangs Handwerkszeuge wie Kürschnermesser, Spitzhacke, Schmiedehammer, Angelruten und weitere Berufsgeräte.  Jede Angelrute wird behalten, auch wenn ihre Gegenstands-ID aus dieser Liste entfernt wird.\n\nKlicke mit gedrückter Umschalttaste auf einen Gegenstand, während dieses Feld den Fokus hat, um ihn hinzuzufügen, oder lies Gegenstands-IDs in den Tooltips ab, während die AutoGear-Optionen geöffnet sind."
+
+	-- option: AutoSellAllWhiteGear
+	T.Localization["Automatically sell all white gear"] = "Alle weiße Ausrüstung automatisch verkaufen"
+	T.Localization["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nAutoGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the ignore list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold."] = "Beim Ansprechen eines Händlers automatisch alle weißen Waffen und Rüstungen verkaufen, auch solche, die du anlegen kannst.  Halte beim Öffnen des Händlers die Umschalttaste gedrückt, um das Verkaufen dieses Mal auszulassen.\n\nAutoGear behält Questgegenstände, Gegenstände, die der aktuelle Händler als Bezahlung annimmt, Gegenstände, die es als Verbesserung anlegen würde, Wappenröcke und die Ignorierliste.  Angelruten und Berufsausrüstung werden immer behalten.  Es hört auf zu verkaufen, wenn der Händler nichts ankauft oder du kein weiteres Gold tragen kannst."
+	T.Localization["Automatic selling of all white gear is now enabled."] = "Automatisches Verkaufen der gesamten weißen Ausrüstung ist jetzt aktiviert."
+	T.Localization["Automatic selling of all white gear is now disabled."] = "Automatisches Verkaufen der gesamten weißen Ausrüstung ist jetzt deaktiviert."
 
 	-- option: AutoRepair
 	T.Localization["Automatically repair"] = "Automatisch reparieren"
