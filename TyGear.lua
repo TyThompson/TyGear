@@ -3631,7 +3631,7 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 	return editRow
 end
 
---Forever Ignored List tab: Ignore controls, user-added ignored items, and an unmeasurable disclaimer
+--Forever Ignored List tab: Ignore controls, user-added items first, then out-of-the-box unmeasurable gear
 local function buildIgnoredGearListPage(listMenu)
 	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 8, -8)
@@ -3656,7 +3656,7 @@ local function buildIgnoredGearListPage(listMenu)
 	note:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -14)
 	note:SetWidth(480)
 	note:SetJustifyH("LEFT")
-	note:SetText(L["Disclaimer: gear TyGear cannot score (for example a 4% chance for Fear to miss) is always ignored automatically. Gear that also has a scored stat stays in normal evaluation. Use Add items above for anything else you want ignored."])
+	note:SetText(L["Disclaimer: items TyGear cannot score (for example a 4% chance for Fear to miss) are listed below without checkboxes and stay ignored automatically. Gear that also has a scored stat stays in normal evaluation. Use Add items above for anything else you want ignored; those appear at the top with checkboxes."])
 	listMenu.ignoredGearNote = note
 
 	local rows = {}
@@ -3670,17 +3670,21 @@ local function buildIgnoredGearListPage(listMenu)
 		row.icon = row:CreateTexture(nil, "ARTWORK")
 		row.icon:SetSize(24, 24)
 		row.icon:SetPoint("LEFT", 0, 0)
+		--checkbox only for user-added items; out-of-the-box unmeasurable gear stays listed without a toggle
 		row.check = CreateFrame("CheckButton", "TyGearIgnoredGearRow"..rowSerial.."CheckButton", row, "InterfaceOptionsCheckButtonTemplate")
 		row.check:SetPoint("LEFT", row.icon, "RIGHT", 2, 0)
 		local templateText = _G[row.check:GetName().."Text"]
 		if templateText then templateText:SetText("") end
 		row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-		row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
-		row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
 		row.name:SetJustifyH("LEFT")
 		row.name:SetWordWrap(false)
 		row.check:SetScript("OnClick", function(self)
-			local itemID = self:GetParent().itemID
+			local parent = self:GetParent()
+			if parent.builtIn then
+				self:SetChecked(true)
+				return
+			end
+			local itemID = parent.itemID
 			local keep = self:GetChecked() and true or false
 			TyGearSetItemIgnored(itemID, keep)
 			if keep then
@@ -3704,7 +3708,11 @@ local function buildIgnoredGearListPage(listMenu)
 			if not self.itemID then return end
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetHyperlink("item:"..self.itemID)
-			GameTooltip:AddLine(L["Uncheck to remove this item from the ignored list."], 1, 0.82, 0, true)
+			if self.builtIn then
+				GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
+			else
+				GameTooltip:AddLine(L["Uncheck to remove this item from the ignored list."], 1, 0.82, 0, true)
+			end
 			GameTooltip:Show()
 		end)
 		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3712,12 +3720,37 @@ local function buildIgnoredGearListPage(listMenu)
 	end
 
 	local function collectEntries()
-		local entries = {}
-		--preserve newest-first order from the ignore list
+		local entries, seen = {}, {}
+		--user-added ignore IDs first (newest at the top), then out-of-the-box unmeasurable gear
 		for _, itemID in ipairs(TyGearGetIgnoredItemIDOrder()) do
 			local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
 			local name = GetItemInfo and GetItemInfo(itemID)
-			table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID) })
+			seen[itemID] = true
+			table.insert(entries, { id = itemID, icon = icon, name = name or ("item "..itemID), builtIn = false })
+		end
+		local builtin = {}
+		if TyGearUnmeasurableGearList then
+			for _, entry in ipairs(TyGearUnmeasurableGearList) do
+				if not seen[entry.id] then
+					seen[entry.id] = true
+					table.insert(builtin, { id = entry.id, icon = entry.icon, name = entry.name, builtIn = true })
+				end
+			end
+		end
+		if TyGearCharDB and TyGearCharDB.DiscoveredUnmeasurableGear then
+			for itemID in pairs(TyGearCharDB.DiscoveredUnmeasurableGear) do
+				if not seen[itemID] then
+					local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
+					local name = GetItemInfo and GetItemInfo(itemID)
+					table.insert(builtin, { id = itemID, icon = icon, name = name or ("item "..itemID), builtIn = true })
+				end
+			end
+		end
+		table.sort(builtin, function(a, b)
+			return (a.name or "") < (b.name or "")
+		end)
+		for _, entry in ipairs(builtin) do
+			table.insert(entries, entry)
 		end
 		return entries
 	end
@@ -3752,11 +3785,21 @@ local function buildIgnoredGearListPage(listMenu)
 				rows[index] = row
 			end
 			row.itemID = entry.id
+			row.builtIn = entry.builtIn and true or false
 			row:ClearAllPoints()
 			row:SetPoint("TOPLEFT", listContainer, "TOPLEFT", 0, -((index - 1) * rowHeight))
 			row:SetPoint("TOPRIGHT", listContainer, "TOPRIGHT", 0, -((index - 1) * rowHeight))
 			row.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-			row.check:SetChecked(true)
+			row.name:ClearAllPoints()
+			row.name:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+			if row.builtIn then
+				row.check:Hide()
+				row.name:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+			else
+				row.check:Show()
+				row.check:SetChecked(true)
+				row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
+			end
 			row.name:SetText(entry.name or ("item "..entry.id))
 			row:Show()
 			if Item and Item.CreateFromItemID then
@@ -3997,16 +4040,19 @@ local function buildKeepListPage(listMenu)
 
 	local function collectEntries()
 		local defaults = defaultKeepSet()
-		local user, builtin = {}, {}
+		local user, builtin, seen = {}, {}, {}
 		--preserve newest-first order for user-added items; defaults stay below without checkboxes
 		for _, itemID in ipairs(TyGearParseItemIDList((TyGearDB and TyGearDB.VendorKeepList) or "")) do
-			local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
-			local name = GetItemInfo and GetItemInfo(itemID)
-			local entry = { id = itemID, icon = icon, name = name or ("item "..itemID), builtIn = defaults[itemID] and true or false }
-			if entry.builtIn then
-				table.insert(builtin, entry)
-			else
-				table.insert(user, entry)
+			if not seen[itemID] then
+				seen[itemID] = true
+				local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
+				local name = GetItemInfo and GetItemInfo(itemID)
+				local entry = { id = itemID, icon = icon, name = name or ("item "..itemID), builtIn = defaults[itemID] and true or false }
+				if entry.builtIn then
+					table.insert(builtin, entry)
+				else
+					table.insert(user, entry)
+				end
 			end
 		end
 		table.sort(builtin, function(a, b)
