@@ -551,13 +551,23 @@ function TyGearGetDefaultOverrideSpec()
 	end
 end
 
+function TyGearGetGearSlotShortLabel(slot)
+	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
+		return TyGearSlotNames[slot] or GetItemInventorySlotInfo(slot) or tostring(slot)
+	elseif slot >= TyGearFirstEquippableBagSlot and slot <= TyGearLastEquippableBagSlot then
+		local slotNumber = slot - TyGearFirstEquippableBagSlot + 1
+		return (BAGSLOT or "Bag").." "..tostring(slotNumber)
+	else
+		return tostring(slot)
+	end
+end
+
 function TyGearGetLockedGearSlotLabel(slot)
 	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
-		local slotName = TyGearSlotNames[slot] or GetItemInventorySlotInfo(slot)
+		local slotName = TyGearGetGearSlotShortLabel(slot)
 		return tostring(slot)..(slotName and ": "..slotName or "")
 	elseif slot >= TyGearFirstEquippableBagSlot and slot <= TyGearLastEquippableBagSlot then
-		local slotNumber = slot-TyGearFirstEquippableBagSlot+1
-		local slotName = (BAGSLOT or "Bag").." "..tostring(slotNumber)
+		local slotName = TyGearGetGearSlotShortLabel(slot)
 		return tostring(slot)..(slotName and ": "..slotName or "")
 	else
 		return tostring(slot)
@@ -2562,23 +2572,71 @@ local function buildIgnoreSection(optionsPage)
 
 	addSubheader(L["Gear slots"])
 	addNote(L["Ignored slots are left out of rolling, scoring, and equipping."])
-	for slot = INVSLOT_FIRST_EQUIPPED, INVSLOT_LAST_EQUIPPED do
-		--the tabard id is the virtual slot for two-hand weapons, so it is not listed here
-		if slot ~= INVSLOT_TABARD then
-			local gearSlot = slot
-			local check = newCheckbox(
-				"IgnoreSlot"..gearSlot,
-				TyGearGetLockedGearSlotLabel(gearSlot),
-				L["Ignored slots are left out of rolling, scoring, and equipping."],
-				function(self, tick)
-					TyGearCharDB.IgnoredGearSlots[gearSlot] = tick and true or false
-					if TyGearUpdateBestItems then TyGearUpdateBestItems() end
-				end,
-				page
-			)
-			check:SetChecked(TyGearCharDB.IgnoredGearSlots[gearSlot] and true or false)
-			optionsPage:AddRow(check)
+	do
+		--compact multi-column grid instead of a tall full-width checkbox stack
+		local slotList = {}
+		for slot = INVSLOT_FIRST_EQUIPPED, INVSLOT_LAST_EQUIPPED do
+			--the tabard id is the virtual slot for two-hand weapons, so it is not listed here
+			if slot ~= INVSLOT_TABARD then
+				table.insert(slotList, slot)
+			end
 		end
+		local columns = 4
+		local cellWidth = 118
+		local cellHeight = 20
+		local padX, padY = 10, 8
+		local rows = math.max(math.ceil(#slotList / columns), 1)
+		local slotGrid = CreateFrame("Frame", "TyGearIgnoredGearSlotsGrid", page, "BackdropTemplate")
+		slotGrid:SetSize(padX * 2 + columns * cellWidth, padY * 2 + rows * cellHeight)
+		slotGrid:SetBackdrop({
+			bgFile = "Interface/ChatFrame/ChatFrameBackground",
+			edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+			tile = true, tileSize = 16, edgeSize = 12,
+			insets = { left = 3, right = 3, top = 3, bottom = 3 },
+		})
+		slotGrid:SetBackdropColor(0.08, 0.08, 0.08, 0.45)
+		slotGrid:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+		local slotDescription = L["Ignored slots are left out of rolling, scoring, and equipping."]
+		for index, gearSlot in ipairs(slotList) do
+			local column = (index - 1) % columns
+			local rowIndex = math.floor((index - 1) / columns)
+			local shortLabel = TyGearGetGearSlotShortLabel(gearSlot)
+			local check = CreateFrame("CheckButton", "TyGearIgnoreSlot"..gearSlot.."CheckButton", slotGrid, "UICheckButtonTemplate")
+			check:SetSize(20, 20)
+			check:SetPoint("TOPLEFT", slotGrid, "TOPLEFT", padX + column * cellWidth, -(padY + rowIndex * cellHeight))
+			local label = _G[check:GetName().."Text"]
+			if label then
+				label:SetFontObject(GameFontHighlightSmall)
+				label:SetText(shortLabel)
+				label:SetWordWrap(false)
+				label:ClearAllPoints()
+				label:SetPoint("LEFT", check, "RIGHT", 2, 0)
+				label:SetWidth(cellWidth - 26)
+				label:SetJustifyH("LEFT")
+			end
+			check:SetHitRectInsets(0, -(cellWidth - 24), 2, 2)
+			check:SetChecked(TyGearCharDB.IgnoredGearSlots[gearSlot] and true or false)
+			check:SetScript("OnClick", function(self)
+				local tick = self:GetChecked() and true or false
+				TyGearCharDB.IgnoredGearSlots[gearSlot] = tick
+				if tick then
+					PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+				else
+					PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+				end
+				if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+			end)
+			check:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_NONE")
+				GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+				GameTooltip:AddLine(shortLabel, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+				GameTooltip:AddLine(slotDescription, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+				GameTooltip:Show()
+			end)
+			check:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			optionsPage:EnableWheel(check)
+		end
+		optionsPage:AddRow(slotGrid, 4, 4)
 	end
 
 	addSubheader(L["Equipped items"])
@@ -2859,11 +2917,91 @@ local function optionsSetup(optionsMenu)
 	end
 	TyGearOptions = orderedOptions
 
+	local function addOptionsNote(page, text)
+		local holder = CreateFrame("Frame", nil, page)
+		local font = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+		font:SetPoint("TOPLEFT", 8, -2)
+		font:SetWidth(480)
+		font:SetJustifyH("LEFT")
+		font:SetText(TyGearColorize(text))
+		local height = font:GetStringHeight()
+		local estimate = math.ceil(math.max(#text, 1) / 80) * 14
+		if not height or height < estimate then height = estimate end
+		holder:SetSize(500, height + 8)
+		optionsPage:AddRow(holder)
+		return holder
+	end
+
+	local function addItemIDEditBox(page, optionName, label, description)
+		local editRow = CreateFrame("Frame", nil, page)
+		editRow:SetSize(500, 24)
+		local labelText = editRow:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+		labelText:SetPoint("LEFT", 8, 0)
+		labelText:SetText(TyGearColorize(label))
+		local editBox = CreateFrame("EditBox", "TyGear"..optionName.."EditBox", editRow, "InputBoxTemplate")
+		editBox:SetAutoFocus(false)
+		editBox:SetSize(320, 20)
+		editBox:SetPoint("LEFT", labelText, "RIGHT", 12, 0)
+		local function showSavedText()
+			editBox:SetText(TyGearSettingsTable(optionName)[optionName] or "")
+			editBox:SetCursorPosition(0)
+		end
+		showSavedText()
+		editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+		editBox:SetScript("OnEscapePressed", function(self)
+			showSavedText()
+			self:ClearFocus()
+		end)
+		editBox:SetScript("OnEditFocusLost", function(self)
+			TyGearSettingsTable(optionName)[optionName] = table.concat(TyGearParseItemIDList(self:GetText()), ", ")
+			showSavedText()
+		end)
+		editBox:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_NONE")
+			GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+			GameTooltip:AddLine(TyGearColorize(label), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+			GameTooltip:AddLine(TyGearColorize(description), HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+			local itemIDs = TyGearParseItemIDList(TyGearSettingsTable(optionName)[optionName] or "")
+			if #itemIDs > 0 then
+				GameTooltip:AddLine(" ")
+				for _, itemID in ipairs(itemIDs) do
+					--the item's link is nil until the client has cached the item
+					GameTooltip:AddDoubleLine((select(2, GetItemInfo(itemID))) or ("item "..itemID), itemID)
+				end
+			end
+			GameTooltip:Show()
+		end)
+		editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		optionsPage:EnableWheel(editBox)
+		local function insertItemLink(text)
+			if editBox:HasFocus() and text and string.find(text, "item:%d+") then
+				editBox:Insert(text)
+			end
+		end
+		if ChatFrameUtil and ChatFrameUtil.InsertLink then
+			hooksecurefunc(ChatFrameUtil, "InsertLink", insertItemLink)
+		elseif ChatEdit_InsertLink then
+			hooksecurefunc("ChatEdit_InsertLink", insertItemLink)
+		end
+		optionsPage:AddRow(editRow, 4, 4)
+		return editBox
+	end
+
 	--loop through options table to build our options menu programmatically
 	for _, v in ipairs(TyGearOptions) do (function()
 		if (not v["option"]) or ((v["shouldUse"] ~= nil) and (v["shouldUse"] == false)) then return end
 		--manual iterator to be able to start from 0 and add another one outside the loop
 		i = i + 1
+
+		--standalone item-ID lists get a labeled section row, not a checkbox with a mystery box beside it
+		if v["editBox"] then
+			local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
+			if v["description"] then
+				addOptionsNote(page, v["description"])
+			end
+			frame[i] = addItemIDEditBox(page, v["option"], v["label"], v["description"] or "")
+			return
+		end
 
 		--function to run when toggling this option by clicking the checkbox
 		_G["TyGearSimpleToggle"..v["option"]] = function(self, value)
@@ -3391,18 +3529,20 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["label"] = L["Automatically sell greys"],
 				["description"] = L["Automatically sell all grey items when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps greys it would equip as upgrades, quest items, greys the current vendor accepts as payment, and greys vendors refuse to buy.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
 				["toggleDescriptionTrue"] = L["Automatic selling of grey items is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic selling of grey items is now disabled."],
-				["child"] = {
-					["option"] = "SellGreysExclusions",
-					["editBox"] = true,
-					["label"] = L["Exclusions"],
-					["description"] = L["Item IDs separated by commas.  Greys listed here are kept, and whites listed here are sold along with the greys.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."]
-				}
+				["toggleDescriptionFalse"] = L["Automatic selling of grey items is now disabled."]
+			},
+			{
+				["option"] = "SellGreysExclusions",
+				["tab"] = L["Vendor"],
+				["section"] = L["Keep"],
+				["editBox"] = true,
+				["label"] = L["Item IDs"],
+				["description"] = L["Item IDs separated by commas.  Greys listed here are kept, and whites listed here are sold along with the greys.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."]
 			},
 			{
 				["option"] = "KeepKeeperTahultPetItems",
 				["tab"] = L["Vendor"],
-				["section"] = L["Selling greys"],
+				["section"] = L["Keep"],
 				["label"] = L["Keep greys needed for Keeper Ta'hult's pets"],
 				["description"] = L["Don't sell the grey items that Keeper Ta'hult in Oribos takes as payment for the Baubleworm pets."],
 				["toggleDescriptionTrue"] = L["Keeping greys needed for Keeper Ta'hult's pets is now enabled."],
@@ -3411,7 +3551,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			{
 				["option"] = "KeepUnboundGreyGear",
 				["tab"] = L["Vendor"],
-				["section"] = L["Selling greys"],
+				["section"] = L["Keep"],
 				["label"] = L["Keep unbound grey gear"],
 				["description"] = L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
 				["toggleDescriptionTrue"] = L["Keeping unbound grey gear is now enabled."],
