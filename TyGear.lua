@@ -2035,39 +2035,136 @@ TyGearOverrideSpecs = {
 	}
 }
 
+-- Specs with a color of their own. Specs not listed here use their class color.
+-- Chosen only where the spec has a clear identity, such as Frost mage being blue.
+TyGearSpecColors = {
+	["DEATHKNIGHT"] = {
+		["Blood"] = {0.80, 0.08, 0.08},
+		["Frost"] = {0.40, 0.75, 1.00},
+		["Unholy"] = {0.35, 0.85, 0.25},
+	},
+	["DRUID"] = {
+		["Balance"] = {0.68, 0.48, 1.00},
+		["Guardian"] = {0.72, 0.52, 0.28},
+		["Restoration"] = {0.25, 0.85, 0.40},
+	},
+	["EVOKER"] = {
+		["Devastation"] = {0.92, 0.28, 0.24},
+		["Preservation"] = {0.30, 0.82, 0.40},
+		["Augmentation"] = {0.85, 0.60, 0.28},
+	},
+	["MAGE"] = {
+		["Arcane"] = {0.75, 0.42, 1.00},
+		["Fire"] = {1.00, 0.38, 0.10},
+		["Frost"] = {0.30, 0.62, 1.00},
+	},
+	["MONK"] = {
+		["Brewmaster"] = {0.90, 0.60, 0.20},
+		["Mistweaver"] = {0.35, 0.85, 0.75},
+	},
+	["PALADIN"] = {
+		["Holy"] = {1.00, 0.86, 0.30},
+	},
+	["PRIEST"] = {
+		["Holy"] = {1.00, 0.86, 0.30},
+		["Shadow"] = {0.62, 0.38, 0.95},
+	},
+	["ROGUE"] = {
+		["Assassination"] = {0.25, 0.78, 0.30},
+		["Subtlety"] = {0.55, 0.40, 0.95},
+	},
+	["SHAMAN"] = {
+		["Restoration"] = {0.25, 0.80, 0.65},
+	},
+	["WARLOCK"] = {
+		["Demonology"] = {0.30, 0.85, 0.22},
+		["Destruction"] = {1.00, 0.38, 0.10},
+	},
+}
+
+-- These classes are not playable on WoW Forever, so they stay out of the override spec list there.
+local TyGearClassesHiddenOnForever = {
+	["DEATHKNIGHT"] = true,
+	["DEMONHUNTER"] = true,
+	["EVOKER"] = true,
+	["MONK"] = true,
+}
+
+local function TyGearWrapRGB(text, r, g, b)
+	if CreateColor then
+		return CreateColor(r, g, b):WrapTextInColorCode(text)
+	end
+	return string.format("|cff%02x%02x%02x%s|r", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), text)
+end
+
+function TyGearClassColoredText(classToken, text)
+	local color = RAID_CLASS_COLORS and classToken and RAID_CLASS_COLORS[classToken]
+	if not (color and text) then return text end
+	if color.WrapTextInColorCode then
+		return color:WrapTextInColorCode(text)
+	end
+	if color.colorStr then
+		return color.colorStr..text.."|r"
+	end
+	if color.r then
+		return TyGearWrapRGB(text, color.r, color.g, color.b)
+	end
+	return text
+end
+
+function TyGearSpecColoredText(classToken, specName)
+	local rgb = classToken and TyGearSpecColors[classToken] and TyGearSpecColors[classToken][specName]
+	if rgb then
+		return TyGearWrapRGB(specName, rgb[1], rgb[2], rgb[3])
+	end
+	return TyGearClassColoredText(classToken, specName)
+end
+
+-- Colors "Mage: Frost" for the closed dropdown. The saved value stays uncolored.
+function TyGearColorizeSpecChoice(value)
+	if type(value) ~= "string" then return value end
+	local localizedClass, spec = string.match(value, "^(.-): (.+)$")
+	if not (localizedClass and spec and TyGearReverseClassList) then return value end
+	local classToken = TyGearReverseClassList[localizedClass]
+	if not classToken then return value end
+	return TyGearClassColoredText(classToken, localizedClass)..": "..TyGearSpecColoredText(classToken, spec)
+end
+
 function TyGearGetOverrideSpecs()
 	local classOrder = {}
-	for k in pairs(TyGearDefaultWeights) do
-		table.insert(classOrder, k)
+	for className in pairs(TyGearDefaultWeights) do
+		if (not IS_WOW_FOREVER) or (not TyGearClassesHiddenOnForever[className]) then
+			table.insert(classOrder, className)
+		end
 	end
 	table.sort(classOrder)
 
-	for i = 1, #classOrder do (function()
+	local overrideSpecs = {}
+	for i = 1, #classOrder do
 		local className = classOrder[i]
 		local localizedClassName = TyGearClassList[className]
-		if localizedClassName == nil then return end
-		TyGearOverrideSpecs[i] = {
-			["label"] = localizedClassName,
-			["subLabels"] = TyGearOverrideSpecs[i]["subLabels"]
-		}
-		local specOrder = {}
-		for l in pairs(TyGearDefaultWeights[className]) do
-			table.insert(specOrder, l)
-		end
-		table.sort(specOrder, function(a, b)
-			if a == 'None' then
-				return true
-			elseif b == 'None' then
-				return false
-			else
-				return a < b
+		if localizedClassName then
+			local specOrder = {}
+			for specName in pairs(TyGearDefaultWeights[className]) do
+				table.insert(specOrder, specName)
 			end
-		end)
-		for j = 1, #specOrder do
-			local specName = specOrder[j]
-			TyGearOverrideSpecs[i]["subLabels"][j] = specName
+			table.sort(specOrder, function(a, b)
+				if a == "None" then
+					return true
+				elseif b == "None" then
+					return false
+				else
+					return a < b
+				end
+			end)
+			table.insert(overrideSpecs, {
+				["label"] = localizedClassName,
+				["class"] = className,
+				["subLabels"] = specOrder,
+			})
 		end
-	end)() end
+	end
+	TyGearOverrideSpecs = overrideSpecs
 	return TyGearOverrideSpecs
 end
 
@@ -2158,13 +2255,25 @@ end
 local useModernDropdowns = (MenuUtil ~= nil) and (WowStyle1DropdownMixin ~= nil)
 
 local function setDropdownText(dropdown, text)
-	text = TyGearColorize(text)
+	text = TyGearColorize(TyGearColorizeSpecChoice(text))
 	if useModernDropdowns then
 		--OverrideText ignores nil, and it stops the menu from replacing the text with its own selection text
 		dropdown:OverrideText(text or "")
 	else
 		UIDropDownMenu_SetText(dropdown, text)
 	end
+end
+
+-- Class rows use the class color. Spec rows use a spec color where one is defined, otherwise the class color.
+-- Entries that are not a class or spec, such as Pawn scales, keep the general colorizer.
+local function dropdownEntryText(entry, specName)
+	if entry["class"] then
+		if specName then
+			return TyGearSpecColoredText(entry["class"], specName)
+		end
+		return TyGearClassColoredText(entry["class"], entry["label"])
+	end
+	return TyGearColorize(specName or entry["label"])
 end
 
 local function closeDropdownMenu(dropdown)
@@ -2835,7 +2944,7 @@ local function optionsSetup(optionsMenu)
 				_G["TyGear"..v["child"]["option"].."Dropdown"].SetValue = function(self, value)
 					if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
 						TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] = value
-						setDropdownText(_G["TyGear"..v["child"]["option"].."Dropdown"], TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]])
+						setDropdownText(_G["TyGear"..v["child"]["option"].."Dropdown"], value)
 						closeDropdownMenu(_G["TyGear"..v["child"]["option"].."Dropdown"])
 					end
 				end
@@ -2850,12 +2959,12 @@ local function optionsSetup(optionsMenu)
 						if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
 							for _, j in ipairs(v["child"]["options"]) do
 								--the label is selected when the stored value is one of its subLabels; it only opens its submenu, so its responder does nothing
-								local labelDescription = rootDescription:CreateRadio(TyGearColorize(j["label"]), function()
+								local labelDescription = rootDescription:CreateRadio(dropdownEntryText(j), function()
 									return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":")) and true or false
 								end, function() end)
 								for _, z in ipairs(j["subLabels"] or {}) do
 									local value = j["label"]..": "..z
-									labelDescription:CreateRadio(z, function()
+									labelDescription:CreateRadio(dropdownEntryText(j, z), function()
 										return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == value) or (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == z)
 									end, function()
 										dropdown:SetValue(value)
@@ -2891,7 +3000,7 @@ local function optionsSetup(optionsMenu)
 							--display the labels
 							if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
 								for _, j in ipairs(v["child"]["options"]) do
-									info.text = TyGearColorize(j["label"])
+									info.text = dropdownEntryText(j)
 									info.checked = (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and (string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":") and true or false) or false)
 									info.menuList = j
 									info.hasArrow = (j["subLabels"] and true or false)
@@ -2926,7 +3035,7 @@ local function optionsSetup(optionsMenu)
 							info.func = self.SetValue
 							if menuList["subLabels"] then
 								for _, z in ipairs(menuList["subLabels"]) do
-									info.text = z
+									info.text = dropdownEntryText(menuList, z)
 									info.arg1 = menuList["label"]..": "..z
 									info.checked = ((TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == info.arg1) or (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == z))
 									UIDropDownMenu_AddButton(info, level)
@@ -3049,6 +3158,33 @@ optionsMenuParent:SetScrollChild(optionsMenu)
 local optionsCategory = InterfaceOptions_AddCategory(optionsMenuParent)
 if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 
+--white crafting tools kept by the default ignore list for selling white gear.
+--Defined up here because the saved-variable defaults below include this list, and fishing poles of any item ID are also kept later by weapon subclass.
+TyGearCraftingToolItemIDs = {
+	2901, --Mining Pick
+	3567, --Dwarven Fishing Pole
+	4471, --Flint and Tinder
+	4598, --Goblin Fishing Pole
+	5956, --Blacksmith Hammer
+	6218, --Runed Copper Rod
+	6219, --Arclight Spanner
+	6256, --Fishing Pole
+	6339, --Runed Silver Rod
+	6365, --Strong Fishing Pole
+	6366, --Darkwood Fishing Pole
+	6367, --Big Iron Fishing Pole
+	7005, --Skinning Knife
+	10498, --Gyromatic Micro-Adjustor
+	11130, --Runed Golden Rod
+	11145, --Runed Truesilver Rod
+	12225, --Blump Family Fishing Pole
+	16207, --Runed Arcanite Rod
+	20815, --Jeweler's Kit
+	39505, --Virtuoso Inking Set
+	40772, --Gnomish Army Knife
+	85663, --Herbalist's Spade
+}
+
 --handle PLAYER_ENTERING_WORLD events for initialization
 pcall(optionsMenu.RegisterEvent,optionsMenu,"PLAYER_ENTERING_WORLD")
 optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
@@ -3077,6 +3213,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			SellGreysExclusions = "",
 			KeepKeeperTahultPetItems = true,
 			KeepUnboundGreyGear = false,
+			AutoSellUnsuitableWhites = false,
+			AutoSellAllWhiteGear = false,
+			SellWhitesIgnoreList = table.concat(TyGearCraftingToolItemIDs, ", "),
 			AutoRepair = false,
 			UsePawn = not IS_WOW_FOREVER, --TyGear built-in weights are deprecated.  We're using Pawn mainly now, so default true.  Pawn has no WoW Forever scales yet, so Forever uses the built-in class profiles.
 			OverridePawnScale = false,
@@ -3325,6 +3464,36 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["description"] = L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
 				["toggleDescriptionTrue"] = L["Keeping unbound grey gear is now enabled."],
 				["toggleDescriptionFalse"] = L["Keeping unbound grey gear is now disabled."]
+			},
+			{
+				["option"] = "AutoSellUnsuitableWhites",
+				["tab"] = L["Vendor"],
+				["section"] = L["Selling whites"],
+				["cliCommands"] = { "sellunsuitable", "unsuitablewhites" },
+				["cliTrue"] = { "enable", "on", "start" },
+				["cliFalse"] = { "disable", "off", "stop" },
+				["label"] = L["Automatically sell unsuitable whites"],
+				["description"] = L["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the ignore list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
+				["toggleDescriptionTrue"] = L["Automatic selling of unsuitable white items is now enabled."],
+				["toggleDescriptionFalse"] = L["Automatic selling of unsuitable white items is now disabled."],
+				["child"] = {
+					["option"] = "SellWhitesIgnoreList",
+					["editBox"] = true,
+					["label"] = L["Ignore list"],
+					["description"] = L["Item IDs separated by commas.  Whites listed here are not sold by either white-gear option.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."]
+				}
+			},
+			{
+				["option"] = "AutoSellAllWhiteGear",
+				["tab"] = L["Vendor"],
+				["section"] = L["Selling whites"],
+				["cliCommands"] = { "sellwhitegear", "whitegear" },
+				["cliTrue"] = { "enable", "on", "start" },
+				["cliFalse"] = { "disable", "off", "stop" },
+				["label"] = L["Automatically sell all white gear"],
+				["description"] = L["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, and the ignore list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold."],
+				["toggleDescriptionTrue"] = L["Automatic selling of all white gear is now enabled."],
+				["toggleDescriptionFalse"] = L["Automatic selling of all white gear is now disabled."]
 			},
 			{
 				["option"] = "AutoRepair",
@@ -3609,6 +3778,8 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg pawn [enable/on/start]/[disable/off/stop]': toggle using Pawn scales", 0)
 	TyGearPrint("TyGear:    '/tg pawnscale [Pawn scale name]': set Pawn scale override to the specifed Pawn scale", 0)
 	TyGearPrint("TyGear:    '/tg sell [enable/on/start]/[disable/off/stop]': toggle automatic selling of grey items", 0)
+	TyGearPrint("TyGear:    '/tg sellunsuitable [enable/on/start]/[disable/off/stop]': toggle automatic selling of white gear you can't wear", 0)
+	TyGearPrint("TyGear:    '/tg sellwhitegear [enable/on/start]/[disable/off/stop]': toggle automatic selling of all white gear", 0)
 	TyGearPrint("TyGear:    '/tg repair [enable/on/start]/[disable/off/stop]': toggle automatic repairing", 0)
 	TyGearPrint("TyGear:    '/tg verbosity [0/1/2/3]': set allowed verbosity level; valid levels are: 0 ("..TyGearGetAllowedVerbosityName(0).."), 1 ("..TyGearGetAllowedVerbosityName(1).."), 2 ("..TyGearGetAllowedVerbosityName(2).."), 3 ("..TyGearGetAllowedVerbosityName(3)..")", 0)
 	TyGearPrint("TyGear: Fork of AutoGear by Synthetikaryote and BujuArena. Original: https://github.com/BujuArena/AutoGear (CC BY-NC-SA 4.0).", 0)
@@ -3829,7 +4000,9 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 			EquipPendingItem(arg1)
 		end
 	elseif event == "MERCHANT_SHOW" then
-		if (TyGearDB.AutoSellGreys == true) then
+		if (TyGearDB.AutoSellGreys == true)
+		or (TyGearDB.AutoSellUnsuitableWhites == true)
+		or (TyGearDB.AutoSellAllWhiteGear == true) then
 			TyGearStartSellingGreys()
 		end
 		if (TyGearDB.AutoRepair == true) then
@@ -3992,10 +4165,69 @@ TyGearKeeperTahultPetGreyItemIDs = {
 	[67410] = true, --Very Unlucky Rock
 }
 
---state of selling greys at the open vendor; nil while not selling
+--state of selling greys and white gear at the open vendor; nil while not selling
 local greySelling
 
---returns the sale value and link of the item in a bag slot if it should be sold to a vendor, or nil to keep it
+--true when this class can equip the item. Nil when the client can't answer.
+--A level requirement does not make this false; IsEquippableItem checks class and item type.
+function TyGearPlayerCanEquipItem(itemID, link)
+	local canEquip
+	if IsEquippableItem then
+		canEquip = IsEquippableItem(link or itemID)
+	elseif C_Item and C_Item.IsEquippableItem then
+		local ok
+		ok, canEquip = pcall(C_Item.IsEquippableItem, itemID)
+		if not ok then return nil end
+	else
+		return nil
+	end
+	if issecretvalue and issecretvalue(canEquip) then return nil end
+	return canEquip and true or false
+end
+
+--weapons and armor a vendor pass may sell. Tabards stay, including the guild tabard, which is white.
+function TyGearIsVendorWhiteGear(classID, equipLoc)
+	if (classID ~= Enum.ItemClass.Weapon) and (classID ~= Enum.ItemClass.Armor) then
+		return false
+	end
+	if (not equipLoc) or (equipLoc == "") or (equipLoc == "INVTYPE_NON_EQUIP")
+	or (equipLoc == "INVTYPE_TABARD") or (equipLoc == "INVTYPE_BAG")
+	or (equipLoc == "INVTYPE_QUIVER") or (equipLoc == "INVTYPE_AMMO")
+	or (equipLoc == "INVTYPE_PROFESSION_TOOL") or (equipLoc == "INVTYPE_PROFESSION_GEAR") then
+		return false
+	end
+	return true
+end
+
+--crafting tools and anything the player added to the white-gear ignore list
+function TyGearIsIgnoredWhiteItem(itemID, classID, subclassID)
+	if greySelling.ignoredWhiteItemIDs[itemID] then return true end
+	local fishingPoleSubclass = Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Fishingpole
+	if fishingPoleSubclass and (classID == Enum.ItemClass.Weapon) and (subclassID == fishingPoleSubclass) then
+		return true
+	end
+	--Dragonflight and later profession tools and accessories are not weapons or armor
+	local professionClass = Enum.ItemClass and Enum.ItemClass.Profession
+	if professionClass and (classID == professionClass) then
+		return true
+	end
+	return false
+end
+
+--whether a white item should be sold by the white-gear options. The grey exclusion list is handled by the caller.
+function TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc)
+	if (TyGearDB.AutoSellUnsuitableWhites ~= true) and (TyGearDB.AutoSellAllWhiteGear ~= true) then
+		return false
+	end
+	if TyGearIsIgnoredWhiteItem(itemID, classID, subclassID) then return false end
+	if greySelling.merchantCostItemIDs[itemID] then return false end
+	if not TyGearIsVendorWhiteGear(classID, equipLoc) then return false end
+	if TyGearDB.AutoSellAllWhiteGear == true then return true end
+	local canEquip = TyGearPlayerCanEquipItem(itemID, link)
+	return canEquip == false
+end
+
+--returns the sale value, link, and quality of the item in a bag slot if it should be sold to a vendor, or nil to keep it
 function TyGearGetItemSaleValue(bag, slot)
 	local count, locked, link = TyGearGetContainerItemInfo(bag, slot)
 	if (not link) or locked then return end
@@ -4003,11 +4235,13 @@ function TyGearGetItemSaleValue(bag, slot)
 	local itemID = tonumber(string.match(link, "item:(%d+)"))
 	if not itemID then return end
 	if TyGearIsItemIgnored(itemID) then return end
-	local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID = GetItemInfo(link)
+	local _, _, quality, _, _, _, _, _, equipLoc, _, sellPrice, classID, subclassID = GetItemInfo(link)
 	if (not quality) or (not sellPrice) or (sellPrice <= 0) then return end
 
 	local isListed = greySelling.listedItemIDs[itemID]
 	if quality == 0 then
+		--a white-gear pass must not sell greys unless that option is on
+		if TyGearDB.AutoSellGreys ~= true then return end
 		if isListed
 		or TyGearUnsellableGreyItemIDs[itemID]
 		or (TyGearDB.KeepKeeperTahultPetItems and TyGearKeeperTahultPetGreyItemIDs[itemID])
@@ -4023,7 +4257,13 @@ function TyGearGetItemSaleValue(bag, slot)
 			end
 			if not isBound then return end
 		end
-	elseif not ((quality == 1) and isListed) then
+	elseif quality == 1 then
+		--whites named in the grey exclusion list are sold along with the greys, and only while that option is on
+		local sellBecauseGreyList = (TyGearDB.AutoSellGreys == true) and isListed
+		if (not sellBecauseGreyList) and (not TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc)) then
+			return
+		end
+	else
 		return
 	end
 
@@ -4032,7 +4272,7 @@ function TyGearGetItemSaleValue(bag, slot)
 	local isQuestItem, isTooltipUnreadable = TyGearIsQuestItem(bag, slot)
 	if isQuestItem or isTooltipUnreadable then return end
 
-	return sellPrice * count, link
+	return sellPrice * count, link, quality
 end
 
 --counts sales which went through, judging by the item having left its bag slot; returns whether any sale is still pending
@@ -4045,6 +4285,11 @@ function TyGearSettleGreySales()
 				sale.isSold = true
 				greySelling.soldValue = greySelling.soldValue + sale.value
 				greySelling.soldCount = greySelling.soldCount + 1
+				if sale.quality == 1 then
+					greySelling.soldWhiteCount = greySelling.soldWhiteCount + 1
+				else
+					greySelling.soldGreyCount = greySelling.soldGreyCount + 1
+				end
 			elseif locked then
 				isAnySalePending = true
 			end
@@ -4058,12 +4303,12 @@ function TyGearSellGreysPass()
 	local needsAnotherPass = TyGearSettleGreySales()
 	for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS) do
 		for slot = 1, GetContainerNumSlots(bag) do
-			local value, link = TyGearGetItemSaleValue(bag, slot)
+			local value, link, quality = TyGearGetItemSaleValue(bag, slot)
 			if value then
 				local saleKey = bag..":"..slot..":"..link
 				local sale = greySelling.sales[saleKey]
 				if not sale then
-					sale = { bag = bag, slot = slot, link = link, value = value, attempts = 0 }
+					sale = { bag = bag, slot = slot, link = link, value = value, quality = quality, attempts = 0 }
 					greySelling.sales[saleKey] = sale
 				end
 				if sale.attempts < 10 then
@@ -4077,10 +4322,34 @@ function TyGearSellGreysPass()
 	return needsAnotherPass
 end
 
+function TyGearVendorShiftSkipMessage()
+	local sellWhites = (TyGearDB.AutoSellUnsuitableWhites == true) or (TyGearDB.AutoSellAllWhiteGear == true)
+	local sellGreys = (TyGearDB.AutoSellGreys == true)
+	if sellWhites and sellGreys then
+		return "TyGear: Not selling greys or white gear this time because Shift was held while opening the vendor."
+	elseif sellWhites then
+		return "TyGear: Not selling white gear this time because Shift was held while opening the vendor."
+	end
+	return "TyGear: Not selling greys this time because Shift was held while opening the vendor."
+end
+
+function TyGearFormatVendorSaleSummary(greyCount, whiteCount, soldValue)
+	local cash = TyGearCashToString(soldValue)
+	local greyText = greyCount.." grey item"..((greyCount == 1) and "" or "s")
+	local whiteText = whiteCount.." white item"..((whiteCount == 1) and "" or "s")
+	if (greyCount > 0) and (whiteCount > 0) then
+		return "TyGear: Sold "..greyText.." and "..whiteText.." for "..cash.."."
+	elseif greyCount > 0 then
+		return "TyGear: Sold "..greyText.." for "..cash.."."
+	elseif whiteCount > 0 then
+		return "TyGear: Sold "..whiteText.." for "..cash.."."
+	end
+end
+
 function TyGearStartSellingGreys()
 	if greySelling then TyGearStopSellingGreys() end
 	if IsShiftKeyDown() then
-		TyGearPrint("TyGear: Not selling greys this time because Shift was held while opening the vendor.", 2)
+		TyGearPrint(TyGearVendorShiftSkipMessage(), 2)
 		return
 	end
 
@@ -4088,12 +4357,20 @@ function TyGearStartSellingGreys()
 		sales = {},
 		soldValue = 0,
 		soldCount = 0,
+		soldGreyCount = 0,
+		soldWhiteCount = 0,
+		sellsGreys = (TyGearDB.AutoSellGreys == true),
+		sellsWhites = (TyGearDB.AutoSellUnsuitableWhites == true) or (TyGearDB.AutoSellAllWhiteGear == true),
 		listedItemIDs = {},
+		ignoredWhiteItemIDs = {},
 		merchantCostItemIDs = {},
 		upgradeBagSlots = {},
 	}
 	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.SellGreysExclusions)) do
 		greySelling.listedItemIDs[itemID] = true
+	end
+	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.SellWhitesIgnoreList or "")) do
+		greySelling.ignoredWhiteItemIDs[itemID] = true
 	end
 	--keep items this vendor takes as payment for its goods
 	for merchantIndex = 1, GetMerchantNumItems() do
@@ -4105,7 +4382,7 @@ function TyGearStartSellingGreys()
 			end
 		end
 	end
-	--keep greys which TyGear would equip as upgrades
+	--keep gear which TyGear would equip as upgrades, including white gear
 	TyGearUpdateBestItems()
 	for _, bestItem in pairs(TyGearBestItems) do
 		if bestItem.bag and bestItem.slot then
@@ -4122,10 +4399,16 @@ function TyGearStopSellingGreys(reason)
 	TyGearSettleGreySales()
 	TyGearFrame:UnregisterEvent("UI_ERROR_MESSAGE")
 	if greySelling.soldCount > 0 then
-		TyGearPrint("TyGear: Sold "..greySelling.soldCount.." grey item"..((greySelling.soldCount == 1) and "" or "s").." for "..TyGearCashToString(greySelling.soldValue)..".", 1)
+		TyGearPrint(TyGearFormatVendorSaleSummary(greySelling.soldGreyCount, greySelling.soldWhiteCount, greySelling.soldValue), 1)
 	end
 	if reason then
-		TyGearPrint("TyGear: Stopped selling greys because "..reason..".", 1)
+		local what = "greys"
+		if greySelling.sellsWhites and greySelling.sellsGreys then
+			what = "items"
+		elseif greySelling.sellsWhites then
+			what = "white gear"
+		end
+		TyGearPrint("TyGear: Stopped selling "..what.." because "..reason..".", 1)
 	end
 	greySelling = nil
 end
