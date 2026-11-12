@@ -256,10 +256,10 @@ function TyGearIsManagedGearSlot(slot)
 	end
 end
 
---equipment slots offered in Locked gear slots; tabard is the virtual 2H slot, and bags are not lockable there
+--equipment slots offered in Locked gear slots; tabard is the virtual 2H slot, shirts are not scored, and bags are not lockable there
 function TyGearIsLockableGearSlot(slot)
 	if not slot then return nil end
-	if slot == INVSLOT_TABARD then return nil end
+	if slot == INVSLOT_TABARD or slot == INVSLOT_BODY then return nil end
 	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
 		return 1
 	end
@@ -1141,7 +1141,7 @@ function TyGearFixLockedGearSlots() -- finds missing slots and adds them, in cas
 				TyGearDB.LockedGearSlots[slot].label = TyGearGetLockedGearSlotLabel(slot)
 			end
 		elseif TyGearDB.LockedGearSlots[slot] then
-			--drop tabard and bag entries left over from older defaults
+			--drop tabard, shirt, and bag entries left over from older defaults
 			TyGearDB.LockedGearSlots[slot] = nil
 		end
 	end
@@ -3106,8 +3106,8 @@ local function buildIgnoreSection(optionsPage)
 	do
 		local slotList = {}
 		for slot = INVSLOT_FIRST_EQUIPPED, INVSLOT_LAST_EQUIPPED do
-			--the tabard id is the virtual slot for two-hand weapons, so it is not listed here
-			if slot ~= INVSLOT_TABARD then
+			--tabard is the virtual 2H slot; shirts are not scored, so neither is listed here
+			if slot ~= INVSLOT_TABARD and slot ~= INVSLOT_BODY then
 				table.insert(slotList, slot)
 			end
 		end
@@ -5232,13 +5232,13 @@ function TyGearPlayerCanEquipItem(itemID, link)
 	return canEquip and true or false
 end
 
---weapons and armor a vendor pass may sell. Tabards stay, including the guild tabard, which is white.
+--weapons and armor a vendor pass may sell. Tabards and shirts stay (cosmetic; not evaluated).
 function TyGearIsVendorWhiteGear(classID, equipLoc)
 	if (classID ~= Enum.ItemClass.Weapon) and (classID ~= Enum.ItemClass.Armor) then
 		return false
 	end
 	if (not equipLoc) or (equipLoc == "") or (equipLoc == "INVTYPE_NON_EQUIP")
-	or (equipLoc == "INVTYPE_TABARD") or (equipLoc == "INVTYPE_BAG")
+	or (equipLoc == "INVTYPE_TABARD") or (equipLoc == "INVTYPE_BODY") or (equipLoc == "INVTYPE_BAG")
 	or (equipLoc == "INVTYPE_QUIVER") or (equipLoc == "INVTYPE_AMMO")
 	or (equipLoc == "INVTYPE_PROFESSION_TOOL") or (equipLoc == "INVTYPE_PROFESSION_GEAR") then
 		return false
@@ -6217,7 +6217,7 @@ function TyGearGetValidGearSlots(info)
 		[Enum.InventoryType.IndexHeadType]           = { INVSLOT_HEAD },
 		[Enum.InventoryType.IndexNeckType]           = { INVSLOT_NECK },
 		[Enum.InventoryType.IndexShoulderType]       = { INVSLOT_SHOULDER },
-		[Enum.InventoryType.IndexBodyType]           = { INVSLOT_BODY },
+		[Enum.InventoryType.IndexBodyType]           = nil, -- shirts are cosmetic; do not evaluate or equip
 		[Enum.InventoryType.IndexChestType]          = { INVSLOT_CHEST },
 		[Enum.InventoryType.IndexRobeType]           = { INVSLOT_CHEST },
 		[Enum.InventoryType.IndexWaistType]          = { INVSLOT_WAIST },
@@ -6324,7 +6324,7 @@ function TyGearGetSetSlots(info)
 		[Enum.InventoryType.IndexHeadType]           = { INVSLOT_HEAD },
 		[Enum.InventoryType.IndexNeckType]           = { INVSLOT_NECK },
 		[Enum.InventoryType.IndexShoulderType]       = { INVSLOT_SHOULDER },
-		[Enum.InventoryType.IndexBodyType]           = { INVSLOT_BODY },
+		[Enum.InventoryType.IndexBodyType]           = nil, -- shirts are cosmetic; do not evaluate or equip
 		[Enum.InventoryType.IndexChestType]          = { INVSLOT_CHEST },
 		[Enum.InventoryType.IndexRobeType]           = { INVSLOT_CHEST },
 		[Enum.InventoryType.IndexWaistType]          = { INVSLOT_WAIST },
