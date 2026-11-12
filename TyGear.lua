@@ -757,7 +757,13 @@ function TyGearGetDefaultOverrideSpec()
 	end
 end
 
-function TyGearGetGearSlotShortLabel(slot)
+-- Rings and trinkets share one localized name for both slots; append the inventory slot id.
+local function TyGearGearSlotNeedsSlotId(slot)
+	return slot == INVSLOT_FINGER1 or slot == INVSLOT_FINGER2
+		or slot == INVSLOT_TRINKET1 or slot == INVSLOT_TRINKET2
+end
+
+local function TyGearGetGearSlotBaseName(slot)
 	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
 		return TyGearSlotNames[slot] or GetItemInventorySlotInfo(slot) or tostring(slot)
 	elseif TyGearReagentBagSlot and slot == TyGearReagentBagSlot then
@@ -770,14 +776,22 @@ function TyGearGetGearSlotShortLabel(slot)
 	end
 end
 
+function TyGearGetGearSlotShortLabel(slot)
+	local name = TyGearGetGearSlotBaseName(slot)
+	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED and TyGearGearSlotNeedsSlotId(slot) then
+		return name.." "..tostring(slot)
+	end
+	return name
+end
+
 function TyGearGetLockedGearSlotLabel(slot)
 	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
-		local slotName = TyGearGetGearSlotShortLabel(slot)
+		local slotName = TyGearGetGearSlotBaseName(slot)
 		return tostring(slot)..(slotName and ": "..slotName or "")
 	elseif TyGearReagentBagSlot and slot == TyGearReagentBagSlot then
 		return tostring(slot)..": "..TyGearGetReagentBagSlotName()
 	elseif slot >= TyGearFirstEquippableBagSlot and slot <= TyGearLastEquippableBagSlot then
-		local slotName = TyGearGetGearSlotShortLabel(slot)
+		local slotName = TyGearGetGearSlotBaseName(slot)
 		return tostring(slot)..(slotName and ": "..slotName or "")
 	else
 		return tostring(slot)
