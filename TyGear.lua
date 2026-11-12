@@ -74,6 +74,10 @@ local maxPlayerLevel = (GetMaxPlayerLevel and GetMaxPlayerLevel())
 	or (GetMaxLevelForExpansionLevel and GetExpansionLevel and GetMaxLevelForExpansionLevel(GetExpansionLevel()))
 	or 60
 local L = T.Localization
+--Key Bindings UI labels (Bindings.xml); assign keys under Key Bindings → TyGear
+_G["BINDING_HEADER_TYGEAR"] = "TyGear"
+_G["BINDING_NAME_TYGEAR_TOGGLE_VENDOR_KEEP"] = L["Toggle hovered item on keep list"]
+_G["BINDING_NAME_TYGEAR_TOGGLE_IGNORE"] = L["Toggle hovered item on ignore list"]
 local ContainerIDToInventoryID = ContainerIDToInventoryID or (C_Container and C_Container.ContainerIDToInventoryID)
 local GetContainerNumFreeSlots = GetContainerNumFreeSlots or (C_Container and C_Container.GetContainerNumFreeSlots)
 local GetContainerNumSlots = GetContainerNumSlots or (C_Container and C_Container.GetContainerNumSlots)
@@ -829,6 +833,163 @@ function TyGearSetItemIgnored(itemID, shouldIgnore)
 		TyGearCharDB.IgnoredItemIDs[itemID] = nil
 	end
 	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+end
+
+--item ID and link from the item tooltip currently under the mouse (or a pinned ItemRefTooltip)
+function TyGearGetHoveredItem()
+	local function fromTooltip(tooltip)
+		if not tooltip or not tooltip.IsShown or not tooltip:IsShown() then return end
+		local name, link
+		if tooltip.GetItem then
+			name, link = tooltip:GetItem()
+		end
+		if (not link or (issecretvalue and issecretvalue(link))) and (tooltip.GetPrimaryTooltipData or tooltip.GetTooltipData) then
+			local tooltipData = tooltip.GetPrimaryTooltipData and tooltip:GetPrimaryTooltipData() or tooltip:GetTooltipData()
+			if tooltipData then
+				link = tooltipData.hyperlink
+				if (not link) and tooltipData.guid and C_Item and C_Item.GetItemLinkByGUID then
+					link = C_Item.GetItemLinkByGUID(tooltipData.guid)
+				end
+				if (not link) and tooltipData.id then
+					link = "item:"..tostring(tooltipData.id)
+				end
+				if (not name) and tooltipData.lines and tooltipData.lines[1] then
+					name = tooltipData.lines[1].leftText
+				end
+			end
+		end
+		if not link or (issecretvalue and issecretvalue(link)) then return end
+		local itemID = tonumber(string.match(link, "item:(%d+)"))
+		if not itemID then return end
+		return itemID, link, name
+	end
+
+	local itemID, link, name = fromTooltip(GameTooltip)
+	if itemID then return itemID, link, name end
+	itemID, link, name = fromTooltip(ItemRefTooltip)
+	if itemID then return itemID, link, name end
+
+	--bags / character pane: resolve from the button under the mouse when the tooltip has no link yet
+	local guid = TyGearDetectHoveredItemGUID and TyGearDetectHoveredItemGUID()
+	if guid and C_Item then
+		if C_Item.GetItemIDByGUID then
+			itemID = C_Item.GetItemIDByGUID(guid)
+		end
+		if C_Item.GetItemLinkByGUID then
+			link = C_Item.GetItemLinkByGUID(guid)
+		end
+		if itemID then
+			return itemID, link or ("item:"..tostring(itemID)), name
+		end
+	end
+end
+
+function TyGearIsOnVendorKeepList(itemID)
+	itemID = tonumber(itemID)
+	if not itemID or not TyGearDB then return false end
+	for _, listedID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
+		if listedID == itemID then return true end
+	end
+	return false
+end
+
+function TyGearRefreshVendorKeepListEditBox()
+	local editBox = _G["TyGearVendorKeepListEditBox"]
+	if editBox and editBox.SetText and not editBox:HasFocus() then
+		editBox:SetText((TyGearDB and TyGearDB.VendorKeepList) or "")
+		editBox:SetCursorPosition(0)
+	end
+end
+
+function TyGearSetVendorKeepListItem(itemID, shouldKeep)
+	itemID = tonumber(itemID)
+	if not itemID then return end
+	if not TyGearDB then TyGearDB = {} end
+	local ordered, seen = {}, {}
+	for _, listedID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
+		if listedID ~= itemID and not seen[listedID] then
+			seen[listedID] = true
+			table.insert(ordered, listedID)
+		end
+	end
+	if shouldKeep then
+		table.insert(ordered, itemID)
+	end
+	TyGearDB.VendorKeepList = table.concat(ordered, ", ")
+	TyGearRefreshVendorKeepListEditBox()
+end
+
+function TyGearItemDisplay(link, itemID, name)
+	if link and not (issecretvalue and issecretvalue(link)) and string.find(link, "|H") then
+		return link
+	end
+	if name and name ~= "" then
+		return name.." ("..tostring(itemID)..")"
+	end
+	return "item "..tostring(itemID)
+end
+
+--Key Bindings → TyGear: hover an item, then press the assigned key
+function TyGearBindingToggleVendorKeep()
+	local itemID, link, name = TyGearGetHoveredItem()
+	if not itemID then
+		TyGearPrint("TyGear: "..L["Hover an item, then press this key to toggle it on the keep list."], 0)
+		return
+	end
+	local keep = not TyGearIsOnVendorKeepList(itemID)
+	TyGearSetVendorKeepListItem(itemID, keep)
+	local display = TyGearItemDisplay(link, itemID, name)
+	if keep then
+		TyGearPrint("TyGear: "..string.format(L["Added %s to the keep list."], display), 0)
+	else
+		TyGearPrint("TyGear: "..string.format(L["Removed %s from the keep list."], display), 0)
+	end
+end
+
+function TyGearBindingToggleIgnore()
+	local itemID, link, name = TyGearGetHoveredItem()
+	if not itemID then
+		TyGearPrint("TyGear: "..L["Hover an item, then press this key to toggle it on the ignore list."], 0)
+		return
+	end
+	if not TyGearIsEquipmentItemID(itemID) then
+		TyGearPrint("TyGear: "..L["Only armor and weapons can be added to the ignore list."], 0)
+		return
+	end
+	local ignored = TyGearIsItemIgnored({ id = itemID, isGear = true }) and true or false
+	TyGearSetItemIgnored(itemID, not ignored)
+	if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
+	local display = TyGearItemDisplay(link, itemID, name)
+	if not ignored then
+		TyGearPrint("TyGear: "..string.format(L["Added %s to the ignore list."], display), 0)
+	else
+		TyGearPrint("TyGear: "..string.format(L["Removed %s from the ignore list."], display), 0)
+	end
+end
+
+function TyGearAddListBindingHintsToTooltip(tooltip)
+	if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
+	local keepKey = GetBindingKey and GetBindingKey("TYGEAR_TOGGLE_VENDOR_KEEP")
+	local ignoreKey = GetBindingKey and GetBindingKey("TYGEAR_TOGGLE_IGNORE")
+	if not keepKey and not ignoreKey then return end
+	local hasItem = false
+	if tooltip.GetItem then
+		local _, link = tooltip:GetItem()
+		hasItem = link and not (issecretvalue and issecretvalue(link))
+	end
+	if (not hasItem) and (tooltip.GetPrimaryTooltipData or tooltip.GetTooltipData) then
+		local tooltipData = tooltip.GetPrimaryTooltipData and tooltip:GetPrimaryTooltipData() or tooltip:GetTooltipData()
+		hasItem = tooltipData and (tooltipData.hyperlink or tooltipData.guid or tooltipData.id) and true or false
+	end
+	if not hasItem then return end
+	local parts = {}
+	if keepKey then
+		table.insert(parts, keepKey..": "..L["keep list"])
+	end
+	if ignoreKey then
+		table.insert(parts, ignoreKey..": "..L["ignore list"])
+	end
+	tooltip:AddLine("TyGear  "..table.concat(parts, "  "), 0.5, 0.5, 0.5, true)
 end
 
 function TyGearAllValidGearSlotsProtected(info)
@@ -2847,7 +3008,7 @@ local function buildIgnoreSection(optionsPage)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
 		GameTooltip:AddLine(L["Item IDs"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it. Armor and weapons are accepted."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 		GameTooltip:Show()
 	end)
 	editBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2873,7 +3034,7 @@ local function buildIgnoreSection(optionsPage)
 	rebuildEquipped()
 	optionsPage:AddRow(equippedContainer)
 	addSubheader(L["Item IDs"])
-	addNote(L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it. Armor and weapons are accepted."])
+	addNote(L["Also ignore these item IDs. Shift-click equipment while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering armor or weapons."])
 	optionsPage:AddRow(editRow)
 	showManualIDs()
 end
@@ -3703,7 +3864,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["section"] = L["Keep"],
 				["editBox"] = true,
 				["label"] = L["Keep list"],
-				["description"] = L["Item IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, or look up item IDs in item tooltips while the TyGear options are open."]
+				["description"] = L["Item IDs separated by commas.  Greys and common (white) items listed here are kept when selling.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Flint and Tinder, Gnomish Army Knife, Jeweler's Kit, Virtuoso Inking Set, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on keep list\" in Key Bindings and press it while hovering an item."]
 			},
 			{
 				["option"] = "KeepKeeperTahultPetItems",
@@ -3991,6 +4152,7 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg sellunsuitable [enable/on/start]/[disable/off/stop]': toggle automatic selling of white gear you can't wear", 0)
 	TyGearPrint("TyGear:    '/tg sellwhitegear [enable/on/start]/[disable/off/stop]': toggle automatic selling of all white gear", 0)
 	TyGearPrint("TyGear:    '/tg verbosity [0/1/2/3]': set allowed verbosity level; valid levels are: 0 ("..TyGearGetAllowedVerbosityName(0).."), 1 ("..TyGearGetAllowedVerbosityName(1).."), 2 ("..TyGearGetAllowedVerbosityName(2).."), 3 ("..TyGearGetAllowedVerbosityName(3)..")", 0)
+	TyGearPrint("TyGear:    Key Bindings → TyGear: assign keys to toggle the hovered item on the keep list or ignore list", 0)
 	TyGearPrint("TyGear: Fork of AutoGear by Synthetikaryote and BujuArena. Original: https://github.com/BujuArena/AutoGear (CC BY-NC-SA 4.0).", 0)
 end
 
@@ -6661,12 +6823,15 @@ end
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and C_TooltipInfo then
 	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, TyGearTooltipHook)
 	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, TyGearAddItemIDToTooltip)
+	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, TyGearAddListBindingHintsToTooltip)
 else
 	GameTooltip:HookScript("OnTooltipSetItem", TyGearTooltipHook)
 	GameTooltip:HookScript("OnTooltipSetItem", TyGearAddItemIDToTooltip)
+	GameTooltip:HookScript("OnTooltipSetItem", TyGearAddListBindingHintsToTooltip)
 	ShoppingTooltip1:HookScript("OnTooltipSetItem", TyGearTooltipHook)
 	ShoppingTooltip2:HookScript("OnTooltipSetItem", TyGearTooltipHook)
 	ItemRefTooltip:HookScript("OnTooltipSetItem", TyGearTooltipHook)
+	ItemRefTooltip:HookScript("OnTooltipSetItem", TyGearAddListBindingHintsToTooltip)
 	if AtlasLootTooltip then
 		AtlasLootTooltip:HookScript("OnTooltipSetItem", TyGearTooltipHook)
 	end
