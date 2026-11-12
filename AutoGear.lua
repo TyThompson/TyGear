@@ -1688,39 +1688,136 @@ AutoGearOverrideSpecs = {
 	}
 }
 
+-- Specs with a color of their own. Specs not listed here use their class color.
+-- Chosen only where the spec has a clear identity, such as Frost mage being blue.
+AutoGearSpecColors = {
+	["DEATHKNIGHT"] = {
+		["Blood"] = {0.80, 0.08, 0.08},
+		["Frost"] = {0.40, 0.75, 1.00},
+		["Unholy"] = {0.35, 0.85, 0.25},
+	},
+	["DRUID"] = {
+		["Balance"] = {0.68, 0.48, 1.00},
+		["Guardian"] = {0.72, 0.52, 0.28},
+		["Restoration"] = {0.25, 0.85, 0.40},
+	},
+	["EVOKER"] = {
+		["Devastation"] = {0.92, 0.28, 0.24},
+		["Preservation"] = {0.30, 0.82, 0.40},
+		["Augmentation"] = {0.85, 0.60, 0.28},
+	},
+	["MAGE"] = {
+		["Arcane"] = {0.75, 0.42, 1.00},
+		["Fire"] = {1.00, 0.38, 0.10},
+		["Frost"] = {0.30, 0.62, 1.00},
+	},
+	["MONK"] = {
+		["Brewmaster"] = {0.90, 0.60, 0.20},
+		["Mistweaver"] = {0.35, 0.85, 0.75},
+	},
+	["PALADIN"] = {
+		["Holy"] = {1.00, 0.86, 0.30},
+	},
+	["PRIEST"] = {
+		["Holy"] = {1.00, 0.86, 0.30},
+		["Shadow"] = {0.62, 0.38, 0.95},
+	},
+	["ROGUE"] = {
+		["Assassination"] = {0.25, 0.78, 0.30},
+		["Subtlety"] = {0.55, 0.40, 0.95},
+	},
+	["SHAMAN"] = {
+		["Restoration"] = {0.25, 0.80, 0.65},
+	},
+	["WARLOCK"] = {
+		["Demonology"] = {0.30, 0.85, 0.22},
+		["Destruction"] = {1.00, 0.38, 0.10},
+	},
+}
+
+-- These classes are not playable on WoW Forever, so they stay out of the override spec list there.
+local AutoGearClassesHiddenOnForever = {
+	["DEATHKNIGHT"] = true,
+	["DEMONHUNTER"] = true,
+	["EVOKER"] = true,
+	["MONK"] = true,
+}
+
+local function AutoGearWrapRGB(text, r, g, b)
+	if CreateColor then
+		return CreateColor(r, g, b):WrapTextInColorCode(text)
+	end
+	return string.format("|cff%02x%02x%02x%s|r", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), text)
+end
+
+function AutoGearClassColoredText(classToken, text)
+	local color = RAID_CLASS_COLORS and classToken and RAID_CLASS_COLORS[classToken]
+	if not (color and text) then return text end
+	if color.WrapTextInColorCode then
+		return color:WrapTextInColorCode(text)
+	end
+	if color.colorStr then
+		return color.colorStr..text.."|r"
+	end
+	if color.r then
+		return AutoGearWrapRGB(text, color.r, color.g, color.b)
+	end
+	return text
+end
+
+function AutoGearSpecColoredText(classToken, specName)
+	local rgb = classToken and AutoGearSpecColors[classToken] and AutoGearSpecColors[classToken][specName]
+	if rgb then
+		return AutoGearWrapRGB(specName, rgb[1], rgb[2], rgb[3])
+	end
+	return AutoGearClassColoredText(classToken, specName)
+end
+
+-- Colors "Mage: Frost" for the closed dropdown. The saved value stays uncolored.
+function AutoGearColorizeSpecChoice(value)
+	if type(value) ~= "string" then return value end
+	local localizedClass, spec = string.match(value, "^(.-): (.+)$")
+	if not (localizedClass and spec and AutoGearReverseClassList) then return value end
+	local classToken = AutoGearReverseClassList[localizedClass]
+	if not classToken then return value end
+	return AutoGearClassColoredText(classToken, localizedClass)..": "..AutoGearSpecColoredText(classToken, spec)
+end
+
 function AutoGearGetOverrideSpecs()
 	local classOrder = {}
-	for k in pairs(AutoGearDefaultWeights) do
-		table.insert(classOrder, k)
+	for className in pairs(AutoGearDefaultWeights) do
+		if (not IS_WOW_FOREVER) or (not AutoGearClassesHiddenOnForever[className]) then
+			table.insert(classOrder, className)
+		end
 	end
 	table.sort(classOrder)
 
-	for i = 1, #classOrder do (function()
+	local overrideSpecs = {}
+	for i = 1, #classOrder do
 		local className = classOrder[i]
 		local localizedClassName = AutoGearClassList[className]
-		if localizedClassName == nil then return end
-		AutoGearOverrideSpecs[i] = {
-			["label"] = localizedClassName,
-			["subLabels"] = AutoGearOverrideSpecs[i]["subLabels"]
-		}
-		local specOrder = {}
-		for l in pairs(AutoGearDefaultWeights[className]) do
-			table.insert(specOrder, l)
-		end
-		table.sort(specOrder, function(a, b)
-			if a == 'None' then
-				return true
-			elseif b == 'None' then
-				return false
-			else
-				return a < b
+		if localizedClassName then
+			local specOrder = {}
+			for specName in pairs(AutoGearDefaultWeights[className]) do
+				table.insert(specOrder, specName)
 			end
-		end)
-		for j = 1, #specOrder do
-			local specName = specOrder[j]
-			AutoGearOverrideSpecs[i]["subLabels"][j] = specName
+			table.sort(specOrder, function(a, b)
+				if a == "None" then
+					return true
+				elseif b == "None" then
+					return false
+				else
+					return a < b
+				end
+			end)
+			table.insert(overrideSpecs, {
+				["label"] = localizedClassName,
+				["class"] = className,
+				["subLabels"] = specOrder,
+			})
 		end
-	end)() end
+	end
+	AutoGearOverrideSpecs = overrideSpecs
 	return AutoGearOverrideSpecs
 end
 
@@ -1815,6 +1912,24 @@ local function setDropdownText(dropdown, text)
 	else
 		UIDropDownMenu_SetText(dropdown, text)
 	end
+end
+
+-- Class rows use the class color. Spec rows use a spec color where one is defined, otherwise the class color.
+local function dropdownEntryText(entry, specName)
+	if not entry["class"] then
+		return specName or entry["label"]
+	end
+	if specName then
+		return AutoGearSpecColoredText(entry["class"], specName)
+	end
+	return AutoGearClassColoredText(entry["class"], entry["label"])
+end
+
+local function dropdownStoredText(child, value)
+	if child["colorValue"] and type(value) == "string" then
+		return child["colorValue"](value)
+	end
+	return value
 end
 
 local function closeDropdownMenu(dropdown)
@@ -2012,7 +2127,7 @@ local function optionsSetup(optionsMenu)
 				--newDropdown(v["child"]["option"], v["child"]["label"], v["child"]["description"], _G["AutoGearSelectFrom"..v["child"]["option"].."Dropdown"], v["child"]["options"], optionsMenu)
 				--frame[i].dropDown:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
 				if type(AutoGearDB[v["child"]["option"]]) == 'string' then
-					setDropdownText(frame[i].dropDown, AutoGearDB[v["child"]["option"]])
+					setDropdownText(frame[i].dropDown, dropdownStoredText(v["child"], AutoGearDB[v["child"]["option"]]))
 				elseif type(AutoGearDB[v["child"]["option"]]) == 'table' then
 					local label
 					for _, l in pairs(v["child"]["options"]) do
@@ -2031,7 +2146,7 @@ local function optionsSetup(optionsMenu)
 				_G["AutoGear"..v["child"]["option"].."Dropdown"].SetValue = function(self, value)
 					if type(AutoGearDB[v["child"]["option"]]) == 'string' then
 						AutoGearDB[v["child"]["option"]] = value
-						setDropdownText(_G["AutoGear"..v["child"]["option"].."Dropdown"], AutoGearDB[v["child"]["option"]])
+						setDropdownText(_G["AutoGear"..v["child"]["option"].."Dropdown"], dropdownStoredText(v["child"], value))
 						closeDropdownMenu(_G["AutoGear"..v["child"]["option"].."Dropdown"])
 					end
 				end
@@ -2046,12 +2161,12 @@ local function optionsSetup(optionsMenu)
 						if type(AutoGearDB[v["child"]["option"]]) == 'string' then
 							for _, j in ipairs(v["child"]["options"]) do
 								--the label is selected when the stored value is one of its subLabels; it only opens its submenu, so its responder does nothing
-								local labelDescription = rootDescription:CreateRadio(j["label"], function()
+								local labelDescription = rootDescription:CreateRadio(dropdownEntryText(j), function()
 									return (AutoGearDB[v["child"]["option"]] and string.match(AutoGearDB[v["child"]["option"]], "^"..j["label"]..":")) and true or false
 								end, function() end)
 								for _, z in ipairs(j["subLabels"] or {}) do
 									local value = j["label"]..": "..z
-									labelDescription:CreateRadio(z, function()
+									labelDescription:CreateRadio(dropdownEntryText(j, z), function()
 										return (AutoGearDB[v["child"]["option"]] == value) or (AutoGearDB[v["child"]["option"]] == z)
 									end, function()
 										dropdown:SetValue(value)
@@ -2087,7 +2202,7 @@ local function optionsSetup(optionsMenu)
 							--display the labels
 							if type(AutoGearDB[v["child"]["option"]]) == 'string' then
 								for _, j in ipairs(v["child"]["options"]) do
-									info.text = j["label"]
+									info.text = dropdownEntryText(j)
 									info.checked = (AutoGearDB[v["child"]["option"]] and (string.match(AutoGearDB[v["child"]["option"]], "^"..j["label"]..":") and true or false) or false)
 									info.menuList = j
 									info.hasArrow = (j["subLabels"] and true or false)
@@ -2122,7 +2237,7 @@ local function optionsSetup(optionsMenu)
 							info.func = self.SetValue
 							if menuList["subLabels"] then
 								for _, z in ipairs(menuList["subLabels"]) do
-									info.text = z
+									info.text = dropdownEntryText(menuList, z)
 									info.arg1 = menuList["label"]..": "..z
 									info.checked = ((AutoGearDB[v["child"]["option"]] == info.arg1) or (AutoGearDB[v["child"]["option"]] == z))
 									UIDropDownMenu_AddButton(info, level)
@@ -2562,6 +2677,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["child"] = {
 					["option"] = "OverrideSpec",
 					["options"] = AutoGearGetOverrideSpecs(),
+					["colorValue"] = AutoGearColorizeSpecChoice,
 					["label"] = "Override specialization",
 					["description"] = "Override specialization with the spec chosen in this dropdown.  If this is enabled, AutoGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the specialization detected automatically.",
 					["dropdownPostHook"] = function() AutoGearSetStatWeights() end
