@@ -7,6 +7,7 @@ The original AutoGear authors and contributors retain credit for the design and 
 - Original addon: [GitHub](https://github.com/BujuArena/AutoGear), [CurseForge](https://www.curseforge.com/wow/addons/autogear), [WoWInterface](https://www.wowinterface.com/downloads/info26415)
 - This fork changes the addon name, saved variables (`TyGearDB`), frame and function names, and slash commands. CurseForge project 39179 and WoWInterface ID 26415 stay with AutoGear and are not used here.
 - Chat commands are `/tg`, `/tygear`, and `/TyGear`.
+- Override specialization is saved for each character. Other options are shared. An alt does not inherit another character's spec.
 - Install the folder as `Interface/AddOns/TyGear` so it matches `TyGear.toc`. Leave the original AutoGear addon disabled while TyGear is enabled; both would try to roll on loot and equip gear.
 
 TyGear automatically rolls on and equips loot according to stat weights like WoWhead filters. TyGear rolls "need" on upgrades and "greed" otherwise.
@@ -25,7 +26,7 @@ If you receive an upgrade mid-combat, TyGear queues the upgrade to be equipped w
 
 TyGear also runs on WoW Forever (interface 16001).
 
-- Forever has one specialization per class, so TyGear uses the general class profile (`None`). If you heal, tank, or want a more focused damage profile, enable **Override specialization** in `/tg` and choose the closest profile. Healers should do this, because the general profile values bonus healing only as spell damage (one third of its value).
+- Forever has one specialization per class, so TyGear uses the general class profile (`None`). If you heal, tank, or want a more focused damage profile, enable **Override specialization** in `/tg` and choose the closest profile. That choice is saved for the current character. Healers should do this, because the general profile values bonus healing only as spell damage (one third of its value).
 - Forever's combined hit and critical strike, expertise, and armor/spell penetration are read from item tooltips.
 - On Forever, **Use Pawn** and **Roll on non-gear loot** default to off; Pawn has no Forever scales yet.
 - Loot messages and tooltip text can be restricted (secret values) in dungeons and during encounters. TyGear then scans your bags instead of reading the loot message, and treats items it can't read as not evaluable.

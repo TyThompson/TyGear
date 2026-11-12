@@ -10,7 +10,7 @@ localization.ru.lua
 localization.de.lua
 TyGear.lua
 ## SavedVariables: TyGearDB
-## SavedVariablesPerCharacter: TyGearDB
+## SavedVariablesPerCharacter: TyGearDB, TyGearCharDB
 
 # CurseForge project 39179 and WoWInterface ID 26415 belong to the original
 # AutoGear addon. They are intentionally omitted so TyGear releases are not
