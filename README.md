@@ -15,9 +15,9 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 ## What to expect
 
 - Upgrades found in combat are equipped when combat ends.
-- Gear TyGear cannot score, plus slot/item ignore controls, live on the **Ignored List** tab.
+- Gear TyGear cannot score, slot and item ignore controls, and the keep list live on the **Ignored List** tab. Items on the ignore list, including the keep list, are not sold or evaluated.
 - Items you always want to **NEED** (for example a crafting green in a dungeon) go on the **Need List** tab; add them near the top of that tab or with a key binding.
-- Vendor greys and whites to keep live on the **Keep List** tab, including **Keep unbound grey gear**. It starts with Forever crafting tools only; add more near the top of that tab.
+- **Keep unbound grey gear** is on the Ignored List tab with the keep list. That list starts with Forever crafting tools; add more near the top of that tab. Every fishing pole is kept when selling even if its item ID is removed.
 - Weapons your class can never learn are skipped. Untrained weapons still show a score with "(won't equip)".
 - Mounts are never rolled on automatically.
 - **Roll on non-gear loot** is off by default. If you turn it on, TyGear greeds non-upgrade loot (including crafting reagents). Need-list items still roll NEED even when that option is off.
@@ -36,7 +36,7 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 
 ## Key bindings
 
-Esc → Key Bindings → TyGear: bind keys to add or remove the hovered item from the vendor **keep list**, loot **need list**, or gear **ignore list**.
+Esc → Key Bindings → TyGear: the **ignore list** key keeps the hovered item and skips evaluation. The **need list** key forces NEED.
 
 ## Note
 
