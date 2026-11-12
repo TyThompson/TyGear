@@ -118,10 +118,93 @@ TyGearWouldRoll = "nil"
 TyGearSomeItemDataIsMissing = nil
 TyGearFirstEquippableBagSlot = ContainerIDToInventoryID(1) or 20
 TyGearLastEquippableBagSlot = ContainerIDToInventoryID(NUM_BAG_SLOTS) or 23
+-- Reagent bags (retail, Dragonflight and later) can only be equipped in the reagent bag slot.
+-- Classic clients may expose Enum.BagIndex.ReagentBag with mainline's number, where that container is a bank bag.
+TyGearReagentBagContainer = nil
+TyGearReagentBagSlot = nil
+if (not IS_WOW_FOREVER)
+and type(TOC_VERSION_CURRENT) == "number"
+and TOC_VERSION_CURRENT >= TOC_VERSION_DF then
+	local reagentContainer = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or nil
+	if not reagentContainer and NUM_REAGENTBAG_SLOTS and NUM_REAGENTBAG_SLOTS > 0 then
+		reagentContainer = (NUM_BAG_SLOTS or 4) + 1
+	end
+	if reagentContainer and ContainerIDToInventoryID then
+		local reagentSlot = ContainerIDToInventoryID(reagentContainer)
+		if not reagentSlot and reagentContainer == 5 then
+			reagentSlot = 35 -- mainline reagent bag inventory slot
+		end
+		-- ignore a result that lands on a normal bag slot; that mapping is not the reagent bag
+		if reagentSlot
+		and (reagentSlot < TyGearFirstEquippableBagSlot or reagentSlot > TyGearLastEquippableBagSlot) then
+			TyGearReagentBagContainer = reagentContainer
+			TyGearReagentBagSlot = reagentSlot
+		end
+	end
+end
+TyGearLastManagedGearSlot = (TyGearReagentBagSlot and math.max(TyGearLastEquippableBagSlot, TyGearReagentBagSlot)) or TyGearLastEquippableBagSlot
 TyGearEquippableBagSlots = {}
---initialize equippable bag slots table
+-- initialize equippable bag slots table. The reagent bag slot is not one of these.
 for i = BACKPACK_CONTAINER+1, NUM_BAG_SLOTS do
-	table.insert(TyGearEquippableBagSlots, TyGearFirstEquippableBagSlot+i-1)
+	if i ~= TyGearReagentBagContainer then
+		local invSlot = TyGearFirstEquippableBagSlot+i-1
+		if invSlot ~= TyGearReagentBagSlot then
+			table.insert(TyGearEquippableBagSlots, invSlot)
+		end
+	end
+end
+
+-- Container (class 1) subclass 11 is "Reagent Bag". There is no Enum.ItemContainerSubclass.
+local REAGENT_BAG_SUBCLASS_ID = 11
+
+function TyGearIsReagentBag(info)
+	if not TyGearReagentBagSlot or not info then return nil end
+	if info.isReagentBag then return 1 end
+	if info.classID == Enum.ItemClass.Container and info.subclassID == REAGENT_BAG_SUBCLASS_ID then
+		return 1
+	end
+end
+
+function TyGearIsManagedGearSlot(slot)
+	if not slot then return nil end
+	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
+		return 1
+	end
+	if slot >= TyGearFirstEquippableBagSlot and slot <= TyGearLastEquippableBagSlot then
+		return 1
+	end
+	if TyGearReagentBagSlot and slot == TyGearReagentBagSlot then
+		return 1
+	end
+end
+
+-- bag index (container id) for an equipped bag inventory slot, or nil for non-bags
+function TyGearGetContainerForEquippedBagSlot(invSlot)
+	if TyGearReagentBagSlot and invSlot == TyGearReagentBagSlot then
+		return TyGearReagentBagContainer
+	end
+	if invSlot and invSlot >= TyGearFirstEquippableBagSlot and invSlot <= TyGearLastEquippableBagSlot then
+		return invSlot - TyGearFirstEquippableBagSlot + 1
+	end
+end
+
+-- backpack through the normal bags, plus the reagent bag when it is the next container
+function TyGearGetLastBagToScan()
+	local lastBag = NUM_BAG_SLOTS or 0
+	if TyGearReagentBagContainer == lastBag + 1 then
+		return TyGearReagentBagContainer
+	end
+	return lastBag
+end
+
+function TyGearGetReagentBagSlotName()
+	if GetItemSubClassInfo and Enum and Enum.ItemClass and Enum.ItemClass.Container then
+		local ok, name = pcall(GetItemSubClassInfo, Enum.ItemClass.Container, REAGENT_BAG_SUBCLASS_ID)
+		if ok and type(name) == "string" and name ~= "" then
+			return name
+		end
+	end
+	return "Reagent Bag"
 end
 
 --initialize gear slot names table
@@ -577,6 +660,8 @@ function TyGearGetLockedGearSlotLabel(slot)
 	if slot >= INVSLOT_FIRST_EQUIPPED and slot <= INVSLOT_LAST_EQUIPPED then
 		local slotName = TyGearGetGearSlotShortLabel(slot)
 		return tostring(slot)..(slotName and ": "..slotName or "")
+	elseif TyGearReagentBagSlot and slot == TyGearReagentBagSlot then
+		return tostring(slot)..": "..TyGearGetReagentBagSlotName()
 	elseif slot >= TyGearFirstEquippableBagSlot and slot <= TyGearLastEquippableBagSlot then
 		local slotName = TyGearGetGearSlotShortLabel(slot)
 		return tostring(slot)..(slotName and ": "..slotName or "")
@@ -587,8 +672,8 @@ end
 
 function TyGearGetDefaultLockedGearSlots()
 	local lockedGearSlots = {}
-	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-		if slot <= INVSLOT_LAST_EQUIPPED or slot >= TyGearFirstEquippableBagSlot then
+	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+		if TyGearIsManagedGearSlot(slot) then
 			lockedGearSlots[slot] = {
 				["label"] = TyGearGetLockedGearSlotLabel(slot),
 				["enabled"] = false
@@ -772,8 +857,8 @@ end
 
 function TyGearFixLockedGearSlots() -- finds missing slots and adds them, in case Blizzard changed them around
 	if not TyGearDB.LockedGearSlots then TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots() return end
-	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-		if slot <= INVSLOT_LAST_EQUIPPED or slot >= TyGearFirstEquippableBagSlot then
+	for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+		if TyGearIsManagedGearSlot(slot) then
 			if not TyGearDB.LockedGearSlots[slot] then
 				TyGearDB.LockedGearSlots[slot] = {
 					["label"] = TyGearGetLockedGearSlotLabel(slot),
@@ -4504,8 +4589,8 @@ function TyGearUpdateEquippedItems()
 	-- TyGearItemInfoCache = {}
 	TyGearEquippedItems = {}
 	local info, score
-	for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-		if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
+	for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+		if TyGearIsManagedGearSlot(invSlot) then
 			TyGearUpdateEquippedItem(invSlot)
 		end
 	end
@@ -4553,9 +4638,9 @@ function TyGearUpdateBestItems()
 	-- table to track whether an item's been added
 	TyGearBestItemsAlreadyAdded = {}
 
-	--consider all items in bags
-	for bag = 0, NUM_BAG_SLOTS do
-		local slotMax = GetContainerNumSlots(bag)
+	--consider all items in bags, including the reagent bag so a reagent bag stored there is seen
+	for bag = 0, TyGearGetLastBagToScan() do
+		local slotMax = GetContainerNumSlots(bag) or 0
 		for slot = 0, slotMax do
 			info = TyGearReadItemInfo(nil, nil, bag, slot)
 			-- TyGearPrint((info.link or info.name or "nil").." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
@@ -4576,8 +4661,8 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 
 	--create all future equip actions required (only if not rolling currently)
 	if (not lootRollItemID and not noActions) then
-		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
+		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+			if TyGearIsManagedGearSlot(invSlot) then
 				if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND or invSlot == INVSLOT_TABARD then
 					--skip weapons for now
 				else
@@ -4707,8 +4792,8 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 		end
 	elseif (lootRollItemID) then
 		--decide whether to roll on the item or not
-		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
+		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+			if TyGearIsManagedGearSlot(invSlot) then
 				if (TyGearBestItems[invSlot].rollOn and
 				(invSlot ~= INVSLOT_MAINHAND or invSlot ~= INVSLOT_OFFHAND or TyGearIs1hWorthwhile(invSlot)) and
 				(invSlot ~= INVSLOT_TABARD or TyGearIsBest2hBetterThanBestMainAndOff())) then
@@ -4900,7 +4985,7 @@ function TyGearGetValidGearSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = TyGearEquippableBagSlots,
+		[Enum.InventoryType.IndexBagType]            = (TyGearIsReagentBag(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
 		                                               and TyGearEquippableBagSlots
                                                        or nil
@@ -4999,7 +5084,7 @@ function TyGearGetSetSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = TyGearEquippableBagSlots,
+		[Enum.InventoryType.IndexBagType]            = (TyGearIsReagentBag(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
 		                                               and TyGearEquippableBagSlots
                                                        or nil
@@ -5242,6 +5327,14 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
 	info.isGear = info.invType > 0
+	--reagent bags equip only in the reagent bag slot; keep them even if inventory type is missing
+	if TyGearIsReagentBag(info) then
+		info.isReagentBag = 1
+		info.isGear = 1
+		if info.invType == 0 and Enum and Enum.InventoryType then
+			info.invType = Enum.InventoryType.IndexBagType
+		end
+	end
 
 	if (info.classID == Enum.ItemClass.Miscellaneous) and
 	(info.subclassID == Enum.ItemMiscellaneousSubclass.Mount) then
@@ -5977,7 +6070,10 @@ end
 function TyGearDetermineItemScore(info)
 	if info.empty then return 0 end
 	if info.classID == Enum.ItemClass.Container then
-		if info.subclassID == 0 then -- generic (typical) bag; there's no Enum.ItemContainerSubclass
+		-- normal bags and reagent bags are scored by how many slots they add.
+		-- reagent bags only compete for the reagent bag slot, so a larger one is always an upgrade.
+		-- other specialized bags are almost worthless, so they only replace an empty slot
+		if info.subclassID == 0 or info.isReagentBag or TyGearIsReagentBag(info) then -- generic bag, or reagent bag; there's no Enum.ItemContainerSubclass
 			return info.numBagSlots or 0
 		else
 			return (info.numBagSlots or 0) * E -- specialized bags suck, so consider them only better than nothing
@@ -6689,8 +6785,8 @@ function TyGearMain()
 									queueQueueRebuild = 1
 								--everything below needs the container and slot, so it only runs when both are known
 								-- prevent equip error when bag is replacing the bag it's inside
-								elseif curAction.replaceSlot >= TyGearFirstEquippableBagSlot
-								and curAction.container == (curAction.replaceSlot - TyGearFirstEquippableBagSlot + 1) then
+								elseif TyGearGetContainerForEquippedBagSlot(curAction.replaceSlot)
+								and curAction.container == TyGearGetContainerForEquippedBagSlot(curAction.replaceSlot) then
 									if not curAction.movedOutOfBag then
 										local destBag, destSlot
 										for b = 0, NUM_BAG_SLOTS do
