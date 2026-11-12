@@ -9,7 +9,7 @@ The original AutoGear authors and contributors retain credit for the design and 
 - Chat commands are `/tg`, `/tygear`, and `/TyGear`.
 - Override specialization is saved for each character. Other options are shared. An alt does not inherit another character's spec.
 - Install the folder as `Interface/AddOns/TyGear` so it matches `TyGear.toc`. Leave the original AutoGear addon disabled while TyGear is enabled; both would try to roll on loot and equip gear.
-- Releases use the [BigWigs Packager](https://github.com/BigWigsMods/packager) GitHub Action. Push a tag matching `N-N-N` or `N-N-N-alpha1` / `N-N-N-beta1` to build a zip and GitHub Release. CurseForge, WoWInterface, and Wago uploads need repository secrets (`CF_API_KEY`, `WOWI_API_TOKEN`, `WAGO_API_TOKEN`) plus TyGear's own project IDs in `TyGear.toc`.
+- Releases use the [BigWigs Packager](https://github.com/BigWigsMods/packager) GitHub Action. Push a tag matching `N-N-N` or `N-N-N-alpha1` / `N-N-N-beta1` to build a zip, GitHub Release, and CurseForge upload (project `1799929`). Optional later: `WOWI_API_TOKEN` / `WAGO_API_TOKEN` plus matching IDs in `TyGear.toc`.
 
 TyGear automatically rolls on and equips loot according to stat weights like WoWhead filters. TyGear rolls "need" on upgrades and "greed" otherwise.
 

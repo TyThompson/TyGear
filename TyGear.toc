@@ -14,10 +14,9 @@ TyGear.lua
 ## SavedVariables: TyGearDB
 ## SavedVariablesPerCharacter: TyGearDB, TyGearCharDB
 
-# CurseForge project 39179 and WoWInterface ID 26415 belong to the original
-# AutoGear addon. They are intentionally omitted so TyGear releases are not
-# published onto that project. After creating TyGear's own projects, set:
-# ## X-Curse-Project-ID: <id>
+## X-Curse-Project-ID: 1799929
+# AutoGear's CurseForge 39179 / WoWInterface 26415 are intentionally not used.
+# Optional later:
 # ## X-WoWI-ID: <id>
 # ## X-Wago-ID: <id>
 ## X-License: CC-BY-NC-SA-4.0
