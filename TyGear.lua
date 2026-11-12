@@ -2768,17 +2768,36 @@ local function newOptionsPage(optionsMenu)
 		scrollFrame:SetVerticalScroll(nextScroll)
 	end
 
+	-- Guard against DropdownButton's intrinsic OnMouseWheel_Intrinsic and its
+	-- SetScript handler both firing for the same wheel tick (double scroll).
+	local function pageWheel(self, delta)
+		if self._tyGearWheelLock then return end
+		self._tyGearWheelLock = true
+		onWheel(self, delta)
+		self._tyGearWheelLock = nil
+	end
+
 	local function enableWheel(frame)
 		if not frame or not frame.EnableMouseWheel then return end
 		if frame.EnableMouse and not frame:IsMouseEnabled() then
 			frame:EnableMouse(true)
 		end
 		frame:EnableMouseWheel(true)
-		-- WowStyle1DropdownTemplate cycles radio selections from its OnMouseWheel
-		-- mixin method. Replace both the method and the script so the wheel only
-		-- scrolls this options page, including when the cursor is over a dropdown.
-		frame.OnMouseWheel = onWheel
-		frame:SetScript("OnMouseWheel", onWheel)
+		-- WowStyle1DropdownTemplate / DropdownButton cycles radio selections from
+		-- OnMouseWheel_Intrinsic -> Rotate (Override specialization, Override Pawn
+		-- scale, Locked gear slots, etc.). Override the intrinsic method, the
+		-- script, and Rotate/Increment/Decrement so the wheel only scrolls this
+		-- options page when the cursor is over a dropdown.
+		if frame.OnMouseWheel_Intrinsic then
+			frame.OnMouseWheel_Intrinsic = pageWheel
+		end
+		if frame.Rotate then
+			frame.Rotate = function() end
+			frame.Increment = function() end
+			frame.Decrement = function() end
+		end
+		frame.OnMouseWheel = pageWheel
+		frame:SetScript("OnMouseWheel", pageWheel)
 		frame.tyGearWheel = true
 	end
 
@@ -3631,8 +3650,17 @@ local function optionsSetup(optionsMenu)
 						end
 					end)
 				end
-				--after SetupMenu so the page-scroll handler wins over selection cycling
+				--after SetupMenu so the page-scroll handler wins over selection cycling.
+				--Re-apply on show: DropdownSelectionTextMixin:OnShow regenerates the menu,
+				--and Override Pawn scale (and the other option dropdowns) must keep scrolling
+				--the options page instead of rotating the selected radio.
 				optionsPage:EnableWheel(frame[i].dropDown)
+				if frame[i].dropDown.HookScript and not frame[i].dropDown.tyGearWheelShowHook then
+					frame[i].dropDown.tyGearWheelShowHook = true
+					frame[i].dropDown:HookScript("OnShow", function(self)
+						optionsPage:EnableWheel(self)
+					end)
+				end
 
 			--if the child is a text box for a list of item IDs, build it that way
 			elseif v["child"]["editBox"] then
