@@ -3201,10 +3201,6 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			AutoConfirmBinding = true,
 			AutoConfirmBindingBlues = false,
 			AutoConfirmBindingEpics = false,
-			AutoAcceptQuests = false,
-			AutoCompleteNonItemQuests = false,
-			AutoCompleteItemQuests = false,
-			AutoAcceptPartyInvitations = false,
 			ScoreInTooltips = true,
 			ReasonsInTooltips = false,
 			AlwaysCompareGear = GetCVarBool("alwaysCompareItems"),
@@ -3339,50 +3335,6 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["description"] = L["Automatically confirm soul-binding when equipping an upgrade that has epic rarity, causing it to become soulbound.  If this is disabled, TyGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."],
 				["toggleDescriptionTrue"] = L["Automatically confirming soul-binding for epics is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatically confirming soul-binding for epics is now disabled.  TyGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."]
-			},
-			{
-				["option"] = "AutoAcceptQuests",
-				["tab"] = L["Quests & Party"],
-				["cliCommands"] = { "quest", "quests" },
-				["cliTrue"] = { "enable", "on", "start" },
-				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Automatically accept all quests"],
-				["description"] = L["Automatically accept all quests offered by NPCs and group members.  If this is disabled, TyGear will not accept any quests."],
-				["toggleDescriptionTrue"] = L["Automatically accepting all quests is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatically accepting all quests is now disabled."]
-			},
-			{
-				["option"] = "AutoCompleteNonItemQuests",
-				["tab"] = L["Quests & Party"],
-				["cliCommands"] = { "completequests", "completenonitemquests", "turnin", "turnins" },
-				["cliTrue"] = { "enable", "on", "start" },
-				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Automatically complete quests which do not award items"],
-				["description"] = L["Automatically turn in completed quests which do not offer a choice of item rewards.  If this is disabled, TyGear will not turn in these quests, but it can still complete quests which award items if \"Automatically complete quests which award items\" is enabled."],
-				["toggleDescriptionTrue"] = L["Automatically completing quests which do not award items is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatically completing quests which do not award items is now disabled."]
-			},
-			{
-				["option"] = "AutoCompleteItemQuests",
-				["tab"] = L["Quests & Party"],
-				["cliCommands"] = { "completeitemquests", "questitems", "questloot", "questgear" },
-				["cliTrue"] = { "enable", "on", "start" },
-				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Automatically complete quests which award items"],
-				["description"] = L["Automatically evaluate quest item rewards and choose the best upgrade for your current spec, turning in the quest.  If no upgrade is found, TyGear will choose the most valuable reward in vendor gold.  If this is disabled, TyGear can still interact with quests, but will not complete quests which present item rewards to choose, and you can still view the total TyGear score in item tooltips."],
-				["toggleDescriptionTrue"] = L["Automatically completing quests which award items is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatically completing quests which award items is now disabled."]
-			},
-			{
-				["option"] = "AutoAcceptPartyInvitations",
-				["tab"] = L["Quests & Party"],
-				["cliCommands"] = { "party" },
-				["cliTrue"] = { "enable", "on", "start" },
-				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Automatically accept party invitations"],
-				["description"] = L["Automatically accept party invitations from any player."],
-				["toggleDescriptionTrue"] = L["Automatic acceptance of party invitations is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic acceptance of party invitations is now disabled."]
 			},
 			{
 				["option"] = "ScoreInTooltips",
@@ -3616,7 +3568,6 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		optionsMenu:UnregisterAllEvents()
 		optionsMenu:SetScript("OnEvent", nil)
 
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PARTY_INVITE_REQUEST")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"START_LOOT_ROLL")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CONFIRM_LOOT_ROLL")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CHAT_MSG_LOOT")
@@ -3627,27 +3578,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_LEVEL_UP")              --Items with a level requirement become usable without any loot event
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_EQUIPMENT_CHANGED")     --Fires when equipment is equipped or unequipped from the player, excluding bags
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"BAG_CONTAINER_UPDATE")         --Fires when bags are equipped or unequipped from the player
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_ACCEPTED")               --Fires when a new quest is added to the player's quest log (which is what happens after a player accepts a quest).
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_ACCEPT_CONFIRM")         --Fires when certain kinds of quests (e.g. NPC escort quests) are started by another member of the player's group
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_AUTOCOMPLETE")           --Fires when a quest is automatically completed (remote handin available)
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_COMPLETE")               --Fires when the player is looking at the "Complete" page for a quest, at a questgiver.
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_DETAIL")                 --Fires when details of an available quest are presented by a questgiver
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_FINISHED")               --Fires when the player ends interaction with a questgiver or ends a stage of the questgiver dialog
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_GREETING")               --Fires when a questgiver presents a greeting along with a list of active or available quests
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_ITEM_UPDATE")            --Fires when information about items in a questgiver dialog is updated
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_LOG_UPDATE")             --Fires when the game client receives updates relating to the player's quest log (this event is not just related to the quests inside it)
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_PROGRESS")               --Fires when interacting with a questgiver about an active quest
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_QUERY_COMPLETE")       --Fires when quest completion information is available from the server; deprecated and registering returns an error as of 8.x
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_WATCH_UPDATE")           --Fires when the player's status regarding a quest's objectives changes, for instance picking up a required object or killing a mob for that quest. All forms of (quest objective) progress changes will trigger this event.
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_CLOSED")                --Fires when an NPC gossip interaction ends
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_CONFIRM")               --Fires when the player is requested to confirm a gossip choice
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_CONFIRM_CANCEL")        --Fires when an attempt to confirm a gossip choice is canceled
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_ENTER_CODE")            --Fires when the player attempts a gossip choice which requires entering a code
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GOSSIP_SHOW")                  --Fires when an NPC gossip interaction begins
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"UNIT_QUEST_LOG_CHANGED")       --Fires when a unit's quests change (accepted/objective progress/abandoned/completed)
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_SPECIALIZATION_CHANGED")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CONFIRM_DISENCHANT_ROLL")
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"QUEST_POI_UPDATE")
 
 		TyGearFrame:SetScript("OnUpdate", TyGearMain)
 	end
@@ -3767,9 +3699,6 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg roll [enable/on/start]/[disable/off/stop]': toggle automatic loot rolling", 0)
 	TyGearPrint("TyGear:    '/tg bind [enable/on/start]/[disable/off/stop]': toggle automatic soul-binding confirmation", 0)
 	TyGearPrint("TyGear:    '/tg neverneed [enable/on/start]/[disable/off/stop]': toggle preventing automatically rolling NEED", 0)
-	TyGearPrint("TyGear:    '/tg quest [enable/on/start]/[disable/off/stop]': toggle automatically accepting quests", 0)
-	TyGearPrint("TyGear:    '/tg turnin [enable/on/start]/[disable/off/stop]': toggle automatically completing quests which do not award items", 0)
-	TyGearPrint("TyGear:    '/tg party [enable/on/start]/[disable/off/stop]': toggle automatic acceptance of party invitations", 0)
 	TyGearPrint("TyGear:    '/tg tooltip [toggle/show/hide]': toggle showing score in item tooltips", 0)
 	TyGearPrint("TyGear:    '/tg reasons [toggle/show/hide]': toggle showing won't-auto-equip reasons in item tooltips", 0)
 	TyGearPrint("TyGear:    '/tg compare [enable/on/start]/[disable/off/stop]': toggle always comparing gear", 0)
@@ -3816,102 +3745,6 @@ function TyGearGetContainerItemInfo(bagIndex, bagSlot)
 end
 
 TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, ...)
-
-	--turning in a quest takes the same steps up to the reward screen whether or not it awards items, so either completion option opens completed quests and continues past the progress screen
-	local shouldAdvanceQuestTurnIns = TyGearDB.AutoCompleteNonItemQuests or TyGearDB.AutoCompleteItemQuests
-	if (event == "QUEST_ACCEPT_CONFIRM") then --another group member starts a quest (like an escort)
-		if (TyGearDB.AutoAcceptQuests) then
-			ConfirmAcceptQuest()
-		end
-	elseif (event == "QUEST_DETAIL") then
-		if (TyGearDB.AutoAcceptQuests) then
-			QuestDetailAcceptButton_OnClick()
-		end
-	elseif (event == "GOSSIP_SHOW") then
-		--active quests
-		if (shouldAdvanceQuestTurnIns) then
-			for i = 1, C_GossipInfo.GetNumActiveQuests() do
-				local quest = C_GossipInfo.GetActiveQuests()[i]
-				if (quest["isComplete"]==true) then
-					C_GossipInfo.SelectActiveQuest(quest.questID)
-				end
-			end
-		end
-		--available quests
-		if (TyGearDB.AutoAcceptQuests) then
-			for i = 1, C_GossipInfo.GetNumAvailableQuests() do
-				local quest = C_GossipInfo.GetAvailableQuests()[i]
-				if (quest["isTrivial"]==false) then
-					C_GossipInfo.SelectAvailableQuest(quest.questID)
-				end
-			end
-		end
-	elseif (event == "QUEST_GREETING") then
-		--active quests
-		if (shouldAdvanceQuestTurnIns) then
-			for i = 1, GetNumActiveQuests() do
-				local title, isComplete = GetActiveTitle(i)
-				if (isComplete) then
-					SelectActiveQuest(i)
-				end
-			end
-		end
-		--available quests
-		if (TyGearDB.AutoAcceptQuests) then
-			for i = 1, C_GossipInfo.GetNumAvailableQuests() do
-				local quest = C_GossipInfo.GetAvailableQuests()[i]
-				if (not quest.isTrivial) then
-					C_GossipInfo.SelectAvailableQuest(quest.questID)
-				end
-			end
-		end
-	elseif (event == "QUEST_PROGRESS") then
-		if (shouldAdvanceQuestTurnIns and IsQuestCompletable()) then
-			CompleteQuest()
-		end
-	end
-	if (event == "QUEST_COMPLETE") then
-		local rewards = GetNumQuestChoices()
-		if (not rewards or rewards == 0) then
-			if (TyGearDB.AutoCompleteNonItemQuests) then
-				GetQuestReward()
-			end
-		elseif (TyGearDB.AutoCompleteItemQuests) then
-			--choose a quest reward
-			local questRewardIDs = {}
-			local itemLinkMissing
-			for i = 1, rewards do
-				local itemLink = GetQuestItemLink("choice", i)
-				if (not itemLink) then
-					itemLinkMissing = 1
-					TyGearPrint("TyGear: No item link received from the server. To automatically choose a reward, you can try reopening quest rewards menu.", 0)
-				else
-					local _, _, Color, Ltype, id, Enchant, Gem1, Gem2, Gem3, Gem4, Suffix, Unique, LinkLvl, Name = string.find(itemLink, "|?c?f?f?(%x*)|?H?([^:]*):?(%d+):?(%d*):?(%d*):?(%d*):?(%d*):?(%d*):?(%-?%d*):?(%-?%d*):?(%d*)|?h?%[?([^%[%]]*)%]?|?h?|?r?")
-					questRewardIDs[i] = id
-				end
-			end
-			if not itemLinkMissing then
-				--only turn in once a reward was actually chosen; GetQuestReward(nil) on a quest with choices is undefined
-				local chosenReward = TyGearConsiderAllItems(nil, questRewardIDs)
-				if chosenReward then
-					GetQuestReward(chosenReward)
-				else
-					TyGearPrint("TyGear: Could not choose a quest reward automatically; please choose one manually.", 0)
-				end
-			end
-		end
-	end
-
-	if (TyGearDB.AutoAcceptPartyInvitations) then
-		if (event == "PARTY_INVITE_REQUEST") then
-			TyGearPrint("TyGear: Automatically accepting party invite.", 1)
-			AcceptGroup()
-			pcall(TyGearFrame.RegisterEvent,TyGearFrame,"GROUP_ROSTER_UPDATE")
-		elseif (event == "GROUP_ROSTER_UPDATE") then --for closing the invite window once I have joined the group
-			StaticPopup_Hide("PARTY_INVITE")
-			pcall(TyGearFrame.UnregisterEvent,TyGearFrame,"GROUP_ROSTER_UPDATE")
-		end
-	end
 
 	if event == "PLAYER_SPECIALIZATION_CHANGED" and arg1 == "player" then
 		local localizedClass, class, spec = TyGearGetClassAndSpec()
@@ -4039,13 +3872,13 @@ function TyGearDecideRoll(link, lootRollID)
 		local rollDecision = nil
 		local canNeed = lootRollID and select(6,GetLootRollItemInfo(lootRollID)) or 1
 		local lootRollItemID = GetItemInfoInstant(link)
-		local rollItemInfo = TyGearReadItemInfo(nil, nil, nil, nil, nil, link)
+		local rollItemInfo = TyGearReadItemInfo(nil, nil, nil, nil, link)
 		local reason = rollItemInfo.reason or "(no reason set)"
 		if TyGearIsItemIgnored(rollItemInfo) then
 			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is ignored, so not rolling.", 1)
 			return nil, rollItemInfo, reason
 		end
-		local wouldNeed = TyGearConsiderAllItems(lootRollItemID, nil, rollItemInfo, true)
+		local wouldNeed = TyGearConsiderAllItems(lootRollItemID, rollItemInfo, true)
 		if TyGearAllValidGearSlotsProtected(rollItemInfo) then
 			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." only fits ignored slots, so not rolling.", 1)
 			return nil, rollItemInfo, reason
@@ -4535,7 +4368,7 @@ function TyGearUpdateBestItems()
 	end
 end
 
-function TyGearConsiderAllItems(lootRollItemID, questRewardIDs, arbitraryItemInfo, noActions)
+function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 	if (arbitraryItemInfo and arbitraryItemInfo.isMount and (not arbitraryItemInfo.alreadyKnown)) then
 		return 1
 	end
@@ -4549,16 +4382,8 @@ function TyGearConsiderAllItems(lootRollItemID, questRewardIDs, arbitraryItemInf
 		TyGearConsiderItem(arbitraryItemInfo, nil, nil, 1)
 	end
 
-	--consider quest rewards (if any)
-	if questRewardIDs and not noActions then
-		for i = 1, GetNumQuestChoices() do
-			local info = TyGearReadItemInfo(nil, nil, nil, nil, i)
-			TyGearConsiderItem(info, nil, nil, nil, i)
-		end
-	end
-
 	--create all future equip actions required (only if not rolling currently)
-	if (not lootRollItemID and not questRewardIDs and not noActions) then
+	if (not lootRollItemID and not noActions) then
 		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
 			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
 				if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND or invSlot == INVSLOT_TABARD then
@@ -4700,36 +4525,6 @@ function TyGearConsiderAllItems(lootRollItemID, questRewardIDs, arbitraryItemInf
 			end
 		end
 		return nil
-	elseif (questRewardIDs and not noActions) then
-		--choose a quest reward
-		--pick the reward with the biggest score improvement
-		local bestRewardIndex
-		local bestRewardScoreDelta
-		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastEquippableBagSlot do
-			if invSlot <= INVSLOT_LAST_EQUIPPED or invSlot >= TyGearFirstEquippableBagSlot then
-				if (TyGearBestItems[invSlot].chooseReward and (invSlot ~= INVSLOT_TABARD or TyGearIsBest2hBetterThanBestMainAndOff())) then
-					local delta = TyGearBestItems[invSlot].score - TyGearEquippedItems[invSlot].score
-					if (not bestRewardScoreDelta or delta > bestRewardScoreDelta) then
-						bestRewardScoreDelta = delta
-						bestRewardIndex = TyGearBestItems[invSlot].chooseReward
-					end
-				end
-			end
-		end
-		if (not bestRewardIndex) then
-			--no gear upgrades, so choose the one with the highest sell value
-			local bestRewardVendorPrice
-			for i = 1, GetNumQuestChoices() do
-				if not TyGearIsItemIgnored(questRewardIDs[i]) then
-					local vendorPrice = select(11,GetItemInfo(questRewardIDs[i]))
-					if vendorPrice and ((not bestRewardVendorPrice) or (vendorPrice > bestRewardVendorPrice)) then
-						bestRewardIndex = i
-						bestRewardVendorPrice = vendorPrice
-					end
-				end
-			end
-		end
-		return bestRewardIndex
 	end
 	return anythingBetter
 end
@@ -4750,7 +4545,7 @@ function TyGearIs1hWorthwhile(i)
 end
 
 --companion function to TyGearConsiderAllItems
-function TyGearConsiderItem(info, bag, slot, rollOn, chooseReward)
+function TyGearConsiderItem(info, bag, slot, rollOn)
 	if info.empty
 	or TyGearIsItemIgnored(info)
 	or (info.guid and TyGearBestItemsAlreadyAdded[info.guid])
@@ -4813,7 +4608,6 @@ function TyGearConsiderItem(info, bag, slot, rollOn, chooseReward)
 				TyGearBestItems[lowestScoringValidGearSlot].bag = bag
 				TyGearBestItems[lowestScoringValidGearSlot].slot = slot
 				TyGearBestItems[lowestScoringValidGearSlot].rollOn = rollOn
-				TyGearBestItems[lowestScoringValidGearSlot].chooseReward = chooseReward
 				return true
 			end
 		end
@@ -5146,7 +4940,7 @@ end
 --matches the item set header line in item tooltips, like "Midnight Herald's Regalia (2/5)"; ITEM_SET_NAME is "%s (%d/%d)" in English and is localized, so magic characters are escaped before turning its format specifiers into pattern items
 local ITEM_SET_NAME_PATTERN = "^"..(ITEM_SET_NAME:gsub("[%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"):gsub("%%s", ".+"):gsub("%%d", "%%d+")).."$"
 
-function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, questRewardIndex, link, tooltipData)
+function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tooltipData)
 	if not tooltipData then
 		TyGearTooltip:SetOwner(UIParent, "ANCHOR_NONE")
 		TyGearTooltip:ClearLines()
@@ -5195,16 +4989,6 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, questRewar
 		else
 			TyGearTooltip:SetLootRollItem(lootRollID)
 		end
-	elseif questRewardIndex then
-		if not info.link then
-			info.link = GetQuestItemLink("choice", questRewardIndex)
-		end
-		info.item = Item:CreateFromItemLink(select(3,ExtractHyperlinkString(info.link)))
-		if C_TooltipInfo and C_TooltipInfo.GetQuestItem then
-			tooltipData = C_TooltipInfo.GetQuestItem("choice", questRewardIndex)
-		else
-			TyGearTooltip:SetQuestItem("choice", questRewardIndex)
-		end
 	elseif link then
 		info.link = link
 		info.item = Item:CreateFromItemLink(select(3,ExtractHyperlinkString(info.link)))
@@ -5219,7 +5003,6 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, questRewar
 			"; lootRollID: "..tostring(lootRollID or "nil")..
 			"; container: "..tostring(container or "nil")..
 			"; slot: "..tostring(slot or "nil")..
-			"; questRewardIndex: "..tostring(questRewardIndex or "nil")..
 			"; link: "..tostring(link or "nil"),
 			3
 		)
@@ -5237,7 +5020,6 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, questRewar
 			"; lootRollID: "..tostring(lootRollID or "nil")..
 			"; container: "..tostring(container or "nil")..
 			"; slot: "..tostring(slot or "nil")..
-			"; questRewardIndex: "..tostring(questRewardIndex or "nil")..
 			"; link: "..tostring(info.link or "nil"),
 			3
 		)
@@ -5255,7 +5037,6 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, questRewar
 			"; lootRollID: "..tostring(lootRollID or "nil")..
 			"; container: "..tostring(container or "nil")..
 			"; slot: "..tostring(slot or "nil")..
-			"; questRewardIndex: "..tostring(questRewardIndex or "nil")..
 			"; link: "..tostring(info.link or "nil"),
 			3
 		)
@@ -6381,7 +6162,7 @@ function TyGearTooltipHook(tooltip, tooltipData)
 		TyGearPrint("TyGear: No item link for "..(name or "(no name)").." on "..tooltipName,3)
 		return
 	end
-	local info = TyGearReadItemInfo(nil,nil,nil,nil,nil,link,tooltipData)
+	local info = TyGearReadItemInfo(nil,nil,nil,nil,link,tooltipData)
 
 	if (not isAComparisonTooltip) and (not info.guid) then
 		info.guid = guid

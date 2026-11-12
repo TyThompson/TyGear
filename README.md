@@ -12,8 +12,6 @@ The original AutoGear authors and contributors retain credit for the design and 
 
 TyGear automatically rolls on and equips loot according to stat weights like WoWhead filters. TyGear rolls "need" on upgrades and "greed" otherwise.
 
-TyGear also optionally interacts with quest NPCs, automatically accepting and completing quests, including deciding the best quest reward based on the same stat weights. If no item is deemed to be an upgrade, the item worth the most vendor gold is chosen.
-
 Included in TyGear are default stat weights for all specs of all classes. Using these weights, TyGear will roll "need" on better loot and equip it for you when it can.
 
 Stat weights work like the advanced filter on WoWhead. For example, if you specify that 1 point of strength is worth 1 point and 1 point of crit is worth 0.5 points, an item with 5 strength and 3 crit will be worth 6.5 points. That item might then replace an item in the same slot with 3 strength and 2 crit, worth 4 points. If the first item was presented in a loot roll, TyGear would roll "need" and if you won the roll, it would equip the new item as soon as it could.
@@ -38,9 +36,6 @@ Chat commands (`/tygear` is the same as `/tg`):
 /tg scan - manually run automatic gearing once (scan all bags for better gear)
 /tg spec - query name of current specialization
 /tg toggle/[enable/on/start]/[disable/off/stop] - toggle automatic gearing
-/tg quest [enable/on/start]/[disable/off/stop] - toggle automatically accepting quests
-/tg turnin [enable/on/start]/[disable/off/stop] - toggle automatically completing quests which do not award items
-/tg party [enable/on/start]/[disable/off/stop] - toggle automatic acceptance of party invitations
 /tg verbosity [0/1/2]: set allowed verbosity level; valid levels are: 0 (errors), 1 (info), 2 (details)
 ```
 

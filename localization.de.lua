@@ -6,7 +6,6 @@ if GetLocale() == "deDE" then
 	T.Localization["Loot"] = "Beute"
 	T.Localization["Rolling"] = "Würfeln"
 	T.Localization["Soul-binding"] = "Seelenbindung"
-	T.Localization["Quests & Party"] = "Quests & Gruppe"
 	T.Localization["Tooltips"] = "Tooltips"
 	T.Localization["Vendor"] = "Händler"
 	T.Localization["Selling greys"] = "Graue Gegenstände verkaufen"
@@ -73,30 +72,6 @@ if GetLocale() == "deDE" then
 	T.Localization["Automatically confirm soul-binding when equipping an upgrade that has epic rarity, causing it to become soulbound.  If this is disabled, TyGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."] = "Die Seelenbindung automatisch bestätigen, wenn eine epische Verbesserung angelegt wird; der Gegenstand wird dadurch seelengebunden.  Ist dies deaktiviert, versucht TyGear weiterhin, epische bindende Gegenstände anzulegen, aber du musst die Seelenbindung selbst bestätigen."
 	T.Localization["Automatically confirming soul-binding for epics is now enabled."] = "Automatisches Bestätigen der Seelenbindung für epische Gegenstände ist jetzt aktiviert."
 	T.Localization["Automatically confirming soul-binding for epics is now disabled.  TyGear will still try to equip epic binding gear, but you will have to confirm soul-binding manually."] = "Automatisches Bestätigen der Seelenbindung für epische Gegenstände ist jetzt deaktiviert.  TyGear versucht weiterhin, epische bindende Gegenstände anzulegen, aber du musst die Seelenbindung selbst bestätigen."
-
-	-- option: AutoAcceptQuests
-	T.Localization["Automatically accept all quests"] = "Alle Quests automatisch annehmen"
-	T.Localization["Automatically accept all quests offered by NPCs and group members.  If this is disabled, TyGear will not accept any quests."] = "Alle Quests von NSCs und Gruppenmitgliedern automatisch annehmen.  Ist dies deaktiviert, nimmt TyGear keine Quests an."
-	T.Localization["Automatically accepting all quests is now enabled."] = "Automatisches Annehmen aller Quests ist jetzt aktiviert."
-	T.Localization["Automatically accepting all quests is now disabled."] = "Automatisches Annehmen aller Quests ist jetzt deaktiviert."
-
-	-- option: AutoCompleteNonItemQuests
-	T.Localization["Automatically complete quests which do not award items"] = "Quests ohne Gegenstandsbelohnung automatisch abschließen"
-	T.Localization["Automatically turn in completed quests which do not offer a choice of item rewards.  If this is disabled, TyGear will not turn in these quests, but it can still complete quests which award items if \"Automatically complete quests which award items\" is enabled."] = "Abgeschlossene Quests, die keine Auswahl an Gegenstandsbelohnungen bieten, automatisch abgeben.  Ist dies deaktiviert, gibt TyGear diese Quests nicht ab, kann aber weiterhin Quests mit Gegenstandsbelohnung abschließen, wenn \"Quests mit Gegenstandsbelohnung automatisch abschließen\" aktiviert ist."
-	T.Localization["Automatically completing quests which do not award items is now enabled."] = "Automatisches Abschließen von Quests ohne Gegenstandsbelohnung ist jetzt aktiviert."
-	T.Localization["Automatically completing quests which do not award items is now disabled."] = "Automatisches Abschließen von Quests ohne Gegenstandsbelohnung ist jetzt deaktiviert."
-
-	-- option: AutoCompleteItemQuests
-	T.Localization["Automatically complete quests which award items"] = "Quests mit Gegenstandsbelohnung automatisch abschließen"
-	T.Localization["Automatically evaluate quest item rewards and choose the best upgrade for your current spec, turning in the quest.  If no upgrade is found, TyGear will choose the most valuable reward in vendor gold.  If this is disabled, TyGear can still interact with quests, but will not complete quests which present item rewards to choose, and you can still view the total TyGear score in item tooltips."] = "Gegenstandsbelohnungen von Quests automatisch bewerten, die beste Verbesserung für deine aktuelle Spezialisierung wählen und die Quest abgeben.  Gibt es keine Verbesserung, wählt TyGear die Belohnung mit dem höchsten Händlerwert.  Ist dies deaktiviert, kann TyGear weiterhin mit Quests interagieren, schließt aber keine Quests mit Belohnungsauswahl ab; die TyGear-Wertung bleibt in den Tooltips sichtbar."
-	T.Localization["Automatically completing quests which award items is now enabled."] = "Automatisches Abschließen von Quests mit Gegenstandsbelohnung ist jetzt aktiviert."
-	T.Localization["Automatically completing quests which award items is now disabled."] = "Automatisches Abschließen von Quests mit Gegenstandsbelohnung ist jetzt deaktiviert."
-
-	-- option: AutoAcceptPartyInvitations
-	T.Localization["Automatically accept party invitations"] = "Gruppeneinladungen automatisch annehmen"
-	T.Localization["Automatically accept party invitations from any player."] = "Gruppeneinladungen von allen Spielern automatisch annehmen."
-	T.Localization["Automatic acceptance of party invitations is now enabled."] = "Automatisches Annehmen von Gruppeneinladungen ist jetzt aktiviert."
-	T.Localization["Automatic acceptance of party invitations is now disabled."] = "Automatisches Annehmen von Gruppeneinladungen ist jetzt deaktiviert."
 
 	-- option: ScoreInTooltips
 	T.Localization["Show TyGear score in item tooltips"] = "TyGear-Wertung in Gegenstands-Tooltips anzeigen"
