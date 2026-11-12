@@ -15,9 +15,9 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 ## What to expect
 
 - Upgrades found in combat are equipped when combat ends.
-- Gear TyGear cannot score, plus slot/item ignore controls, live on the **Ignored gear** tab.
-- Items you always want to **NEED** (for example a crafting green in a dungeon) go on the **Need list** tab; add them near the top of that tab or with a key binding.
-- Vendor greys and whites to keep live on the **Keep list** tab, including **Keep unbound grey gear**. It starts with Forever crafting tools only; add more near the top of that tab.
+- Gear TyGear cannot score, plus slot/item ignore controls, live on the **Ignored List** tab.
+- Items you always want to **NEED** (for example a crafting green in a dungeon) go on the **Need List** tab; add them near the top of that tab or with a key binding.
+- Vendor greys and whites to keep live on the **Keep List** tab, including **Keep unbound grey gear**. It starts with Forever crafting tools only; add more near the top of that tab.
 - Weapons your class can never learn are skipped. Untrained weapons still show a score with "(won't equip)".
 - Mounts are never rolled on automatically.
 - **Roll on non-gear loot** is off by default. If you turn it on, TyGear greeds non-upgrade loot (including crafting reagents). Need-list items still roll NEED even when that option is off.
