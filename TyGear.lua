@@ -2544,6 +2544,18 @@ local TyGearClassesHiddenOnForever = {
 	["MONK"] = true,
 }
 
+-- Spec names that are not Forever talent trees (modern renames or later splits).
+-- Weights stay in TyGearDefaultWeights for other clients and legacy saved overrides.
+local TyGearSpecsHiddenOnForever = {
+	["DRUID"] = {
+		["Feral"] = true, -- Forever tree is "Feral Combat"
+		["Guardian"] = true, -- bear tank is still Feral Combat
+	},
+	["ROGUE"] = {
+		["Outlaw"] = true, -- Forever tree is "Combat"
+	},
+}
+
 -- Weapon subclasses each Forever class can learn (including skills not yet trained).
 -- Untrained-but-learnable weapons still get tooltip scores; class-incompatible ones are skipped.
 -- Built lazily so Enum.ItemWeaponSubclass is available when first needed.
@@ -2656,8 +2668,11 @@ function TyGearGetOverrideSpecs()
 		local localizedClassName = TyGearClassList[className]
 		if localizedClassName then
 			local specOrder = {}
+			local hiddenSpecs = IS_WOW_FOREVER and TyGearSpecsHiddenOnForever[className]
 			for specName in pairs(TyGearDefaultWeights[className]) do
-				table.insert(specOrder, specName)
+				if not (hiddenSpecs and hiddenSpecs[specName]) then
+					table.insert(specOrder, specName)
+				end
 			end
 			table.sort(specOrder, function(a, b)
 				if a == "None" then
