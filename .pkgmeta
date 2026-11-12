@@ -1,0 +1,9 @@
+package-as: TyGear
+
+ignore:
+  - .git
+  - .github
+  - .vscode
+  - .pkgmeta
+  - .gitignore
+  - _definitions.lua
