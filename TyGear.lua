@@ -3379,7 +3379,7 @@ local function buildIgnoreSection(optionsPage)
 
 	--keep list and its options live on the ignore list; items here are not sold or evaluated
 	addSubheader(L["Keep List"])
-	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
+	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. The list starts with crafting gear such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
 	addNote(keepListDescription)
 
 	local unboundCheck = newCheckbox(
@@ -3963,7 +3963,7 @@ buildKeepListSection = function(listMenu, anchorBelow)
 	note:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -6)
 	note:SetWidth(480)
 	note:SetJustifyH("LEFT")
-	note:SetText(L["Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated. The list starts with crafting tools that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, and enchanting rods. Every fishing pole is kept even if its item ID is removed from this list."])
+	note:SetText(L["Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated. White selling only covers weapons and armor, so non-gear whites do not need to be listed. The list starts with crafting gear that exists on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, and Arclight Spanner. Every fishing pole is kept even if its item ID is removed from this list."])
 	listMenu.keepListNote = note
 
 	local unboundCheck = newCheckbox(
@@ -4992,25 +4992,25 @@ if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 local TyGearCraftingToolItemIDsClassic = {
 	2901, --Mining Pick
 	5956, --Blacksmith Hammer
-	6218, --Runed Copper Rod
 	6219, --Arclight Spanner
 	6256, --Fishing Pole
-	6339, --Runed Silver Rod
 	6365, --Strong Fishing Pole
 	6367, --Big Iron Fishing Pole
 	7005, --Skinning Knife
-	10498, --Gyromatic Micro-Adjustor
-	11130, --Runed Golden Rod
-	11145, --Runed Truesilver Rod
 	12225, --Blump Family Fishing Pole
-	16207, --Runed Arcanite Rod
 }
 --removed from the default keep list (fishing poles still kept by weapon subclass; non-gear whites are never sold as white gear)
 local TyGearRemovedDefaultKeepListItemIDs = {
 	[3567] = true, --Dwarven Fishing Pole
 	[4471] = true, --Flint and Tinder
 	[4598] = true, --Goblin Fishing Pole
+	[6218] = true, --Runed Copper Rod
+	[6339] = true, --Runed Silver Rod
 	[6366] = true, --Darkwood Fishing Pole
+	[10498] = true, --Gyromatic Micro-Adjustor
+	[11130] = true, --Runed Golden Rod
+	[11145] = true, --Runed Truesilver Rod
+	[16207] = true, --Runed Arcanite Rod
 	[20815] = true, --Jeweler's Kit
 	[39505] = true, --Virtuoso Inking Set
 	[40772] = true, --Gnomish Army Knife
@@ -5250,10 +5250,10 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliCommands"] = { "sellunsuitable", "unsuitablewhites" },
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Automatically sell unsuitable whites"],
-				["description"] = L["Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, the ignore list, and the keep list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
-				["toggleDescriptionTrue"] = L["Automatic selling of unsuitable white items is now enabled."],
-				["toggleDescriptionFalse"] = L["Automatic selling of unsuitable white items is now disabled."],
+				["label"] = L["Automatically sell unsuitable white gear"],
+				["description"] = L["Only sells white gear (weapons and armor). Automatically sell white weapons and armor your class can't equip when interacting with a vendor.  Other white items such as trade goods and enchanting rods are never sold by this option.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, the ignore list, and the keep list.  Fishing poles and profession equipment are always kept.  A level requirement alone does not count as unsuitable, since you will be able to wear the item later.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
+				["toggleDescriptionTrue"] = L["Automatic selling of unsuitable white gear is now enabled."],
+				["toggleDescriptionFalse"] = L["Automatic selling of unsuitable white gear is now disabled."],
 				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
@@ -5264,7 +5264,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically sell all white gear"],
-				["description"] = L["Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, the ignore list, and the keep list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
+				["description"] = L["Only sells white gear (weapons and armor). Automatically sell all white weapons and armor when interacting with a vendor, including pieces you can equip.  Other white items such as trade goods and enchanting rods are never sold by this option.  Hold Shift while opening the vendor to skip selling that time.\n\nTyGear keeps quest items, items the current vendor accepts as payment, items it would equip as upgrades, tabards, the ignore list, and the keep list.  Fishing poles and profession equipment are always kept.  It stops selling when the vendor doesn't buy items or you can't hold more gold.\n\nItems TyGear would sell are marked as junk for bag addons such as Baganator (choose TyGear as the junk source there) and for the default bags."],
 				["toggleDescriptionTrue"] = L["Automatic selling of all white gear is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatic selling of all white gear is now disabled."],
 				["togglePostHook"] = function() TyGearQueueVendorJunkRefresh() end
@@ -5276,7 +5276,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["shouldUse"] = false, --the keep list lives on the ignore list
 				["editBox"] = true,
 				["label"] = L["Keep List"],
-				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nThe list starts with crafting tools such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Gyromatic Micro-Adjustor, Herbalist's Spade, and enchanting rods.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."],
+				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. The list starts with crafting gear such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."],
 				["editBoxPostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
