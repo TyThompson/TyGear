@@ -775,6 +775,26 @@ function TyGearGetLockedGearSlots()
 	return TyGearDB.LockedGearSlots
 end
 
+--checked slots are locked; there is no separate master lock toggle
+function TyGearIsGearSlotLocked(invSlot)
+	if not invSlot or not TyGearDB or not TyGearDB.LockedGearSlots then return false end
+	local slotData = TyGearDB.LockedGearSlots[invSlot]
+	return slotData and slotData.enabled and true or false
+end
+
+--old LockGearSlots master toggle gated per-slot locks; drop it and preserve "off" as no slots locked
+function TyGearMigrateLockGearSlots()
+	if not TyGearDB or TyGearDB.LockGearSlots == nil then return end
+	if TyGearDB.LockGearSlots == false and TyGearDB.LockedGearSlots then
+		for _, slotData in pairs(TyGearDB.LockedGearSlots) do
+			if type(slotData) == "table" then
+				slotData.enabled = false
+			end
+		end
+	end
+	TyGearDB.LockGearSlots = nil
+end
+
 --equipment slots only: bags are outside INVSLOT_LAST_EQUIPPED
 function TyGearGetDefaultIgnoredGearSlots()
 	local ignoredGearSlots = {}
@@ -2846,9 +2866,9 @@ local function newOptionsPage(optionsMenu)
 		frame:EnableMouseWheel(true)
 		-- WowStyle1DropdownTemplate / DropdownButton cycles radio selections from
 		-- OnMouseWheel_Intrinsic -> Rotate (Override specialization, Override Pawn
-		-- scale, Locked gear slots, etc.). Override the intrinsic method, the
-		-- script, and Rotate/Increment/Decrement so the wheel only scrolls this
-		-- options page when the cursor is over a dropdown.
+		-- scale, etc.). Override the intrinsic method, the script, and
+		-- Rotate/Increment/Decrement so the wheel only scrolls this options page
+		-- when the cursor is over a dropdown.
 		if frame.OnMouseWheel_Intrinsic then
 			frame.OnMouseWheel_Intrinsic = pageWheel
 		end
@@ -3714,6 +3734,44 @@ local function optionsSetup(optionsMenu)
 			return
 		end
 
+		--standalone gear-slot grid: checked slots are locked, with no master toggle
+		if v["slotGrid"] then
+			local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
+			if v["description"] then
+				addOptionsNote(page, v["description"])
+			end
+			local lockedSlots = TyGearGetLockedGearSlots()
+			local slotList = {}
+			for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+				if TyGearIsManagedGearSlot(slot) then
+					table.insert(slotList, slot)
+				end
+			end
+			frame[i] = createGearSlotCheckboxGrid(
+				page,
+				"TyGear"..v["option"].."Grid",
+				"TyGearLockSlot",
+				slotList,
+				function(gearSlot)
+					return lockedSlots[gearSlot] and lockedSlots[gearSlot].enabled
+				end,
+				function(gearSlot, tick)
+					if not lockedSlots[gearSlot] then
+						lockedSlots[gearSlot] = {
+							["label"] = TyGearGetLockedGearSlotLabel(gearSlot),
+							["enabled"] = false
+						}
+					end
+					lockedSlots[gearSlot].enabled = tick
+					if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+				end,
+				TyGearColorize(v["description"] or ""),
+				function(widget) optionsPage:EnableWheel(widget) end
+			)
+			optionsPage:AddRow(frame[i], 4, 4)
+			return
+		end
+
 		--function to run when toggling this option by clicking the checkbox
 		_G["TyGearSimpleToggle"..v["option"]] = function(self, value)
 			if v["cvar"] then
@@ -3756,41 +3814,8 @@ local function optionsSetup(optionsMenu)
 		--if this has a child defined and it should be used, build its child
 		if v["child"] and ((v["child"]["shouldUse"] == nil) or (v["child"]["shouldUse"] and (v["child"]["shouldUse"] ~= false))) then
 
-			--compact multi-column gear-slot grid, matching the Ignore tab
-			if v["child"]["slotGrid"] then
-				local lockedSlots = TyGearGetLockedGearSlots()
-				local slotList = {}
-				for slot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
-					if TyGearIsManagedGearSlot(slot) then
-						table.insert(slotList, slot)
-					end
-				end
-				local slotGrid = createGearSlotCheckboxGrid(
-					page,
-					"TyGear"..v["child"]["option"].."Grid",
-					"TyGearLockSlot",
-					slotList,
-					function(gearSlot)
-						return lockedSlots[gearSlot] and lockedSlots[gearSlot].enabled
-					end,
-					function(gearSlot, tick)
-						if not lockedSlots[gearSlot] then
-							lockedSlots[gearSlot] = {
-								["label"] = TyGearGetLockedGearSlotLabel(gearSlot),
-								["enabled"] = false
-							}
-						end
-						lockedSlots[gearSlot].enabled = tick
-						if TyGearUpdateBestItems then TyGearUpdateBestItems() end
-					end,
-					TyGearColorize(v["child"]["description"] or v["description"] or ""),
-					function(frame) optionsPage:EnableWheel(frame) end
-				)
-				frame[i].slotGrid = slotGrid
-				optionsPage:AddRow(slotGrid, 4, 20)
-
 			--if the child is a dropdown, build it that way
-			elseif v["child"]["options"] then
+			if v["child"]["options"] then
 
 				local width = 250
 				if useModernDropdowns then
@@ -4158,7 +4183,6 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			PawnScale = "",
 			DebugInfoInTooltips = false,
 			AllowedVerbosity = 1,
-			LockGearSlots = true,
 			LockedGearSlots = TyGearGetDefaultLockedGearSlots()
 		}
 
@@ -4167,6 +4191,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		TyGearPruneForeverVendorKeepList()
 		TyGearInitializeCharacterSettings()
 		TyGearFixLockedGearSlots()
+		TyGearMigrateLockGearSlots()
 
 		--initialize options menu variables
 		TyGearOptions = {
@@ -4454,22 +4479,12 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				}
 			},
 			{
-				["option"] = "LockGearSlots",
+				["option"] = "LockedGearSlots",
+				["slotGrid"] = true,
 				["tab"] = L["Evaluation"],
-				["cliCommands"] = { "lock", "lockslots", "lockgearslots" },
-				["cliTrue"] = { "enable", "on", "start" },
-				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Lock specified gear slots"],
-				["description"] = L["Lock the specified gear slots, so TyGear will not remove or equip items in those slots.  If this is enabled and any slots are locked, TyGear will still evaluate scores for items in all slots, but will not remove or equip items in the locked slots."],
-				["toggleDescriptionTrue"] = L["Locking specified gear slots is now enabled."],
-				["toggleDescriptionFalse"] = L["Locking specified gear slots is now disabled."],
-				["togglePostHook"] = function() TyGearUpdateBestItems() end,
-				["child"] = {
-					["option"] = "LockedGearSlots",
-					["slotGrid"] = true,
-					["label"] = L["Gear slots to lock"],
-					["description"] = L["Choose which gear slots TyGear should leave alone while locking is enabled."]
-				}
+				["section"] = L["Locked gear slots"],
+				["label"] = L["Locked gear slots"],
+				["description"] = L["Checked slots are left alone: TyGear will not remove or equip items there. Scores are still evaluated for all slots."]
 			},
 			{
 				["option"] = "DebugInfoInTooltips",
@@ -5755,7 +5770,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 				if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND or invSlot == INVSLOT_TABARD then
 					--skip weapons for now
 				else
-					local isSlotLocked = TyGearDB.LockGearSlots and TyGearDB.LockedGearSlots[invSlot].enabled
+					local isSlotLocked = TyGearIsGearSlotLocked(invSlot)
 					local equippedInfo = TyGearEquippedItems[invSlot].info
 					local equippedScore = TyGearEquippedItems[invSlot].score
 					if (not TyGearIsGearSlotProtected(invSlot)) and (not TyGearBestItems[invSlot].equipped) then
@@ -5779,8 +5794,8 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 			end
 		end
 		--handle weapons
-		local isMainHandSlotLocked = TyGearDB.LockGearSlots and TyGearDB.LockedGearSlots[INVSLOT_MAINHAND].enabled
-		local isOffHandSlotLocked = TyGearDB.LockGearSlots and TyGearDB.LockedGearSlots[INVSLOT_OFFHAND].enabled
+		local isMainHandSlotLocked = TyGearIsGearSlotLocked(INVSLOT_MAINHAND)
+		local isOffHandSlotLocked = TyGearIsGearSlotLocked(INVSLOT_OFFHAND)
 		if (TyGearBestItems[INVSLOT_MAINHAND].score + TyGearBestItems[INVSLOT_OFFHAND].score > TyGearBestItems[INVSLOT_TABARD].score)
 		or (TyGearEquippedItems[INVSLOT_TABARD].info.unusable)
 		or (((not TyGearBestItems[INVSLOT_MAINHAND].info.empty)

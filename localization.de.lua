@@ -159,13 +159,9 @@ if GetLocale() == "deDE" then
 	T.Localization["Overriding Pawn scale with the selected scale is now enabled."] = "Überschreiben der Pawn-Skala mit der gewählten Skala ist jetzt aktiviert."
 	T.Localization["Overriding Pawn scale with the selected scale is now disabled."] = "Überschreiben der Pawn-Skala mit der gewählten Skala ist jetzt deaktiviert."
 
-	-- option: LockGearSlots
-	T.Localization["Lock specified gear slots"] = "Ausgewählte Ausrüstungsplätze sperren"
-	T.Localization["Lock the specified gear slots, so TyGear will not remove or equip items in those slots.  If this is enabled and any slots are locked, TyGear will still evaluate scores for items in all slots, but will not remove or equip items in the locked slots."] = "Die ausgewählten Ausrüstungsplätze sperren, damit TyGear dort nichts ablegt oder anlegt.  Ist dies aktiviert und sind Plätze gesperrt, bewertet TyGear weiterhin Gegenstände für alle Plätze, legt in gesperrten Plätzen aber nichts an oder ab."
-	T.Localization["Locking specified gear slots is now enabled."] = "Sperren der ausgewählten Ausrüstungsplätze ist jetzt aktiviert."
-	T.Localization["Locking specified gear slots is now disabled."] = "Sperren der ausgewählten Ausrüstungsplätze ist jetzt deaktiviert."
-	T.Localization["Gear slots to lock"] = "Zu sperrende Ausrüstungsplätze"
-	T.Localization["Choose which gear slots TyGear should leave alone while locking is enabled."] = "Wähle, welche Ausrüstungsplätze TyGear bei aktivierter Sperre unangetastet lassen soll."
+	-- option: LockedGearSlots
+	T.Localization["Locked gear slots"] = "Gesperrte Ausrüstungsplätze"
+	T.Localization["Checked slots are left alone: TyGear will not remove or equip items there. Scores are still evaluated for all slots."] = "Markierte Plätze bleiben unangetastet: TyGear legt dort nichts ab oder an. Bewertungen werden weiterhin für alle Plätze berechnet."
 
 	-- tab: Ignore
 	T.Localization["Ignore"] = "Ignorieren"
