@@ -415,7 +415,9 @@ local function TyGearCollectReagentBagSlotCandidates()
 		seen[id] = true
 		table.insert(list, id)
 	end
-	if TyGearReagentBagSlotOverride then
+	-- Confirmed in game on WoW Forever: PutItemInBag(35) equips the cursor item into the reagent bag slot.
+	add(35, true)
+	if TyGearReagentBagSlotOverride and not (IS_WOW_FOREVER and TyGearReagentBagSlotOverride ~= 35) then
 		add(TyGearReagentBagSlotOverride, true)
 	end
 	if TyGearReagentBagButtonID then
@@ -474,6 +476,10 @@ function TyGearRefreshReagentBagSlot()
 		end
 	end
 	slot = slot or candidates[1]
+	-- Forever's reagent bag button takes PutItemInBag(35). Use that id for reads and equips.
+	if IS_WOW_FOREVER then
+		slot = 35
+	end
 	local slotChanged = slot ~= previousSlot or container ~= previousContainer or buttonID ~= previousButton or rangeChanged
 	if not slotChanged and TyGearEquippableBagSlots[1] then
 		return
@@ -646,10 +652,15 @@ function TyGearAssignReagentBagSlots(info)
 	end
 	if not info.ignored and not TyGearIsLeftOut(info) then
 		local reason = info.reason
-		if (not info.unusable) or (not reason) or (type(reason) == "string" and string.find(reason, "invalid item", 1, true)) then
+		local tooltipBlocked = type(reason) == "string" and (
+			string.find(reason, "invalid item", 1, true)
+			or string.find(reason, "restricted", 1, true)
+			or string.find(reason, "not yet available", 1, true)
+		)
+		if (not info.unusable) or (not reason) or tooltipBlocked then
 			info.unusable = nil
 			info.usable = 1
-			if reason and type(reason) == "string" and string.find(reason, "invalid item", 1, true) then
+			if tooltipBlocked then
 				info.reason = nil
 			end
 		end
@@ -7964,7 +7975,10 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	local itemName, itemSubType, classID, subclassID = TyGearItemIdentity(info.id)
 	info.classID, info.subclassID = classID, subclassID
 	info.subclassName = itemSubType
-	if type(itemName) == "string" then
+	if type(itemName) ~= "string" and type(info.link) == "string" then
+		itemName = string.match(info.link, "%[(.-)%]")
+	end
+	if type(itemName) == "string" and itemName ~= "" and not (issecretvalue and issecretvalue(itemName)) then
 		info.name = itemName
 	elseif info.item and info.item.GetItemName then
 		local fromItem = info.item:GetItemName()
@@ -8131,6 +8145,10 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			end
 			--tooltip text can be a secret value under the Midnight addon restrictions (Retail 12, WoW Forever); it can't be parsed then
 			if issecretvalue and issecretvalue(textLeftText) then
+				if TyGearIsReagentBag(info) then
+					TyGearAssignReagentBagSlots(info)
+					return info
+				end
 				info.unusable = 1
 				info.reason = "(item data is restricted right now)"
 				if TyGearIsLeftOut(info) then
@@ -8149,6 +8167,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			end
 			if i==1 then
 				info.name = textLeftText
+				if TyGearTextIsReagentBag(info.name) then
+					info.isReagentBag = 1
+				end
 				if info.name == "Retrieving item information" or not info.item:IsItemDataCached() then
 					if not TyGearSomeItemDataIsMissing then
 						TyGearSomeItemDataIsMissing = 1
@@ -9008,6 +9029,32 @@ function TyGearTryPutReagentBag(info, tried, before)
 	tried = tried or {}
 	local function cursorHasItem()
 		return CursorHasItem and CursorHasItem()
+	end
+	local function cursorStillHoldsBag()
+		if not cursorHasItem() then return false end
+		if not GetCursorInfo then return true end
+		local cursorType, cursorID = GetCursorInfo()
+		if issecretvalue and (issecretvalue(cursorType) or issecretvalue(cursorID)) then
+			return true
+		end
+		if cursorType == "item" then
+			return cursorID == info.id
+		end
+		return true
+	end
+	-- PutItemInBag(35) is the reagent bag slot on WoW Forever. Try it before any other id,
+	-- and do not pick the bag back up when the cursor no longer holds it.
+	local provenID = 35
+	if not tried[provenID] and cursorHasItem() then
+		tried[provenID] = true
+		PutItemInBag(provenID)
+		if TyGearInventoryItemIs(info.id, provenID) or not cursorStillHoldsBag() then
+			TyGearAdoptReagentBagSlot(provenID)
+			return true
+		end
+	end
+	if IS_WOW_FOREVER then
+		return false
 	end
 	local function reagentSlotHolding()
 		for _, id in ipairs(TyGearReagentBagSlotCandidates()) do
@@ -9940,6 +9987,27 @@ function TyGearMain()
 							elseif curAction.fromEquippedSlot then
 								-- the bag is already worn in a normal slot; move it to the slot it belongs in
 								local sourceSlot = curAction.fromEquippedSlot
+								local wantedID = curAction.info and curAction.info.id
+								if wantedID and GetInventoryItemID and GetInventoryItemID("player", sourceSlot) ~= wantedID then
+									local foundSlot
+									for slot = 31, 34 do
+										if GetInventoryItemID("player", slot) == wantedID then
+											foundSlot = slot
+											break
+										end
+									end
+									if not foundSlot then
+										for slot = 20, 23 do
+											if GetInventoryItemID("player", slot) == wantedID then
+												foundSlot = slot
+												break
+											end
+										end
+									end
+									if foundSlot then
+										sourceSlot = foundSlot
+									end
+								end
 								curAction.reagentSourceSlot = curAction.reagentSourceSlot or sourceSlot
 								PickupInventoryItem(sourceSlot)
 								local landed = TyGearEquipActionBag(curAction, function()
