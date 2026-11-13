@@ -3321,6 +3321,17 @@ function TyGearSetStatWeights()
 	if (TyGearCurrentWeighting.Armor or 0) <= E then
 		TyGearCurrentWeighting.Armor = 0.001
 	end
+	-- MythicSim publishes weapon DPS/Damage as E for many melee specs. Without a real
+	-- weight, white weapons (staves, swords, etc.) score as 0 and never upgrade by damage.
+	-- Gate on AttackPower so caster profiles keep ignoring weapon swing DPS.
+	if (TyGearCurrentWeighting.AttackPower or 0) > E then
+		if (TyGearCurrentWeighting.DPS or 0) <= E then
+			TyGearCurrentWeighting.DPS = 1
+		end
+		if (TyGearCurrentWeighting.Damage or 0) <= E then
+			TyGearCurrentWeighting.Damage = 0.5
+		end
+	end
 	TyGearApplyWeaponsPreference()
 end
 
