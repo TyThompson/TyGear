@@ -3,6 +3,8 @@
 -- Engine a667dce84 · Client 1.60.1.70707
 -- EP values (reference stat = 1). Tanks use threat weights where MythicSim publishes them.
 -- Armor is not published by MythicSim; use a tiny 0.001 weight so better armor still upgrades low-level gear.
+-- Unused primaries (Spirit/Stamina/etc. at E on melee) get a 0.01 floor in TyGearSetStatWeights so
+-- rings/necks/trinkets like Lookie's Spyglass (+1 Spirit) still score instead of showing 0.
 -- Base weapon damage/speed are not in GetItemStats; TyGear parses tooltips and applies offline swing EP
 -- via TyGearEnsureWeaponWeights (mh_dps/oh_dps/norm_speed/speed_bonus scaled by AttackPower weight).
 -- Class "None" profiles use weapons = "any" so Forever (always detected as None) can fill an empty

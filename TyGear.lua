@@ -3460,6 +3460,14 @@ function TyGearSetStatWeights()
 	if (TyGearCurrentWeighting.Armor or 0) <= E then
 		TyGearCurrentWeighting.Armor = 0.001
 	end
+	-- MythicSim sets unused primaries to E (e.g. Warrior Spirit/Stamina). Rings, necks,
+	-- and trinkets that only have those stats then score as 0 (Lookie's Spyglass = +1 Spirit).
+	-- A small floor keeps jewelry comparable without competing with real EPs (Str/Agi/etc.).
+	for _, stat in ipairs({ "Strength", "Agility", "Stamina", "Intellect", "Spirit" }) do
+		if (TyGearCurrentWeighting[stat] or 0) <= E then
+			TyGearCurrentWeighting[stat] = 0.01
+		end
+	end
 	TyGearEnsureWeaponWeights()
 	TyGearApplyWeaponsPreference()
 end
@@ -7850,8 +7858,14 @@ function TyGearFormatScore(score, info)
 		local slots = math.floor(score + 0.5)
 		return tostring(slots).." slot"..(slots == 1 and "" or "s")
 	end
-	if math.abs(score - math.floor(score + 0.5)) < 0.0005 then
-		return tostring(math.floor(score + 0.5))
+	-- Only print whole numbers for meaningful magnitudes. Tiny positive scores (jewelry
+	-- with floor-weighted Spirit/Stamina) must not round to "0".
+	local nearest = math.floor(score + 0.5)
+	if nearest ~= 0 and math.abs(score - nearest) < 0.0005 then
+		return tostring(nearest)
+	end
+	if math.abs(score) < 0.0005 then
+		return "0"
 	end
 	return string.format("%.2f", score)
 end
