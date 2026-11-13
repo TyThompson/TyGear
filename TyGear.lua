@@ -8236,6 +8236,86 @@ end
 --matches the item set header line in item tooltips, like "Midnight Herald's Regalia (2/5)"; ITEM_SET_NAME is "%s (%d/%d)" in English and is localized, so magic characters are escaped before turning its format specifiers into pattern items
 local ITEM_SET_NAME_PATTERN = "^"..(ITEM_SET_NAME:gsub("[%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"):gsub("%%s", ".+"):gsub("%%d", "%%d+")).."$"
 
+-- Forever/modern tooltips often put armor and block on a rightText column ("Armor" / "189")
+-- or omit readable tooltip numbers under secret-value rules. C_Item.GetItemStats still returns
+-- RESISTANCE0_NAME (armor) and ITEM_MOD_BLOCK_VALUE (shield block), which shields need to score.
+local TyGearItemStatsAPIFieldMap = {
+	ITEM_MOD_STRENGTH_SHORT = "Strength",
+	ITEM_MOD_AGILITY_SHORT = "Agility",
+	ITEM_MOD_STAMINA_SHORT = "Stamina",
+	ITEM_MOD_INTELLECT_SHORT = "Intellect",
+	ITEM_MOD_SPIRIT_SHORT = "Spirit",
+	RESISTANCE0_NAME = "Armor",
+	ITEM_MOD_DEFENSE_SKILL_RATING = "Defense",
+	ITEM_MOD_DEFENSE_SKILL_RATING_SHORT = "Defense",
+	ITEM_MOD_DODGE_RATING = "Dodge",
+	ITEM_MOD_DODGE_RATING_SHORT = "Dodge",
+	ITEM_MOD_PARRY_RATING = "Parry",
+	ITEM_MOD_PARRY_RATING_SHORT = "Parry",
+	ITEM_MOD_ATTACK_POWER_SHORT = "AttackPower",
+	ITEM_MOD_DAMAGE_PER_SECOND_SHORT = "DPS",
+	ITEM_MOD_SPELL_POWER_SHORT = "SpellPower",
+	ITEM_MOD_SPELL_DAMAGE_DONE_SHORT = "SpellPower",
+	ITEM_MOD_MANA_REGENERATION = "Mp5",
+	ITEM_MOD_MANA_REGENERATION_SHORT = "Mp5",
+	ITEM_MOD_HIT_RATING = "Hit",
+	ITEM_MOD_HIT_RATING_SHORT = "Hit",
+	ITEM_MOD_HIT_MELEE_RATING = "Hit",
+	ITEM_MOD_CRIT_RATING = "Crit",
+	ITEM_MOD_CRIT_RATING_SHORT = "Crit",
+	ITEM_MOD_CRIT_MELEE_RATING = "Crit",
+	ITEM_MOD_CRIT_SPELL_RATING = "SpellCrit",
+	ITEM_MOD_HIT_SPELL_RATING = "SpellHit",
+	ITEM_MOD_HASTE_RATING = "Haste",
+	ITEM_MOD_HASTE_RATING_SHORT = "Haste",
+	ITEM_MOD_EXPERTISE_RATING = "Expertise",
+	ITEM_MOD_EXPERTISE_RATING_SHORT = "Expertise",
+	ITEM_MOD_ARMOR_PENETRATION_RATING = "ArmorPenetration",
+	ITEM_MOD_SPELL_PENETRATION = "SpellPenetration",
+	ITEM_MOD_SPELL_PENETRATION_SHORT = "SpellPenetration",
+	ITEM_MOD_MASTERY_RATING = "Mastery",
+	ITEM_MOD_MASTERY_RATING_SHORT = "Mastery",
+	ITEM_MOD_VERSATILITY = "Versatility",
+}
+
+function TyGearGetItemStatsTable(itemLink)
+	if type(itemLink) ~= "string" or itemLink == "" then return end
+	local stats
+	if C_Item and C_Item.GetItemStats then
+		local ok, result = pcall(C_Item.GetItemStats, itemLink)
+		if ok and type(result) == "table" then
+			stats = result
+		end
+	end
+	if not stats and GetItemStats then
+		local ok, result = pcall(GetItemStats, itemLink)
+		if ok and type(result) == "table" then
+			stats = result
+		end
+	end
+	return stats
+end
+
+-- Fill gaps left by tooltip parsing. Uses max() so tooltip enchants/procs are not wiped,
+-- while shields still pick up base armor and block value when the tooltip omitted them.
+function TyGearApplyItemStatsFromAPI(info)
+	if not info or not info.link or info.empty then return end
+	local stats = TyGearGetItemStatsTable(info.link)
+	if not stats then return end
+	for apiKey, field in pairs(TyGearItemStatsAPIFieldMap) do
+		local apiValue = stats[apiKey]
+		if type(apiValue) == "number" and apiValue > 0 then
+			info[field] = math.max(info[field] or 0, apiValue)
+		end
+	end
+	-- Block value and block rating are separate API keys; both feed info.Block like tooltip "block" matches.
+	local apiBlock = (stats.ITEM_MOD_BLOCK_VALUE or stats.ITEM_MOD_BLOCK_VALUE_SHORT or 0)
+		+ (stats.ITEM_MOD_BLOCK_RATING or stats.ITEM_MOD_BLOCK_RATING_SHORT or 0)
+	if type(apiBlock) == "number" and apiBlock > 0 then
+		info.Block = math.max(info.Block or 0, apiBlock)
+	end
+end
+
 function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tooltipData)
 	local info = {}
 	info.link = link
@@ -8493,6 +8573,13 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 					end
 					return info
 				end
+				-- Prefer GetItemStats over giving up: shields and other gear still score from API stats.
+				TyGearApplyItemStatsFromAPI(info)
+				if TyGearItemHasMeasurableStats(info) then
+					info.reason = nil
+					-- remaining tooltip lines are likely secret too; finish with API stats
+					break
+				end
 				info.unusable = 1
 				info.reason = "(item data is restricted right now)"
 				if TyGearIsLeftOut(info) then
@@ -8502,7 +8589,24 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 				end
 				return info
 			end
+			-- Read rightText early so split stat lines ("Armor" | "189") still score.
+			local textRight, textRightText
+			if tooltipData and tooltipData.lines then
+				textRight = tooltipData.lines[i].rightText or tooltipData.lines[i].textRight
+				textRightText = textRight
+			else
+				textRight = _G["TyGearTooltipTextRight"..i]
+			end
+			if textRight and not textRightText then
+				textRightText = textRight.GetText and textRight:GetText() or textRight
+			end
+			if textRightText and issecretvalue and issecretvalue(textRightText) then
+				textRightText = nil
+			end
 			local text = select(1,string.gsub(textLeftText:lower(),",",""))
+			if type(textRightText) == "string" and textRightText ~= "" then
+				text = text.." "..select(1, string.gsub(textRightText:lower(), ",", ""))
+			end
 			if TyGearLineIsItemEffect(text) then
 				info.sawEquipEffect = 1
 			end
@@ -8677,40 +8781,31 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 				info.unusable = 1
 			end
 
-			--check for red text on the right side
-			local textRight, textRightText
-			if tooltipData and tooltipData.lines then
-				textRight = tooltipData.lines[i].rightText or tooltipData.lines[i].textRight
-				textRightText = textRight
-			else
-				textRight = _G["TyGearTooltipTextRight"..i]
-			end
+			--check for red text on the right side (textRight/textRightText already resolved above)
 			if textRight then
-				local r, g, b
+				local rr, rg, rb
 				if textRight.GetTextColor then
-					r, g, b = textRight:GetTextColor()
-				else
-					r, g, b = tooltipData.lines[i].rightColor:GetRGB()
+					rr, rg, rb = textRight:GetTextColor()
+				elseif tooltipData and tooltipData.lines and tooltipData.lines[i].rightColor then
+					rr, rg, rb = tooltipData.lines[i].rightColor:GetRGB()
 				end
-				if not textRightText then
-					textRightText = textRight:GetText()
-				end
-				if issecretvalue and issecretvalue(textRightText) then
-					info.unusable = 1
-					info.reason = "(item data is restricted right now)"
-					if TyGearIsLeftOut(info) then
-						info.ignored = 1
-						info.usable = nil
-						info.reason = "("..L["ignored"]..")"
-					end
-					return info
-				end
-				if (not isInItemSetSection) and ((g==0 or r/g>3) and (b==0 or r/b>3) and math.abs(b-g)<0.1 and r>0.5 and textRightText) then --this is red text
+				if rr and rg and rb
+				and (not isInItemSetSection)
+				and ((rg==0 or rr/rg>3) and (rb==0 or rr/rb>3) and math.abs(rb-rg)<0.1 and rr>0.5 and textRightText) then --this is red text
 					info.reason = "(found red text: \""..textRightText.."\")"
 					info.unusable = 1
 				end
 			end
 		end
+	end
+
+	-- Base armor / shield block / primary stats from the item API when tooltip lines omitted them.
+	TyGearApplyItemStatsFromAPI(info)
+	-- Tooltip may be empty while GetItemStats already has armor/block (common for shields on Forever).
+	if info.unusable and info.reason == "(this item's tooltip is not yet available)"
+	and TyGearItemHasMeasurableStats(info) then
+		info.unusable = nil
+		info.reason = nil
 	end
 
 	if info.RedSockets == 0 then info.RedSockets = nil end
@@ -8777,8 +8872,8 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 				info.unusable = 1
 				info.reason = "("..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass).." needs a dagger in the off-hand)"
 			elseif weapons == "weapon and shield"
-			and (info.classID ~= Enum.ItemClass.Armor)
-			and (info.subclassID ~= Enum.ItemArmorSubclass.Shield) then
+			and ((info.classID ~= Enum.ItemClass.Armor)
+			or (info.subclassID ~= Enum.ItemArmorSubclass.Shield)) then
 				info.unusable = 1
 				info.reason = "("..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass).." needs a shield in the off-hand)"
 			elseif weapons == "dual wield"
@@ -9774,12 +9869,14 @@ function TyGearIsGearPairEquippableTogether(a, b)
 	or (a.uniqueType and (a.uniqueType == b.uniqueType) and (a.numEquippable < 2) and (b.numEquippable < 2))
 	or (a.ammoBagRangedAttackSpeed and b.ammoBagRangedAttackSpeed)
 	or ((a.is1hWeaponOrOffHand and b.is1hWeaponOrOffHand)
-	and ((weapons == "dagger and any")
-	and (a.subclassID ~= Enum.ItemWeaponSubclass.Dagger)
-	and (b.subclassID ~= Enum.ItemWeaponSubclass.Dagger))
-	or ((weapons == "weapon and shield")
-	and (a.subclassID ~= Enum.ItemArmorSubclass.Shield)
-	and (b.subclassID ~= Enum.ItemArmorSubclass.Shield))) then
+	and (
+		((weapons == "dagger and any")
+		and (a.subclassID ~= Enum.ItemWeaponSubclass.Dagger)
+		and (b.subclassID ~= Enum.ItemWeaponSubclass.Dagger))
+		or ((weapons == "weapon and shield")
+		and (a.subclassID ~= Enum.ItemArmorSubclass.Shield)
+		and (b.subclassID ~= Enum.ItemArmorSubclass.Shield))
+	)) then
 		-- TyGearPrint("AG: "..a.link.." ("..(a.guid or "missing guid")..") and "..b.link.." ("..(b.guid or "missing guid")..") are not equippable together", 3)
 		return
 	end
