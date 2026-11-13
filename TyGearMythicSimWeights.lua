@@ -3,6 +3,8 @@
 -- Engine a667dce84 · Client 1.60.1.70707
 -- EP values (reference stat = 1). Tanks use threat weights where MythicSim publishes them.
 -- Armor is not published by MythicSim; use a tiny 0.001 weight so better armor still upgrades low-level gear.
+-- Weapon DPS/Damage are often E for melee specs in the export; TyGearSetStatWeights floors them
+-- (DPS=1, Damage=0.5) when AttackPower is weighted so white weapons still score and upgrade.
 -- Class "None" profiles use weapons = "any" so Forever (always detected as None) can fill an empty
 -- off-hand with a shield before Dual Wield / without a tank override. Spec overrides keep DW/2h.
 -- Do not edit by hand; re-import from MythicSim when the Forever engine updates.
