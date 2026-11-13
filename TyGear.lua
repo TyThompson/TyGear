@@ -427,14 +427,38 @@ function TyGearIsReagentBag(info)
 	end
 end
 
--- bags that TyGear should only evaluate for the dedicated reagent bag slot
+-- bags that can only be equipped in the reagent bag slot. Reagent bags are not in this set:
+-- the best one goes in the reagent slot, and another one can fill a normal slot.
 function TyGearUsesReagentBagSlot(info)
-	if not TyGearReagentBagSlot or not info then return nil end
-	if TyGearIsReagentBag(info) then return 1 end
+	if not TyGearReagentBagSlot or not info or TyGearIsReagentBag(info) then return nil end
 	-- Forever: Warlock Soul Bags equip in the reagent bag slot
 	if IS_WOW_FOREVER and TyGearIsSoulBag(info) and UnitClassBase("player") == "WARLOCK" then
 		return 1
 	end
+end
+
+-- Reagent slot first, then the normal bag slots. The first empty slot wins a tie, so the reagent slot is preferred.
+function TyGearReagentAndNormalBagSlots()
+	if not TyGearReagentBagSlot then
+		return TyGearEquippableBagSlots
+	end
+	local slots = { TyGearReagentBagSlot }
+	for _, slot in ipairs(TyGearEquippableBagSlots) do
+		if slot ~= TyGearReagentBagSlot then
+			table.insert(slots, slot)
+		end
+	end
+	return slots
+end
+
+function TyGearBagSlotsForItem(info)
+	if TyGearIsReagentBag(info) then
+		return TyGearReagentAndNormalBagSlots()
+	end
+	if TyGearUsesReagentBagSlot(info) then
+		return { TyGearReagentBagSlot }
+	end
+	return TyGearEquippableBagSlots
 end
 
 function TyGearIsManagedGearSlot(slot)
@@ -512,14 +536,18 @@ function TyGearAssignReagentBagSlots(info)
 		info.invType = Enum.InventoryType.IndexBagType
 	end
 	TyGearRefreshReagentBagSlot()
-	if not TyGearReagentBagSlot then
+	info.validGearSlots = TyGearBagSlotsForItem(info)
+	info.numValidGearSlots = 0
+	if info.validGearSlots then
+		for _ in pairs(info.validGearSlots) do
+			info.numValidGearSlots = info.numValidGearSlots + 1
+		end
+	end
+	if info.numValidGearSlots == 0 then
 		info.validGearSlots = nil
-		info.numValidGearSlots = 0
 		info.usable = nil
 		return
 	end
-	info.validGearSlots = { TyGearReagentBagSlot }
-	info.numValidGearSlots = 1
 	if not info.ignored and not TyGearIsLeftOut(info) then
 		local reason = info.reason
 		if (not info.unusable) or (not reason) or (type(reason) == "string" and string.find(reason, "invalid item", 1, true)) then
@@ -7071,17 +7099,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 							newAction.fromEquippedSlot = TyGearBestItems[invSlot].fromEquippedSlot
 							newAction.info = TyGearBestItems[invSlot].info
 							newAction.score = TyGearBestItems[invSlot].score
-							if TyGearIsReagentBag(newAction.info) then
-								TyGearRefreshReagentBagSlot()
-								if not TyGearReagentBagSlot then
-									newAction = nil
-								else
-									newAction.replaceSlot = TyGearReagentBagSlot
-								end
-							end
-							if newAction then
-								TyGearQueueAction(newAction)
-							end
+							TyGearQueueAction(newAction)
 						end
 					end
 				end
@@ -7233,8 +7251,7 @@ function TyGearBagShouldReplaceEqualScore(candidate, current)
 	return false
 end
 
---Forever reagent bags can equip in a normal bag slot. Right-click does that.
---Keep them for the reagent bag slot instead, and move one that is already sitting in a normal slot when it is the better bag there.
+--The best reagent bag goes in the reagent slot. Another reagent bag keeps a normal slot when it beats what is worn there, including an empty slot.
 function TyGearRedirectReagentBagsToReagentSlot()
 	if not TyGearReagentBagSlot or not TyGearBestItems or not TyGearBestItems[TyGearReagentBagSlot] then return end
 	if TyGearIsGearSlotProtected(TyGearReagentBagSlot) then return end
@@ -7262,23 +7279,42 @@ function TyGearRedirectReagentBagsToReagentSlot()
 			equipped = 1,
 		}
 	end
+	local function copyBest(best)
+		return {
+			info = best.info,
+			score = best.score,
+			equipped = nil,
+			bag = best.bag,
+			slot = best.slot,
+			fromEquippedSlot = best.fromEquippedSlot,
+			rollOn = best.rollOn,
+		}
+	end
+	local function beatsEquipped(candidate, bagSlot)
+		local equipped = TyGearEquippedItems and TyGearEquippedItems[bagSlot]
+		if not equipped or not equipped.info or equipped.info.empty or equipped.info.unusable then
+			return true
+		end
+		local candidateScore = candidate.score or 0
+		local equippedScore = equipped.score or 0
+		if candidateScore > equippedScore then return true end
+		if candidateScore < equippedScore then return false end
+		return TyGearBagShouldReplaceEqualScore(candidate.info, equipped.info)
+	end
 	for _, bagSlot in ipairs(TyGearEquippableBagSlots) do
 		local best = TyGearBestItems[bagSlot]
 		local reagentBest = TyGearBestItems[TyGearReagentBagSlot]
-		--a reagent bag chosen for a normal slot this scan: send it to the reagent slot, or leave the normal slot alone
-		if best and not best.equipped and TyGearIsReagentBag(best.info) then
-			if beats(best, reagentBest) then
-				TyGearBestItems[TyGearReagentBagSlot] = {
-					info = best.info,
-					score = best.score,
-					equipped = nil,
-					bag = best.bag,
-					slot = best.slot,
-					fromEquippedSlot = best.fromEquippedSlot,
-					rollOn = best.rollOn,
-				}
+		--a reagent bag chosen for a normal slot: move it to the reagent slot when it is the better reagent bag.
+		--otherwise leave it here. A reagent bag in a normal slot is better than an empty slot or a smaller bag.
+		if best and not best.equipped and TyGearIsReagentBag(best.info) and beats(best, reagentBest) then
+			local displaced = reagentBest
+			TyGearBestItems[TyGearReagentBagSlot] = copyBest(best)
+			if displaced and not displaced.equipped and displaced.info and TyGearIsReagentBag(displaced.info)
+			and displaced.info ~= best.info and beatsEquipped(displaced, bagSlot) then
+				TyGearBestItems[bagSlot] = copyBest(displaced)
+			else
+				restoreEquipped(bagSlot)
 			end
-			restoreEquipped(bagSlot)
 		end
 		reagentBest = TyGearBestItems[TyGearReagentBagSlot]
 		local equipped = TyGearEquippedItems and TyGearEquippedItems[bagSlot]
@@ -7307,10 +7343,10 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 	and (not TyGearIsAmmoBagValidForRangedWeapon(info, TyGearBestItems[INVSLOT_RANGED].info)) then
 		return
 	end
-	--Never spend a normal bag slot on a reagent bag. If the reagent slot is unknown, leave the bag in inventory.
+	--Reagent bags can fill the reagent slot or a normal slot. The reagent slot is listed first.
 	if TyGearIsReagentBag(info) then
 		TyGearAssignReagentBagSlots(info)
-		if not TyGearReagentBagSlot or not info.validGearSlots then
+		if not info.validGearSlots then
 			return
 		end
 	end
@@ -7389,7 +7425,7 @@ end
 function TyGearGetValidGearSlots(info)
 	local dualWield = CanDualWield() and 1 or 0
 	local titanGrip = IsPlayerSpell(46917) and 1 or 0
-	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0").."|"..tostring(TyGearReagentBagSlot or 0)
+	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..(TyGearIsReagentBag(info) and "R" or "0").."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0").."|"..tostring(TyGearReagentBagSlot or 0)
 	local cached = TyGearValidGearSlotsCache[cacheKey]
 	if cached ~= nil then
 		return cached ~= false and cached or nil
@@ -7479,7 +7515,7 @@ function TyGearGetValidGearSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = (TyGearUsesReagentBagSlot(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
+		[Enum.InventoryType.IndexBagType]            = TyGearBagSlotsForItem(info),
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
 		                                               and TyGearEquippableBagSlots
                                                        or nil
@@ -7496,7 +7532,7 @@ end
 function TyGearGetSetSlots(info)
 	local dualWield = CanDualWield() and 1 or 0
 	local titanGrip = IsPlayerSpell(46917) and 1 or 0
-	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0").."|"..tostring(TyGearReagentBagSlot or 0)
+	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..(TyGearIsReagentBag(info) and "R" or "0").."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0").."|"..tostring(TyGearReagentBagSlot or 0)
 	local cached = TyGearSetSlotsCache[cacheKey]
 	if cached ~= nil then
 		return cached ~= false and cached or nil
@@ -7587,7 +7623,7 @@ function TyGearGetSetSlots(info)
 		                                               and { INVSLOT_RANGED }
 		                                               or nil,
 		[Enum.InventoryType.IndexTabardType]         = nil, -- INVSLOT_TABARD is used for evaluating 2h weapons
-		[Enum.InventoryType.IndexBagType]            = (TyGearUsesReagentBagSlot(info) and { TyGearReagentBagSlot } or TyGearEquippableBagSlots),
+		[Enum.InventoryType.IndexBagType]            = TyGearBagSlotsForItem(info),
 		[Enum.InventoryType.IndexQuiverType]         = (weapons == "ranged")
 		                                               and TyGearEquippableBagSlots
                                                        or nil
@@ -8659,7 +8695,7 @@ function TyGearDetermineItemScore(info)
 	end
 	if info.classID == Enum.ItemClass.Container then
 		-- normal bags, reagent bags, and Forever Warlock soul bags are scored by how many slots they add.
-		-- bags that use the reagent bag slot only compete there, so a larger one is always an upgrade.
+		-- a reagent bag fills a normal slot when that slot is empty or holding a smaller bag.
 		-- other specialized bags are almost worthless, so they only replace an empty slot
 		if info.subclassID == 0
 		or info.isReagentBag
@@ -8845,11 +8881,10 @@ end
 -- EquipCursorItem on a bag uses the first open regular bag slot.
 -- PutItemInBag targets the bag slot itself. Reagent bags never use EquipCursorItem.
 function TyGearPlaceCursorItem(slot, info)
-	if info and TyGearIsReagentBag(info) then
-		return
-	end
 	if slot and TyGearGetContainerForEquippedBagSlot(slot) and PutItemInBag then
 		PutItemInBag(slot)
+	elseif info and TyGearIsReagentBag(info) then
+		return
 	else
 		EquipCursorItem(slot)
 	end
@@ -8857,7 +8892,8 @@ end
 
 function TyGearEquipActionBag(curAction, putBack)
 	local info = curAction and curAction.info
-	if info and (TyGearIsReagentBag(info) or TyGearUsesReagentBagSlot(info)) then
+	--Only the reagent slot uses the reagent button id. A reagent bag aimed at a normal slot uses that slot.
+	if curAction.replaceSlot == TyGearReagentBagSlot and info and (TyGearIsReagentBag(info) or TyGearUsesReagentBagSlot(info)) then
 		TyGearRefreshReagentBagSlot()
 		if not TyGearReagentBagSlot then
 			if CursorHasItem and CursorHasItem() and putBack then
@@ -9616,7 +9652,7 @@ function TyGearMain()
 								end
 								if (GetInventoryItemID("player", curAction.replaceSlot) == curAction.info.id) then
 									finishEquipped()
-								elseif curAction.info and (TyGearIsReagentBag(curAction.info) or TyGearUsesReagentBagSlot(curAction.info)) then
+								elseif curAction.replaceSlot == TyGearReagentBagSlot and curAction.info and (TyGearIsReagentBag(curAction.info) or TyGearUsesReagentBagSlot(curAction.info)) then
 									local foundSlot
 									for _, candidate in ipairs(TyGearReagentBagSlotCandidates()) do
 										if TyGearBagSlotNewlyHolds(curAction.info.id, candidate, curAction.bagSnapshot) then
