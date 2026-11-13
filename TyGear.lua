@@ -196,11 +196,11 @@ TyGearWouldRoll = "nil"
 TyGearSomeItemDataIsMissing = nil
 TyGearFirstEquippableBagSlot = ContainerIDToInventoryID(1) or 20
 TyGearLastEquippableBagSlot = ContainerIDToInventoryID(math.min(NUM_BAG_SLOTS or 4, 4)) or (TyGearFirstEquippableBagSlot + 3)
--- Reagent bags can also be equipped in a normal bag slot. Right-click and EquipCursorItem do that.
--- PutItemInBag has to be given the reagent bag button's id. That id is GetInventorySlotInfo("ReagentBag0Slot")
--- on the button, CONTAINER_BAG_OFFSET+5, 24 when the offset is still 19, or 35 after bag slots moved to 31-35.
+-- Dedicated reagent bags (INVTYPE_REAGENTBAG / subclass 11) only fit the reagent bag slot.
+-- Profession and soul bags (subclass 1..10) may fill that slot or a normal bag slot.
+-- PutItemInBag needs the reagent bag button's id: GetInventorySlotInfo("ReagentBag0Slot"),
+-- CONTAINER_BAG_OFFSET+5, 24 when the offset is still 19, or 35 after bag slots moved to 31-35.
 -- A classic ContainerIDToInventoryID(5) is a bank bag and must not be passed to PutItemInBag.
--- Forever also lets Warlock Soul Bags use that same dedicated slot.
 local function TyGearInventorySlotIsBankBag(slot)
 	if not slot then return false end
 	local bankOffset = BANK_CONTAINER_INVENTORY_OFFSET
@@ -502,25 +502,11 @@ end
 
 TyGearRefreshReagentBagSlot()
 
--- Container (class 1) subclasses. There is no Enum.ItemContainerSubclass.
-local REAGENT_BAG_SUBCLASS_ID = 11
+-- Container (class 1) subclasses from GetItemInfoInstant / Enum.ItemContainerSubclass.
+local REAGENT_BAG_SUBCLASS_ID = 11 -- Enum.ItemContainerSubclass.ReagentBag
 local SOUL_BAG_SUBCLASS_ID = 1 -- Soul Bag (Warlock soul shards)
--- Forever puts profession bags in the reagent slot. Apprentice's Mining Pack (277115)
--- is a Mining Bag, not a bag whose name contains "Reagent Bag".
-local FOREVER_PROFESSION_BAG_SUBCLASSES = {
-	[2] = true, -- Herb Bag
-	[3] = true, -- Enchanting Bag
-	[4] = true, -- Engineering Bag
-	[5] = true, -- Gem Bag
-	[6] = true, -- Mining Bag
-	[7] = true, -- Leatherworking Bag
-	[8] = true, -- Inscription Bag
-	[10] = true, -- Cooking Bag
-}
--- Item ids whose names do not say "Reagent Bag". Subclass and tooltip text cover the rest.
-local FOREVER_REAGENT_BAG_ITEM_IDS = {
-	[277115] = true, -- Apprentice's Mining Pack
-}
+local FIRST_PROFESSION_BAG_SUBCLASS_ID = 1 -- Soul .. Cooking / Tackle (1..10)
+local LAST_PROFESSION_BAG_SUBCLASS_ID = 10
 
 function TyGearIsSoulBag(info)
 	if not info then return nil end
@@ -530,30 +516,33 @@ function TyGearIsSoulBag(info)
 	end
 end
 
-function TyGearSubclassUsesReagentSlot(classID, subclassID)
+-- Dedicated reagent bags: INVTYPE_REAGENTBAG and/or container subclass 11.
+function TyGearIsDedicatedReagentBag(classID, subclassID, equipLoc)
 	if classID ~= (Enum and Enum.ItemClass and Enum.ItemClass.Container) then return nil end
+	if equipLoc == "INVTYPE_REAGENTBAG" then return 1 end
 	if subclassID == REAGENT_BAG_SUBCLASS_ID then return 1 end
 	local reagentSubclass = Enum and Enum.ItemContainerSubclass and (Enum.ItemContainerSubclass.ReagentBag or Enum.ItemContainerSubclass.Reagent)
 	if reagentSubclass and subclassID == reagentSubclass then return 1 end
-	if IS_WOW_FOREVER and FOREVER_PROFESSION_BAG_SUBCLASSES[subclassID] then return 1 end
+end
+
+-- Profession and soul bags Forever allows in the reagent slot (subclass 1..10).
+function TyGearIsProfessionOrSoulBag(classID, subclassID)
+	if classID ~= (Enum and Enum.ItemClass and Enum.ItemClass.Container) then return nil end
+	if subclassID and subclassID >= FIRST_PROFESSION_BAG_SUBCLASS_ID and subclassID <= LAST_PROFESSION_BAG_SUBCLASS_ID then
+		return 1
+	end
 end
 
 function TyGearIsReagentBag(info)
 	if not info then return nil end
 	if info.isReagentBag then return 1 end
-	if IS_WOW_FOREVER and info.id and FOREVER_REAGENT_BAG_ITEM_IDS[info.id] then return 1 end
-	if TyGearSubclassUsesReagentSlot(info.classID, info.subclassID) then return 1 end
-	if TyGearTextIsReagentBag and (TyGearTextIsReagentBag(info.subclassName) or TyGearTextIsReagentBag(info.name)) then
-		return 1
-	end
+	return TyGearIsDedicatedReagentBag(info.classID, info.subclassID, info.equipLoc)
 end
 
--- bags that can only be equipped in the reagent bag slot. Reagent bags are not in this set:
--- the best one goes in the reagent slot, and another one can fill a normal slot.
+-- Profession/soul bags that may fill an empty reagent slot. Dedicated reagent bags use TyGearIsReagentBag.
 function TyGearUsesReagentBagSlot(info)
 	if not TyGearReagentBagSlot or not info or TyGearIsReagentBag(info) then return nil end
-	-- Forever: Warlock Soul Bags equip in the reagent bag slot
-	if IS_WOW_FOREVER and TyGearIsSoulBag(info) and UnitClassBase("player") == "WARLOCK" then
+	if IS_WOW_FOREVER and TyGearIsProfessionOrSoulBag(info.classID, info.subclassID) then
 		return 1
 	end
 end
@@ -573,11 +562,13 @@ function TyGearReagentAndNormalBagSlots()
 end
 
 function TyGearBagSlotsForItem(info)
+	-- INVTYPE_REAGENTBAG is restricted to the reagent slot.
 	if TyGearIsReagentBag(info) then
-		return TyGearReagentAndNormalBagSlots()
+		return TyGearReagentBagSlot and { TyGearReagentBagSlot } or nil
 	end
+	-- Profession/soul bags prefer the reagent slot but can also use a normal bag slot.
 	if TyGearUsesReagentBagSlot(info) then
-		return { TyGearReagentBagSlot }
+		return TyGearReagentAndNormalBagSlots()
 	end
 	return TyGearEquippableBagSlots
 end
@@ -631,76 +622,6 @@ function TyGearGetReagentBagSlotName()
 		end
 	end
 	return "Reagent Bag"
-end
-
--- Names and tooltip lines for every Forever bag that belongs in the reagent slot.
--- General reagent bags whose names omit "Reagent Bag": Shipwright's Satchel, Spidersilk Sack.
--- Profession bags: herb, enchanting, mining, and skinning. Normal pouches and satchels are not included.
-local FOREVER_PROFESSION_BAG_PHRASES = {
-	"mining bag",
-	"mining pack",
-	"herb bag",
-	"herb pouch",
-	"enchanting bag",
-	"bag of enchantment",
-	"enchanted mageweave pouch",
-	"enchanted runecloth bag",
-	"engineering bag",
-	"gem bag",
-	"leatherworking bag",
-	"inscription bag",
-	"skinning bag",
-	"skinning satchel",
-	"cooking bag",
-	"spidersilk sack",
-	"satchel of cenarius",
-}
-
-function TyGearProfessionBagPhrases()
-	if TyGearCachedProfessionBagPhrases then return TyGearCachedProfessionBagPhrases end
-	local phrases = {}
-	local seen = {}
-	local function add(phrase)
-		if type(phrase) ~= "string" then return end
-		phrase = string.lower(phrase)
-		if phrase == "" or string.len(phrase) < 4 or seen[phrase] then return end
-		seen[phrase] = true
-		table.insert(phrases, phrase)
-	end
-	for _, phrase in ipairs(FOREVER_PROFESSION_BAG_PHRASES) do
-		add(phrase)
-	end
-	if GetItemSubClassInfo and Enum and Enum.ItemClass and Enum.ItemClass.Container then
-		for subclassID in pairs(FOREVER_PROFESSION_BAG_SUBCLASSES) do
-			local ok, name = pcall(GetItemSubClassInfo, Enum.ItemClass.Container, subclassID)
-			if ok then add(name) end
-		end
-	end
-	TyGearCachedProfessionBagPhrases = phrases
-	return phrases
-end
-
-function TyGearTextIsReagentBag(text)
-	if type(text) ~= "string" or text == "" then return false end
-	if issecretvalue and issecretvalue(text) then return false end
-	local lower = string.lower(text)
-	if string.find(lower, "reagent bag", 1, true) then return true end
-	-- Shipwright's Satchel uses a straight or curly apostrophe.
-	if string.find(lower, "shipwright", 1, true) and string.find(lower, "satchel", 1, true) then return true end
-	if IS_WOW_FOREVER then
-		for _, phrase in ipairs(TyGearProfessionBagPhrases()) do
-			if string.find(lower, phrase, 1, true) then return true end
-		end
-	end
-	if not TyGearCachedReagentBagLabel then
-		local label = TyGearGetReagentBagSlotName()
-		TyGearCachedReagentBagLabel = (type(label) == "string" and string.lower(label)) or "reagent bag"
-	end
-	local label = TyGearCachedReagentBagLabel
-	if label ~= "reagent bag" and label ~= "" and string.find(lower, label, 1, true) then
-		return true
-	end
-	return false
 end
 
 function TyGearAssignReagentBagSlots(info)
@@ -7205,12 +7126,14 @@ function TyGearResetBestItemsFromEquipped()
 end
 
 -- GetItemInfoInstant's first return is the item id, not the name.
+-- Returns name, itemSubType, classID, subclassID, equipLoc.
 function TyGearItemIdentity(itemID)
 	if not itemID or not GetItemInfoInstant then return end
-	local ok, _, _, itemSubType, _, _, classID, subclassID = pcall(GetItemInfoInstant, itemID)
+	local ok, _, _, itemSubType, equipLoc, _, classID, subclassID = pcall(GetItemInfoInstant, itemID)
 	if not ok then return end
 	if issecretvalue then
 		if issecretvalue(itemSubType) then itemSubType = nil end
+		if issecretvalue(equipLoc) then equipLoc = nil end
 		if issecretvalue(classID) then classID = nil end
 		if issecretvalue(subclassID) then subclassID = nil end
 	end
@@ -7221,7 +7144,7 @@ function TyGearItemIdentity(itemID)
 			name = itemName
 		end
 	end
-	return name, itemSubType, classID, subclassID
+	return name, itemSubType, classID, subclassID, equipLoc
 end
 
 function TyGearScanBagsForBestItems()
@@ -7232,11 +7155,10 @@ function TyGearScanBagsForBestItems()
 			local itemID = GetContainerItemID and GetContainerItemID(bag, slot)
 			if itemID then
 				local invType = C_Item.GetItemInventoryTypeByID(itemID) or 0
-				local itemName, itemSubType, classID, subclassID = TyGearItemIdentity(itemID)
-				local isReagentBag = TyGearSubclassUsesReagentSlot(classID, subclassID)
-					or TyGearTextIsReagentBag(itemSubType) or TyGearTextIsReagentBag(itemName)
-				local isSoulBag = (classID == Enum.ItemClass.Container) and (subclassID == SOUL_BAG_SUBCLASS_ID)
-				if (invType > 0) or isReagentBag or isSoulBag then
+				local _, _, classID, subclassID, equipLoc = TyGearItemIdentity(itemID)
+				local isReagentBag = TyGearIsDedicatedReagentBag(classID, subclassID, equipLoc)
+				local isProfessionBag = TyGearIsProfessionOrSoulBag(classID, subclassID)
+				if (invType > 0) or isReagentBag or isProfessionBag then
 					info = TyGearReadItemInfo(nil, nil, bag, slot)
 					TyGearConsiderItem(info, bag, slot, nil)
 				end
@@ -7455,7 +7377,8 @@ function TyGearBagShouldReplaceEqualScore(candidate, current)
 	return false
 end
 
---The best reagent bag goes in the reagent slot. Another reagent bag keeps a normal slot when it beats what is worn there, including an empty slot.
+-- Dedicated reagent bags belong in the reagent slot. Profession/soul bags may fill it when empty.
+-- Move a candidate there when it was considered for a normal bag slot (or is already worn in one).
 function TyGearRedirectReagentBagsToReagentSlot()
 	if not TyGearReagentBagSlot or not TyGearBestItems then return end
 	if not TyGearBestItems[TyGearReagentBagSlot] then
@@ -7467,16 +7390,23 @@ function TyGearRedirectReagentBagsToReagentSlot()
 		}
 	end
 	if TyGearIsGearSlotProtected(TyGearReagentBagSlot) then return end
+	local function reagentEmpty(current)
+		return not current or not current.info or current.info.empty or current.info.unusable
+	end
 	local function beats(candidate, current)
 		if not candidate or not candidate.info or candidate.info.empty or candidate.info.unusable then
 			return false
 		end
-		if not TyGearIsReagentBag(candidate.info) or TyGearIsLeftOut(candidate.info) then
+		if TyGearIsLeftOut(candidate.info) then return false end
+		local isDedicated = TyGearIsReagentBag(candidate.info)
+		local isProfession = TyGearUsesReagentBagSlot(candidate.info)
+		if not isDedicated and not isProfession then return false end
+		-- Profession/soul bags only fill an empty reagent slot; dedicated bags can replace a weaker one.
+		if isProfession and not isDedicated and not reagentEmpty(current) then
 			return false
 		end
-		if not current or not current.info or current.info.empty or current.info.unusable then
-			return true
-		end
+		if reagentEmpty(current) then return true end
+		if not isDedicated then return false end
 		local candidateScore = candidate.score or 0
 		local currentScore = current.score or 0
 		if candidateScore > currentScore then return true end
@@ -7502,35 +7432,18 @@ function TyGearRedirectReagentBagsToReagentSlot()
 			rollOn = best.rollOn,
 		}
 	end
-	local function beatsEquipped(candidate, bagSlot)
-		local equipped = TyGearEquippedItems and TyGearEquippedItems[bagSlot]
-		if not equipped or not equipped.info or equipped.info.empty or equipped.info.unusable then
-			return true
-		end
-		local candidateScore = candidate.score or 0
-		local equippedScore = equipped.score or 0
-		if candidateScore > equippedScore then return true end
-		if candidateScore < equippedScore then return false end
-		return TyGearBagShouldReplaceEqualScore(candidate.info, equipped.info)
-	end
 	for _, bagSlot in ipairs(TyGearEquippableBagSlots) do
 		local best = TyGearBestItems[bagSlot]
 		local reagentBest = TyGearBestItems[TyGearReagentBagSlot]
-		--a reagent bag chosen for a normal slot: move it to the reagent slot when it is the better reagent bag.
-		--otherwise leave it here. A reagent bag in a normal slot is better than an empty slot or a smaller bag.
-		if best and not best.equipped and TyGearIsReagentBag(best.info) and beats(best, reagentBest) then
-			local displaced = reagentBest
+		-- A reagent-compatible bag chosen for a normal slot: move it to the reagent slot when it belongs there.
+		-- INVTYPE_REAGENTBAG cannot stay in a normal bag slot, so restore whatever was equipped there.
+		if best and not best.equipped and beats(best, reagentBest) then
 			TyGearBestItems[TyGearReagentBagSlot] = copyBest(best)
-			if displaced and not displaced.equipped and displaced.info and TyGearIsReagentBag(displaced.info)
-			and displaced.info ~= best.info and beatsEquipped(displaced, bagSlot) then
-				TyGearBestItems[bagSlot] = copyBest(displaced)
-			else
-				restoreEquipped(bagSlot)
-			end
+			restoreEquipped(bagSlot)
 		end
 		reagentBest = TyGearBestItems[TyGearReagentBagSlot]
 		local equipped = TyGearEquippedItems and TyGearEquippedItems[bagSlot]
-		--already worn in a normal slot: pick it up into the reagent slot when it belongs there
+		-- Already worn in a normal slot: pick it up into the reagent slot when it belongs there.
 		if equipped and beats(equipped, reagentBest) then
 			TyGearBestItems[TyGearReagentBagSlot] = {
 				info = equipped.info,
@@ -7555,7 +7468,7 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 	and (not TyGearIsAmmoBagValidForRangedWeapon(info, TyGearBestItems[INVSLOT_RANGED].info)) then
 		return
 	end
-	--Reagent bags can fill the reagent slot or a normal slot. The reagent slot is listed first.
+	-- Dedicated reagent bags only use the reagent slot.
 	if TyGearIsReagentBag(info) then
 		TyGearAssignReagentBagSlots(info)
 		if not info.validGearSlots then
@@ -8045,9 +7958,10 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 		)
 		return info
 	end
-	local itemName, itemSubType, classID, subclassID = TyGearItemIdentity(info.id)
+	local itemName, itemSubType, classID, subclassID, equipLoc = TyGearItemIdentity(info.id)
 	info.classID, info.subclassID = classID, subclassID
 	info.subclassName = itemSubType
+	info.equipLoc = equipLoc
 	if type(itemName) ~= "string" and type(info.link) == "string" then
 		itemName = string.match(info.link, "%[(.-)%]")
 	end
@@ -8064,22 +7978,19 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
 	info.isGear = info.invType > 0
 
-	--Forever reagent bags are normal bags that can also fill a regular slot.
-	--Subclass 11, the subclass name, or a name of "Reagent Bag" marks them before slot choice.
-	if TyGearTextIsReagentBag(info.subclassName) or TyGearTextIsReagentBag(info.name) then
-		info.isReagentBag = 1
-	end
-
-	--reagent bags (and Forever Warlock soul bags) belong in the reagent bag slot;
-	--keep them even if inventory type is missing
+	-- Detect reagent and profession bags from classID / subclassID / equipLoc (not names or item ids).
+	-- Dedicated reagent bags and Forever profession/soul bags belong in the reagent bag slot;
+	-- keep them even if inventory type is missing.
 	if TyGearIsReagentBag(info) then
 		info.isReagentBag = 1
 		info.isGear = 1
 		if info.invType == 0 and Enum and Enum.InventoryType then
 			info.invType = Enum.InventoryType.IndexBagType
 		end
-	elseif IS_WOW_FOREVER and TyGearIsSoulBag(info) then
-		info.isSoulBag = 1
+	elseif TyGearUsesReagentBagSlot(info) then
+		if TyGearIsSoulBag(info) then
+			info.isSoulBag = 1
+		end
 		info.isGear = 1
 		if info.invType == 0 and Enum and Enum.InventoryType then
 			info.invType = Enum.InventoryType.IndexBagType
@@ -8222,6 +8133,21 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 					TyGearAssignReagentBagSlots(info)
 					return info
 				end
+				if TyGearUsesReagentBagSlot(info) then
+					info.validGearSlots = TyGearBagSlotsForItem(info)
+					info.numValidGearSlots = 0
+					if info.validGearSlots then
+						for _ in pairs(info.validGearSlots) do
+							info.numValidGearSlots = info.numValidGearSlots + 1
+						end
+					end
+					if info.numValidGearSlots > 0 and not info.ignored and not TyGearIsLeftOut(info) then
+						info.unusable = nil
+						info.usable = 1
+						info.reason = nil
+					end
+					return info
+				end
 				info.unusable = 1
 				info.reason = "(item data is restricted right now)"
 				if TyGearIsLeftOut(info) then
@@ -8240,9 +8166,6 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			end
 			if i==1 then
 				info.name = textLeftText
-				if TyGearTextIsReagentBag(info.name) then
-					info.isReagentBag = 1
-				end
 				if info.name == "Retrieving item information" or not info.item:IsItemDataCached() then
 					if not TyGearSomeItemDataIsMissing then
 						TyGearSomeItemDataIsMissing = 1
@@ -8315,20 +8238,6 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 				string.find(text, " tackle box")
 			) then
 				info.numBagSlots = (info.numBagSlots or 0) + value
-			end
-			-- "6 Slot Reagent Bag": Forever reagent bags can equip in a normal slot, but they belong in the reagent slot
-			if TyGearTextIsReagentBag(text) then
-				info.isReagentBag = 1
-			end
-			local textRightText
-			if tooltipData and tooltipData.lines then
-				textRightText = tooltipData.lines[i].rightText
-			else
-				local textRight = _G["TyGearTooltipTextRight"..i]
-				textRightText = textRight and textRight.GetText and textRight:GetText()
-			end
-			if TyGearTextIsReagentBag(textRightText) then
-				info.isReagentBag = 1
 			end
 			if value > 0
 			and info.isAmmoBag
@@ -8934,13 +8843,12 @@ function TyGearDetermineItemScore(info)
 		return score
 	end
 	if info.classID == Enum.ItemClass.Container then
-		-- normal bags, reagent bags, and Forever Warlock soul bags are scored by how many slots they add.
-		-- a reagent bag fills a normal slot when that slot is empty or holding a smaller bag.
-		-- other specialized bags are almost worthless, so they only replace an empty slot
+		-- Normal and dedicated reagent bags are scored by slot count.
+		-- Profession/soul bags only beat an empty slot (including an empty reagent slot), so a
+		-- dedicated reagent bag is always preferred over a mining/herb/soul bag for that slot.
 		if info.subclassID == 0
 		or info.isReagentBag
-		or TyGearIsReagentBag(info)
-		or TyGearUsesReagentBagSlot(info) then -- generic bag, or reagent-slot bag; there's no Enum.ItemContainerSubclass
+		or TyGearIsReagentBag(info) then
 			return storeScore(info.numBagSlots or 0)
 		else
 			return storeScore((info.numBagSlots or 0) * E) -- specialized bags suck, so consider them only better than nothing
