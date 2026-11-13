@@ -1202,6 +1202,7 @@ function TyGearItemHasMeasurableStats(info)
 		"Haste", "Mp5", "AttackPower", "ArmorPenetration", "Crit", "SpellCrit",
 		"Hit", "SpellHit", "Expertise", "RedSockets", "YellowSockets", "BlueSockets",
 		"MetaSockets", "Mastery", "Multistrike", "Versatility", "DPS", "Damage",
+		"WeaponSpeed", "MinDamage", "MaxDamage",
 		"ExperienceGained", "numBagSlots", "ammoBagRangedAttackSpeed",
 	}
 	for _, field in ipairs(fields) do
@@ -1209,6 +1210,40 @@ function TyGearItemHasMeasurableStats(info)
 		if type(value) == "number" and value > 0 then
 			return true
 		end
+	end
+end
+
+-- Fill AvgDamage / WeaponDPS from whichever of min-max, DPS, or speed the tooltip provided.
+-- GetItemStats does not include base weapon damage or swing speed on Classic/Forever.
+function TyGearNormalizeWeaponDamageStats(info)
+	if not info or info.classID ~= Enum.ItemClass.Weapon then return end
+	if info.MinDamage and info.MaxDamage then
+		info.Damage = (info.MinDamage + info.MaxDamage) / 2
+	end
+	if (not info.DPS or info.DPS <= 0) and info.Damage and info.WeaponSpeed and info.WeaponSpeed > 0 then
+		info.DPS = info.Damage / info.WeaponSpeed
+	elseif info.DPS and info.DPS > 0 and info.WeaponSpeed and info.WeaponSpeed > 0
+	and (not info.Damage or info.Damage <= 0) then
+		info.Damage = info.DPS * info.WeaponSpeed
+	end
+end
+
+-- Parse one lowered tooltip line (left+right already joined) for base weapon damage and speed.
+function TyGearParseWeaponTooltipLine(info, text)
+	if not info or not text or info.classID ~= Enum.ItemClass.Weapon then return end
+	local dpsVal = tonumber(string.match(text, "([0-9]+%.?[0-9]*)%s*damage per second"))
+	if dpsVal and dpsVal > 0 then
+		info.DPS = math.max(info.DPS or 0, dpsVal)
+	end
+	local minDamage, maxDamage = string.match(text, "([0-9]+%.?[0-9]*)%s*%-%s*([0-9]+%.?[0-9]*)%s*damage")
+	if minDamage and maxDamage then
+		info.MinDamage = tonumber(minDamage)
+		info.MaxDamage = tonumber(maxDamage)
+		info.Damage = (info.MinDamage + info.MaxDamage) / 2
+	end
+	local speed = string.match(text, "speed%s+([0-9]+%.?[0-9]*)")
+	if speed then
+		info.WeaponSpeed = tonumber(speed)
 	end
 end
 
@@ -3279,6 +3314,110 @@ function TyGearApplyWeaponsPreference()
 	weapons = pref
 end
 
+-- Offline weapon swing EP (GetItemStats omits base damage/speed). 1 AP ≈ 1 EP baseline;
+-- Classic: 14 AP ≈ 1 Weapon DPS. Spec multipliers discount yellow-hit share and OH penalty.
+-- Profiles may set weighting.weapon explicitly; otherwise defaults come from weapons preference.
+function TyGearEnsureWeaponWeights()
+	local w = TyGearCurrentWeighting
+	if not w or w.weapon then return end
+	local _, class, spec = TyGearGetClassAndSpec()
+	local pref = w.weapons or "any"
+	local ap = w.AttackPower or 0
+	local publishedDps = w.DPS or 0
+
+	-- Casters/healers: tooltip green stats only; ignore swing DPS/speed.
+	if ap <= E then
+		w.weapon = { mh_dps = 0, oh_dps = 0 }
+		return
+	end
+
+	-- Feral: only Weapon DPS matters (form swing timer); keep MythicSim DPS EP if present.
+	if class == "DRUID" and spec and (string.find(spec, "Feral") or spec == "Guardian") then
+		w.weapon = {
+			feral = true,
+			mh_dps = (publishedDps > E) and publishedDps or 3.31,
+			oh_dps = 0,
+		}
+		w.DPS = E
+		w.Damage = E
+		return
+	end
+
+	-- Already-calibrated EP-per-DPS from MythicSim (Rogue ~7+, etc.): promote as-is.
+	if publishedDps >= 3 then
+		w.weapon = {
+			mh_dps = publishedDps,
+			oh_dps = publishedDps * 0.5,
+			norm_speed = (pref == "dagger" or pref == "dagger and any") and 1.7
+				or ((pref == "2h" or pref == "2hDW") and 3.3 or 2.4),
+			speed_bonus = 0,
+		}
+		w.DPS = E
+		w.Damage = E
+		return
+	end
+
+	-- Hunter ranged: published DPS is already EP per weapon DPS.
+	if pref == "ranged" then
+		w.weapon = {
+			ranged = true,
+			mh_dps = (publishedDps > E) and publishedDps or 1.2,
+			oh_dps = 0,
+		}
+		w.DPS = E
+		w.Damage = E
+		return
+	end
+
+	-- Physical swingers: EP per DPS ≈ (11–13.5) * AttackPowerWeight when AP=1 → 12.5 EP/DPS.
+	local scale = ap
+	local defaults = {
+		["2h"] = { mh = 12.5, oh = 0, norm = 3.3, speed = 200 },
+		["2hDW"] = { mh = 12.0, oh = 6.0, norm = 3.3, speed = 150 },
+		["weapon and shield"] = { mh = 11.0, oh = 0, norm = 2.4, speed = 100 },
+		["dual wield"] = { mh = 11.0, oh = 6.0, norm = 2.4, speed = 50 },
+		["dagger"] = { mh = 11.0, oh = 6.0, norm = 1.7, speed = 0 },
+		["dagger and any"] = { mh = 11.0, oh = 6.0, norm = 1.7, speed = 0 },
+		["any"] = { mh = 12.0, oh = 6.0, norm = 2.4, speed = 100 },
+	}
+	local d = defaults[pref] or defaults["any"]
+	w.weapon = {
+		mh_dps = d.mh * scale,
+		oh_dps = d.oh * scale,
+		norm_speed = d.norm,
+		speed_bonus = d.speed * scale,
+	}
+	w.DPS = E
+	w.Damage = E
+end
+
+-- Weapon swing contribution for a candidate slot. OH uses oh_dps; MH/2H use mh_dps + speed.
+function TyGearGetWeaponSwingEP(info, gearSlot)
+	local weapon = TyGearCurrentWeighting and TyGearCurrentWeighting.weapon
+	if not weapon or not info or info.classID ~= Enum.ItemClass.Weapon then return 0 end
+	if Enum.ItemWeaponSubclass and info.subclassID == Enum.ItemWeaponSubclass.Wand then return 0 end
+	local dps = info.DPS or 0
+	if dps <= 0 and info.Damage and info.WeaponSpeed and info.WeaponSpeed > 0 then
+		dps = info.Damage / info.WeaponSpeed
+	end
+	if dps <= 0 then return 0 end
+	local forOffHand = gearSlot == INVSLOT_OFFHAND
+	local dpsWeight = forOffHand and (weapon.oh_dps or 0) or (weapon.mh_dps or 0)
+	if dpsWeight <= E then return 0 end
+	local ep = dps * dpsWeight
+	if weapon.feral or weapon.ranged then
+		return ep
+	end
+	local speed = info.WeaponSpeed
+	local norm = weapon.norm_speed
+	local speedBonus = weapon.speed_bonus or 0
+	-- Slower MH/2H increases normalized yellow damage at equal DPS.
+	if (not forOffHand) and speed and norm and speedBonus > E then
+		ep = ep + (speed - norm) * speedBonus
+	end
+	return ep
+end
+
 function TyGearSetStatWeights()
 	local localizedClass, class, spec, classID = TyGearGetClassAndSpec()
 	local weightingKey = ((TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)).."|"..tostring(TyGearGetStatWeightSystem()).."|"..tostring(TyGearDB and TyGearDB.OverridePawnScale and TyGearDB.PawnScale or "")
@@ -3321,17 +3460,7 @@ function TyGearSetStatWeights()
 	if (TyGearCurrentWeighting.Armor or 0) <= E then
 		TyGearCurrentWeighting.Armor = 0.001
 	end
-	-- MythicSim publishes weapon DPS/Damage as E for many melee specs. Without a real
-	-- weight, white weapons (staves, swords, etc.) score as 0 and never upgrade by damage.
-	-- Gate on AttackPower so caster profiles keep ignoring weapon swing DPS.
-	if (TyGearCurrentWeighting.AttackPower or 0) > E then
-		if (TyGearCurrentWeighting.DPS or 0) <= E then
-			TyGearCurrentWeighting.DPS = 1
-		end
-		if (TyGearCurrentWeighting.Damage or 0) <= E then
-			TyGearCurrentWeighting.Damage = 0.5
-		end
-	end
+	TyGearEnsureWeaponWeights()
 	TyGearApplyWeaponsPreference()
 end
 
@@ -7309,7 +7438,7 @@ end
 
 function TyGearUpdateEquippedItem(invSlot)
 	local info = TyGearReadItemInfo(invSlot)
-	local score = TyGearDetermineItemScore(info)
+	local score = TyGearDetermineItemScore(info, invSlot)
 	local slotInfo = TyGearEquippedItems[invSlot]
 	if not slotInfo then
 		slotInfo = {}
@@ -7868,7 +7997,6 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 		end
 	end
 	if (info.usable or (rollOn and info.Within5levels)) then
-		local score = TyGearDetermineItemScore(info)
 		if info.isGear and info.validGearSlots then
 			local lowestScoringValidGearSlot
 			local lowestScoringValidGearSlotScore
@@ -7911,6 +8039,8 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 			if not TyGearBestItems[lowestScoringValidGearSlot] then
 				TyGearBestItems[lowestScoringValidGearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
 			end
+			-- Score after choosing the slot so OH weapons use oh_dps swing EP.
+			local score = TyGearDetermineItemScore(info, lowestScoringValidGearSlot)
 			local currentBestInfo = TyGearBestItems[lowestScoringValidGearSlot].info
 			-- Dedicated reagent bags always beat profession/soul bags for the reagent slot.
 			local candidateDedicated = TyGearIsReagentBag(info)
@@ -8627,7 +8757,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 					return info
 				end
 				-- Prefer GetItemStats over giving up: shields and other gear still score from API stats.
+				-- Weapon min/max/speed still need readable tooltip lines when available.
 				TyGearApplyItemStatsFromAPI(info)
+				TyGearNormalizeWeaponDamageStats(info)
 				if TyGearItemHasMeasurableStats(info) then
 					info.reason = nil
 					-- remaining tooltip lines are likely secret too; finish with API stats
@@ -8810,14 +8942,8 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			if string.find(text, "multistrike") then info.Multistrike = (info.Multistrike or 0) + value end
 			if string.find(text, "versatility") then info.Versatility = (info.Versatility or 0) + value end
 			if string.find(text, "experience gained") then info.ExperienceGained = (info.ExperienceGained or 0) + value end
-			if info.classID == Enum.ItemClass.Weapon then
-				if string.find(text, "damage per second") then info.DPS = (info.DPS or 0) + value end
-				local minDamage, maxDamage = string.match(text, "([0-9]+%.?[0-9]*) ?%- ?([0-9]+%.?[0-9]*) damage")
-				if minDamage and maxDamage then
-					info.Damage = (info.Damage or 0) + ((tonumber(minDamage) + tonumber(maxDamage))/2)
-					minDamage, maxDamage = nil, nil
-				end
-			end
+			-- Base weapon damage/speed are not in GetItemStats; parse from tooltip lines.
+			TyGearParseWeaponTooltipLine(info, text)
 			--check for being a pattern or the like
 			if string.find(text, "pattern:") then info.unusable = 1 end
 			if string.find(text, "plans:") then info.unusable = 1 end
@@ -8853,7 +8979,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	end
 
 	-- Base armor / shield block / primary stats from the item API when tooltip lines omitted them.
+	-- Weapon DPS may appear here; min/max damage and swing speed still require the tooltip.
 	TyGearApplyItemStatsFromAPI(info)
+	TyGearNormalizeWeaponDamageStats(info)
 	-- Tooltip may be empty while GetItemStats already has armor/block (common for shields on Forever).
 	if info.unusable and info.reason == "(this item's tooltip is not yet available)"
 	and TyGearItemHasMeasurableStats(info) then
@@ -9325,9 +9453,17 @@ function TyGearGetWeaponType(itemClassID, itemSubClassID)
 	end
 end
 
-function TyGearDetermineItemScore(info)
+function TyGearDetermineItemScore(info, gearSlot)
 	if info.empty then return 0 end
+	-- Slot matters for dual-wield OH swing EP; TABARD (virtual 2H) uses MH weights.
+	local scoreSlot = gearSlot
+	if scoreSlot == INVSLOT_TABARD then
+		scoreSlot = INVSLOT_MAINHAND
+	end
 	local cacheKey = info.link or info.guid or info.id
+	if cacheKey and scoreSlot and info.classID == Enum.ItemClass.Weapon then
+		cacheKey = cacheKey..":"..tostring(scoreSlot)
+	end
 	if cacheKey and TyGearScoreCache[cacheKey] ~= nil then
 		return TyGearScoreCache[cacheKey]
 	end
@@ -9371,6 +9507,7 @@ function TyGearDetermineItemScore(info)
 		if (not TyGearCurrentWeighting) then return storeScore(0) end
 	end
 
+	-- Green/white stats from GetItemStats + tooltip. Weapon swing EP is separate (base damage/speed).
 	local score = (TyGearCurrentWeighting.Strength or 0) * (info.Strength or 0) +
 		(TyGearCurrentWeighting.Agility or 0) * (info.Agility or 0) +
 		(TyGearCurrentWeighting.Stamina or 0) * (info.Stamina or 0) +
@@ -9399,10 +9536,17 @@ function TyGearDetermineItemScore(info)
 		(TyGearCurrentWeighting.Mastery or 0) * (info.Mastery or 0) +
 		(TyGearCurrentWeighting.Multistrike or 0) * (info.Multistrike or 0) +
 		(TyGearCurrentWeighting.Versatility or 0) * (info.Versatility or 0) +
-		(TyGearCurrentWeighting.DPS or 0) * (info.DPS or 0) +
-		(TyGearCurrentWeighting.Damage or 0) * (info.Damage or 0) +
 		((UnitLevel("player") < maxPlayerLevel and not (IsXPUserDisabled and IsXPUserDisabled())) and
 		(TyGearCurrentWeighting.ExperienceGained or 0) * (info.ExperienceGained or 0) or 0)
+
+	if TyGearCurrentWeighting.weapon then
+		score = score + TyGearGetWeaponSwingEP(info, scoreSlot)
+	else
+		score = score
+			+ (TyGearCurrentWeighting.DPS or 0) * (info.DPS or 0)
+			+ (TyGearCurrentWeighting.Damage or 0) * (info.Damage or 0)
+	end
+
 	if score == 0 then
 		return storeScore(E)
 	else
@@ -9823,12 +9967,13 @@ end
 
 function TyGearGetTooltipScoreComparisonInfo(info, equipped)
 	local lowestScoringValidGearSlot
-	local lowestScoringValidGearSlotScore = TyGearDetermineItemScore(info)
 	local lowestScoringValidGearInfo = info
 	local equippedSetScore = 0
 	for i=1,(info.numValidGearSlots or 0) do
 		equippedSetScore = equippedSetScore + (TyGearEquippedItems[info.validGearSlots[i]].score or 0)
 	end
+	-- Candidate score is filled after the target slot is known (OH uses oh_dps).
+	local lowestScoringValidGearSlotScore
 	if info.is2hWeapon and (not (CanDualWield() and IsPlayerSpell(46917))) then
 		local mainHandInfo, mainHandScore, offHandScore
 		if TyGearEquippedItems and TyGearEquippedItems[INVSLOT_MAINHAND] and TyGearEquippedItems[INVSLOT_OFFHAND] then
@@ -9844,8 +9989,8 @@ function TyGearGetTooltipScoreComparisonInfo(info, equipped)
 			end
 		else
 			mainHandInfo = TyGearReadItemInfo(INVSLOT_MAINHAND)
-			mainHandScore = TyGearDetermineItemScore(mainHandInfo)
-			offHandScore = TyGearDetermineItemScore(TyGearReadItemInfo(INVSLOT_OFFHAND))
+			mainHandScore = TyGearDetermineItemScore(mainHandInfo, INVSLOT_MAINHAND)
+			offHandScore = TyGearDetermineItemScore(TyGearReadItemInfo(INVSLOT_OFFHAND), INVSLOT_OFFHAND)
 		end
 		local oneHandedWeaponsScore = mainHandScore + offHandScore
 		lowestScoringValidGearInfo = mainHandInfo
@@ -9862,7 +10007,7 @@ function TyGearGetTooltipScoreComparisonInfo(info, equipped)
 			lowestScoringValidGearSlotScore = TyGearEquippedItems[INVSLOT_MAINHAND].score or 0
 		else
 			lowestScoringValidGearInfo = TyGearReadItemInfo(INVSLOT_MAINHAND)
-			lowestScoringValidGearSlotScore = TyGearDetermineItemScore(lowestScoringValidGearInfo)
+			lowestScoringValidGearSlotScore = TyGearDetermineItemScore(lowestScoringValidGearInfo, INVSLOT_MAINHAND)
 		end
 		lowestScoringValidGearSlot = INVSLOT_MAINHAND
 		equippedSetScore = lowestScoringValidGearSlotScore
@@ -10091,10 +10236,13 @@ function TyGearTooltipHook(tooltip, tooltipData)
 		local pairedAgainstTwoHand = info.is1hWeaponOrOffHand and TyGearIsTwoHandEquipped()
 		local multiSlotNonWeapon = (not info.is1hWeaponOrOffHand) and info.numValidGearSlots and info.numValidGearSlots > 1
 		local shouldShowBestSet = (not isAComparisonTooltip) and (pairedAgainstTwoHand or multiSlotNonWeapon)
-		score = TyGearDetermineItemScore(info)
+		lowestScoringEquippedItemInfo, lowestScoringEquippedItemScore, lowestScoringEquippedItemSlot, equippedSetScore = TyGearGetTooltipScoreComparisonInfo(info, equipped)
+		local scoreGearSlot = lowestScoringEquippedItemSlot
+			or (info.is2hWeapon and INVSLOT_MAINHAND)
+			or (info.validGearSlots and info.validGearSlots[1])
+		score = TyGearDetermineItemScore(info, scoreGearSlot)
 		bestSet, bestSetScore = TyGearGetBestSetItems(info)
 		scoreWithBestSet = score + (bestSetScore or 0)
-		lowestScoringEquippedItemInfo, lowestScoringEquippedItemScore, lowestScoringEquippedItemSlot, equippedSetScore = TyGearGetTooltipScoreComparisonInfo(info, equipped)
 		local isAnyComparisonTooltipVisible = ItemRefTooltip:IsVisible() or ShoppingTooltip1:IsVisible() or ShoppingTooltip2:IsVisible()
 		local shouldShowComparisonLine = (not isAComparisonTooltip and (not isAnyComparisonTooltipVisible or TyGearDB.AlwaysShowScoreComparisons)) and not equipped
 		local usePairScore = shouldShowBestSet
@@ -10145,7 +10293,7 @@ function TyGearTooltipHook(tooltip, tooltipData)
 			RED_FONT_COLOR.r,RED_FONT_COLOR.g,RED_FONT_COLOR.b)
 		end
 		if shouldShowBestSet then
-			local thisScore = math.floor(TyGearDetermineItemScore(info) * 1000) / 1000
+			local thisScore = math.floor(TyGearDetermineItemScore(info, scoreGearSlot) * 1000) / 1000
 			tooltip:AddDoubleLine(scoreLinePrefix.." score (this; "..info.link.."):",
 			tostring(thisScore or 0),
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
