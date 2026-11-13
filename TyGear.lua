@@ -505,6 +505,22 @@ TyGearRefreshReagentBagSlot()
 -- Container (class 1) subclasses. There is no Enum.ItemContainerSubclass.
 local REAGENT_BAG_SUBCLASS_ID = 11
 local SOUL_BAG_SUBCLASS_ID = 1 -- Soul Bag (Warlock soul shards)
+-- Forever puts profession bags in the reagent slot. Apprentice's Mining Pack (277115)
+-- is a Mining Bag, not a bag whose name contains "Reagent Bag".
+local FOREVER_PROFESSION_BAG_SUBCLASSES = {
+	[2] = true, -- Herb Bag
+	[3] = true, -- Enchanting Bag
+	[4] = true, -- Engineering Bag
+	[5] = true, -- Gem Bag
+	[6] = true, -- Mining Bag
+	[7] = true, -- Leatherworking Bag
+	[8] = true, -- Inscription Bag
+	[10] = true, -- Cooking Bag
+}
+-- Item ids whose names do not say "Reagent Bag". Subclass and tooltip text cover the rest.
+local FOREVER_REAGENT_BAG_ITEM_IDS = {
+	[277115] = true, -- Apprentice's Mining Pack
+}
 
 function TyGearIsSoulBag(info)
 	if not info then return nil end
@@ -514,16 +530,19 @@ function TyGearIsSoulBag(info)
 	end
 end
 
+function TyGearSubclassUsesReagentSlot(classID, subclassID)
+	if classID ~= (Enum and Enum.ItemClass and Enum.ItemClass.Container) then return nil end
+	if subclassID == REAGENT_BAG_SUBCLASS_ID then return 1 end
+	local reagentSubclass = Enum and Enum.ItemContainerSubclass and (Enum.ItemContainerSubclass.ReagentBag or Enum.ItemContainerSubclass.Reagent)
+	if reagentSubclass and subclassID == reagentSubclass then return 1 end
+	if IS_WOW_FOREVER and FOREVER_PROFESSION_BAG_SUBCLASSES[subclassID] then return 1 end
+end
+
 function TyGearIsReagentBag(info)
 	if not info then return nil end
 	if info.isReagentBag then return 1 end
-	if info.classID == Enum.ItemClass.Container and info.subclassID == REAGENT_BAG_SUBCLASS_ID then
-		return 1
-	end
-	local reagentSubclass = Enum and Enum.ItemContainerSubclass and (Enum.ItemContainerSubclass.ReagentBag or Enum.ItemContainerSubclass.Reagent)
-	if info.classID == Enum.ItemClass.Container and reagentSubclass and info.subclassID == reagentSubclass then
-		return 1
-	end
+	if IS_WOW_FOREVER and info.id and FOREVER_REAGENT_BAG_ITEM_IDS[info.id] then return 1 end
+	if TyGearSubclassUsesReagentSlot(info.classID, info.subclassID) then return 1 end
 	if TyGearTextIsReagentBag and (TyGearTextIsReagentBag(info.subclassName) or TyGearTextIsReagentBag(info.name)) then
 		return 1
 	end
@@ -614,11 +633,65 @@ function TyGearGetReagentBagSlotName()
 	return "Reagent Bag"
 end
 
+-- Names and tooltip lines for every Forever bag that belongs in the reagent slot.
+-- General reagent bags whose names omit "Reagent Bag": Shipwright's Satchel, Spidersilk Sack.
+-- Profession bags: herb, enchanting, mining, and skinning. Normal pouches and satchels are not included.
+local FOREVER_PROFESSION_BAG_PHRASES = {
+	"mining bag",
+	"mining pack",
+	"herb bag",
+	"herb pouch",
+	"enchanting bag",
+	"bag of enchantment",
+	"enchanted mageweave pouch",
+	"enchanted runecloth bag",
+	"engineering bag",
+	"gem bag",
+	"leatherworking bag",
+	"inscription bag",
+	"skinning bag",
+	"skinning satchel",
+	"cooking bag",
+	"spidersilk sack",
+	"satchel of cenarius",
+}
+
+function TyGearProfessionBagPhrases()
+	if TyGearCachedProfessionBagPhrases then return TyGearCachedProfessionBagPhrases end
+	local phrases = {}
+	local seen = {}
+	local function add(phrase)
+		if type(phrase) ~= "string" then return end
+		phrase = string.lower(phrase)
+		if phrase == "" or string.len(phrase) < 4 or seen[phrase] then return end
+		seen[phrase] = true
+		table.insert(phrases, phrase)
+	end
+	for _, phrase in ipairs(FOREVER_PROFESSION_BAG_PHRASES) do
+		add(phrase)
+	end
+	if GetItemSubClassInfo and Enum and Enum.ItemClass and Enum.ItemClass.Container then
+		for subclassID in pairs(FOREVER_PROFESSION_BAG_SUBCLASSES) do
+			local ok, name = pcall(GetItemSubClassInfo, Enum.ItemClass.Container, subclassID)
+			if ok then add(name) end
+		end
+	end
+	TyGearCachedProfessionBagPhrases = phrases
+	return phrases
+end
+
 function TyGearTextIsReagentBag(text)
 	if type(text) ~= "string" or text == "" then return false end
 	if issecretvalue and issecretvalue(text) then return false end
 	local lower = string.lower(text)
 	if string.find(lower, "reagent bag", 1, true) then return true end
+	-- Shipwright's Satchel uses a straight or curly apostrophe.
+	if string.find(lower, "shipwright", 1, true) and string.find(lower, "satchel", 1, true) then return true end
+	if IS_WOW_FOREVER then
+		for _, phrase in ipairs(TyGearProfessionBagPhrases()) do
+			if string.find(lower, phrase, 1, true) then return true end
+		end
+	end
 	if not TyGearCachedReagentBagLabel then
 		local label = TyGearGetReagentBagSlotName()
 		TyGearCachedReagentBagLabel = (type(label) == "string" and string.lower(label)) or "reagent bag"
@@ -7160,7 +7233,7 @@ function TyGearScanBagsForBestItems()
 			if itemID then
 				local invType = C_Item.GetItemInventoryTypeByID(itemID) or 0
 				local itemName, itemSubType, classID, subclassID = TyGearItemIdentity(itemID)
-				local isReagentBag = (classID == Enum.ItemClass.Container) and (subclassID == REAGENT_BAG_SUBCLASS_ID)
+				local isReagentBag = TyGearSubclassUsesReagentSlot(classID, subclassID)
 					or TyGearTextIsReagentBag(itemSubType) or TyGearTextIsReagentBag(itemName)
 				local isSoulBag = (classID == Enum.ItemClass.Container) and (subclassID == SOUL_BAG_SUBCLASS_ID)
 				if (invType > 0) or isReagentBag or isSoulBag then
@@ -8235,6 +8308,8 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			if value > 0
 			and (
 				string.find(text, " bag") or
+				string.find(text, " pouch") or
+				string.find(text, " satchel") or
 				string.find(text, " quiver") or
 				string.find(text, " ammo pouch") or
 				string.find(text, " tackle box")
