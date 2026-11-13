@@ -2,6 +2,7 @@
 -- Imported from https://mythicsim.com/wow-forever/stat-priority
 -- Engine a667dce84 · Client 1.60.1.70707
 -- EP values (reference stat = 1). Tanks use threat weights where MythicSim publishes them.
+-- Armor is not published by MythicSim; use a tiny 0.001 weight so better armor still upgrades low-level gear.
 -- Do not edit by hand; re-import from MythicSim when the Forever engine updates.
 
 local E = 0.000001
@@ -16,7 +17,7 @@ TyGearMythicSimWeights = {
 	["DRUID"] = {
 		["None"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.28, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = E, Haste = 0.84, Mp5 = 0.14,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.67, Hit = E, SpellHit = 1.12,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -26,7 +27,7 @@ TyGearMythicSimWeights = {
 		},
 		["Balance"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.28, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = E, Haste = 0.84, Mp5 = 0.14,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.67, Hit = E, SpellHit = 1.12,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -36,7 +37,7 @@ TyGearMythicSimWeights = {
 		},
 		["Feral"] = {
 			Strength = 0.89, Agility = 1, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.55, Mp5 = E,
 			AttackPower = 0.36, ArmorPenetration = 0.12, Crit = 0.78, SpellCrit = E, Hit = 0.69, SpellHit = E,
 			Expertise = 0.67, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -46,7 +47,7 @@ TyGearMythicSimWeights = {
 		},
 		["Feral (Bear)"] = {
 			Strength = 1.54, Agility = 1, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = 0.01, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = 0.01, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.68, Mp5 = E,
 			AttackPower = 0.7, ArmorPenetration = 0.28, Crit = 1.28, SpellCrit = E, Hit = 2.63, SpellHit = E,
 			Expertise = 5.27, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -56,7 +57,7 @@ TyGearMythicSimWeights = {
 		},
 		["Feral Combat"] = {
 			Strength = 0.89, Agility = 1, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.55, Mp5 = E,
 			AttackPower = 0.36, ArmorPenetration = 0.12, Crit = 0.78, SpellCrit = E, Hit = 0.69, SpellHit = E,
 			Expertise = 0.67, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -69,7 +70,7 @@ TyGearMythicSimWeights = {
 		["None"] = {
 			weapons = "ranged",
 			Strength = 0.1, Agility = 1, Stamina = E, Intellect = 0.59, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.4, Mp5 = 0.26,
 			AttackPower = 0.29, ArmorPenetration = 0.13, Crit = 0.91, SpellCrit = E, Hit = 1.41, SpellHit = E,
 			Expertise = 0.73, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -80,7 +81,7 @@ TyGearMythicSimWeights = {
 		["Beast Mastery"] = {
 			weapons = "ranged",
 			Strength = 0.1, Agility = 1, Stamina = E, Intellect = 0.59, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.4, Mp5 = 0.26,
 			AttackPower = 0.29, ArmorPenetration = 0.13, Crit = 0.91, SpellCrit = E, Hit = 1.41, SpellHit = E,
 			Expertise = 0.73, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -91,7 +92,7 @@ TyGearMythicSimWeights = {
 		["Marksmanship"] = {
 			weapons = "ranged",
 			Strength = 0.11, Agility = 1, Stamina = E, Intellect = 0.58, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.38, Mp5 = 0.21,
 			AttackPower = 0.3, ArmorPenetration = 0.13, Crit = 0.84, SpellCrit = E, Hit = 1.11, SpellHit = E,
 			Expertise = 0.31, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -102,7 +103,7 @@ TyGearMythicSimWeights = {
 		["Survival"] = {
 			weapons = "ranged",
 			Strength = 0.17, Agility = 1, Stamina = E, Intellect = 0.67, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.41, Mp5 = 0.39,
 			AttackPower = 0.2, ArmorPenetration = 0.13, Crit = 0.77, SpellCrit = E, Hit = E, SpellHit = E,
 			Expertise = 0.62, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -114,7 +115,7 @@ TyGearMythicSimWeights = {
 	["MAGE"] = {
 		["None"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.18, Spirit = 0.01,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = 3.93, Haste = 1.09, Mp5 = 0.02,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.65, Hit = E, SpellHit = 1.64,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -124,7 +125,7 @@ TyGearMythicSimWeights = {
 		},
 		["Arcane"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.99, Spirit = 0.27,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = 4.28, Haste = 0.66, Mp5 = 0.43,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.8, Hit = E, SpellHit = 1.79,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -134,7 +135,7 @@ TyGearMythicSimWeights = {
 		},
 		["Fire"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.47, Spirit = 0.11,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = 3.86, Haste = -0.04, Mp5 = 0.25,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.76, Hit = E, SpellHit = 1.53,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -144,7 +145,7 @@ TyGearMythicSimWeights = {
 		},
 		["Frost"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.18, Spirit = 0.01,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = 3.93, Haste = 1.09, Mp5 = 0.02,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.65, Hit = E, SpellHit = 1.64,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -154,7 +155,7 @@ TyGearMythicSimWeights = {
 		},
 		["Frostfire"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.75, Spirit = 0.2,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = 2.72, Haste = 0.47, Mp5 = 0.58,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.97, Hit = E, SpellHit = 1.47,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -167,7 +168,7 @@ TyGearMythicSimWeights = {
 		["None"] = {
 			weapons = "2h",
 			Strength = 1, Agility = 1.36, Stamina = E, Intellect = 1.6, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 2.11, SpellPenetration = E, Haste = 1.48, Mp5 = E,
 			AttackPower = 0.41, ArmorPenetration = 0.1, Crit = 1.73, SpellCrit = E, Hit = E, SpellHit = E,
 			Expertise = 2.86, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -178,7 +179,7 @@ TyGearMythicSimWeights = {
 		["Holy-prot"] = {
 			weapons = "weapon and shield",
 			Strength = 1, Agility = 1.55, Stamina = 0.15, Intellect = 1.01, Spirit = E,
-			Armor = E, Dodge = -0.25, Parry = 0.01, Block = 4.06, Defense = 0.55,
+			Armor = 0.001, Dodge = -0.25, Parry = 0.01, Block = 4.06, Defense = 0.55,
 			SpellPower = 3.99, SpellPenetration = E, Haste = 1.49, Mp5 = E,
 			AttackPower = 0.42, ArmorPenetration = 0.09, Crit = 2.15, SpellCrit = 0.57, Hit = E, SpellHit = 0.99,
 			Expertise = 5.84, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -189,7 +190,7 @@ TyGearMythicSimWeights = {
 		["Protection"] = {
 			weapons = "weapon and shield",
 			Strength = 1, Agility = 1.14, Stamina = 0.09, Intellect = 0.07, Spirit = E,
-			Armor = E, Dodge = -0.25, Parry = -0.01, Block = 2.6, Defense = -0.08,
+			Armor = 0.001, Dodge = -0.25, Parry = -0.01, Block = 2.6, Defense = -0.08,
 			SpellPower = 2.51, SpellPenetration = E, Haste = 1.02, Mp5 = E,
 			AttackPower = 0.42, ArmorPenetration = 0.09, Crit = 1.63, SpellCrit = 0.17, Hit = E, SpellHit = 1.31,
 			Expertise = 5.67, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -200,7 +201,7 @@ TyGearMythicSimWeights = {
 		["Ret-prot"] = {
 			weapons = "weapon and shield",
 			Strength = 1, Agility = 1.52, Stamina = 0.11, Intellect = 3.23, Spirit = E,
-			Armor = E, Dodge = -0.07, Parry = 0.2, Block = 3.35, Defense = 0.76,
+			Armor = 0.001, Dodge = -0.07, Parry = 0.2, Block = 3.35, Defense = 0.76,
 			SpellPower = 2.78, SpellPenetration = E, Haste = 1.36, Mp5 = E,
 			AttackPower = 0.45, ArmorPenetration = 0.11, Crit = 2.05, SpellCrit = 0.25, Hit = E, SpellHit = 1.52,
 			Expertise = 5.95, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -211,7 +212,7 @@ TyGearMythicSimWeights = {
 		["Retribution"] = {
 			weapons = "2h",
 			Strength = 1, Agility = 1.36, Stamina = E, Intellect = 1.6, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 2.11, SpellPenetration = E, Haste = 1.48, Mp5 = E,
 			AttackPower = 0.41, ArmorPenetration = 0.1, Crit = 1.73, SpellCrit = E, Hit = E, SpellHit = E,
 			Expertise = 2.86, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -222,7 +223,7 @@ TyGearMythicSimWeights = {
 		["Shockadin"] = {
 			weapons = "2h",
 			Strength = 1, Agility = 1.13, Stamina = E, Intellect = 0.88, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 2.03, SpellPenetration = E, Haste = 2.23, Mp5 = E,
 			AttackPower = 0.41, ArmorPenetration = 0.09, Crit = 1.46, SpellCrit = E, Hit = 0.41, SpellHit = E,
 			Expertise = 2.11, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -234,7 +235,7 @@ TyGearMythicSimWeights = {
 	["PRIEST"] = {
 		["None"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.26, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = E, Haste = 0.65, Mp5 = E,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.91, Hit = E, SpellHit = 1.19,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -244,7 +245,7 @@ TyGearMythicSimWeights = {
 		},
 		["Shadow"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.26, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = E, Haste = 0.65, Mp5 = E,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.91, Hit = E, SpellHit = 1.19,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -254,7 +255,7 @@ TyGearMythicSimWeights = {
 		},
 		["Smite"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.23, Spirit = 0.14,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = E, Haste = 1.04, Mp5 = 0.15,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.38, Hit = E, SpellHit = 0.25,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -267,7 +268,7 @@ TyGearMythicSimWeights = {
 		["None"] = {
 			weapons = "dual wield",
 			Strength = 1.1, Agility = 1.81, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 1.6, Mp5 = E,
 			AttackPower = 1, ArmorPenetration = 0.35, Crit = 1.34, SpellCrit = E, Hit = 2.28, SpellHit = E,
 			Expertise = 2.8, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -278,7 +279,7 @@ TyGearMythicSimWeights = {
 		["Assassination"] = {
 			weapons = "dagger and any",
 			Strength = 1.1, Agility = 2.05, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 1.36, Mp5 = E,
 			AttackPower = 1, ArmorPenetration = 0.42, Crit = 1.83, SpellCrit = E, Hit = 1.9, SpellHit = E,
 			Expertise = 2.99, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -289,7 +290,7 @@ TyGearMythicSimWeights = {
 		["Combat"] = {
 			weapons = "dual wield",
 			Strength = 1.1, Agility = 1.81, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 1.6, Mp5 = E,
 			AttackPower = 1, ArmorPenetration = 0.35, Crit = 1.34, SpellCrit = E, Hit = 2.28, SpellHit = E,
 			Expertise = 2.8, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -300,7 +301,7 @@ TyGearMythicSimWeights = {
 		["Subtlety"] = {
 			weapons = "dagger and any",
 			Strength = 1.1, Agility = 1.93, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 1.54, Mp5 = E,
 			AttackPower = 1, ArmorPenetration = 0.26, Crit = 1.55, SpellCrit = E, Hit = 2.15, SpellHit = E,
 			Expertise = 2.56, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -313,7 +314,7 @@ TyGearMythicSimWeights = {
 		["None"] = {
 			weapons = "dual wield",
 			Strength = 2.2, Agility = 1.43, Stamina = E, Intellect = 1.96, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1.37, SpellPenetration = E, Haste = 2.15, Mp5 = E,
 			AttackPower = 1, ArmorPenetration = 0.35, Crit = 1.84, SpellCrit = 0.82, Hit = E, SpellHit = 2.08,
 			Expertise = 4.06, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -323,7 +324,7 @@ TyGearMythicSimWeights = {
 		},
 		["Elehance"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.83, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = E, Haste = 0.4, Mp5 = 0.03,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.86, Hit = E, SpellHit = 1.59,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -333,7 +334,7 @@ TyGearMythicSimWeights = {
 		},
 		["Elemental"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.19, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = E, Haste = 0.96, Mp5 = E,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.69, Hit = E, SpellHit = 1.32,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -344,7 +345,7 @@ TyGearMythicSimWeights = {
 		["Enhancement"] = {
 			weapons = "dual wield",
 			Strength = 2.2, Agility = 1.43, Stamina = E, Intellect = 1.96, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1.37, SpellPenetration = E, Haste = 2.15, Mp5 = E,
 			AttackPower = 1, ArmorPenetration = 0.35, Crit = 1.84, SpellCrit = 0.82, Hit = E, SpellHit = 2.08,
 			Expertise = 4.06, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -356,7 +357,7 @@ TyGearMythicSimWeights = {
 	["WARLOCK"] = {
 		["None"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.17, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = 2.59, Haste = 0.22, Mp5 = E,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.69, Hit = E, SpellHit = 0.52,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -366,7 +367,7 @@ TyGearMythicSimWeights = {
 		},
 		["Affliction"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.17, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = 2.59, Haste = 0.22, Mp5 = E,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.69, Hit = E, SpellHit = 0.52,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -376,7 +377,7 @@ TyGearMythicSimWeights = {
 		},
 		["Demonology"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.45, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = 2.26, Haste = 0.87, Mp5 = 0.28,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.77, Hit = E, SpellHit = 1.29,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -386,7 +387,7 @@ TyGearMythicSimWeights = {
 		},
 		["Destruction"] = {
 			Strength = E, Agility = E, Stamina = E, Intellect = 0.5, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1, SpellPenetration = 2.52, Haste = 0.79, Mp5 = 0.3,
 			AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = 0.84, Hit = E, SpellHit = 1.14,
 			Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -399,7 +400,7 @@ TyGearMythicSimWeights = {
 		["None"] = {
 			weapons = "dual wield",
 			Strength = 1, Agility = 0.8, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.87, Mp5 = E,
 			AttackPower = 0.45, ArmorPenetration = 0.19, Crit = 1.02, SpellCrit = E, Hit = 1.33, SpellHit = E,
 			Expertise = 1.53, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -410,7 +411,7 @@ TyGearMythicSimWeights = {
 		["Arms"] = {
 			weapons = "2h",
 			Strength = 1, Agility = 0.84, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.83, Mp5 = E,
 			AttackPower = 0.45, ArmorPenetration = 0.2, Crit = 1.08, SpellCrit = E, Hit = 1.12, SpellHit = E,
 			Expertise = 1.04, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -421,7 +422,7 @@ TyGearMythicSimWeights = {
 		["Fury"] = {
 			weapons = "dual wield",
 			Strength = 1, Agility = 0.8, Stamina = E, Intellect = E, Spirit = E,
-			Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.87, Mp5 = E,
 			AttackPower = 0.45, ArmorPenetration = 0.19, Crit = 1.02, SpellCrit = E, Hit = 1.33, SpellHit = E,
 			Expertise = 1.53, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -432,7 +433,7 @@ TyGearMythicSimWeights = {
 		["Fury-prot"] = {
 			weapons = "weapon and shield",
 			Strength = 1, Agility = 0.49, Stamina = 0.04, Intellect = E, Spirit = E,
-			Armor = E, Dodge = -0.18, Parry = -0.08, Block = 0.01, Defense = -0.26,
+			Armor = 0.001, Dodge = -0.18, Parry = -0.08, Block = 0.01, Defense = -0.26,
 			SpellPower = E, SpellPenetration = E, Haste = 0.42, Mp5 = E,
 			AttackPower = 0.45, ArmorPenetration = 0.17, Crit = 0.8, SpellCrit = E, Hit = 0.88, SpellHit = E,
 			Expertise = 3.28, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,
@@ -443,7 +444,7 @@ TyGearMythicSimWeights = {
 		["Protection"] = {
 			weapons = "weapon and shield",
 			Strength = 1, Agility = 0.53, Stamina = 0.05, Intellect = E, Spirit = E,
-			Armor = E, Dodge = -0.11, Parry = 0.04, Block = 0.55, Defense = -0.13,
+			Armor = 0.001, Dodge = -0.11, Parry = 0.04, Block = 0.55, Defense = -0.13,
 			SpellPower = E, SpellPenetration = E, Haste = 0.65, Mp5 = E,
 			AttackPower = 0.44, ArmorPenetration = 0.19, Crit = 0.77, SpellCrit = E, Hit = E, SpellHit = E,
 			Expertise = 4.18, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = 100,

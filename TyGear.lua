@@ -3362,6 +3362,11 @@ function TyGearSetStatWeights()
 			TyGearCurrentWeighting.Hit = math.max(TyGearCurrentWeighting.Hit or 0, TyGearCurrentWeighting.SpellHit or 0)
 		end
 	end
+	-- MythicSim (and some built-ins) omit Armor. Keep a tiny floor so better armor
+	-- still upgrades otherwise-equal low-level pieces without competing with real EPs.
+	if (TyGearCurrentWeighting.Armor or 0) <= E then
+		TyGearCurrentWeighting.Armor = 0.001
+	end
 end
 
 local function newCheckbox(dbname, label, description, onClick, optionsMenu)
