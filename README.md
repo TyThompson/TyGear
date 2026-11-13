@@ -1,6 +1,6 @@
 # TyGear
 
-TyGear automatically rolls on and equips loot for **WoW Forever**. It rolls **need** on upgrades and **greed** otherwise, using class stat weights (like WoWhead filters).
+TyGear automatically rolls on and equips loot for **WoW Forever**. It rolls **need** on upgrades and **greed** otherwise, using class stat weights from [MythicSim](https://mythicsim.com/wow-forever/stat-priority) by default (Pawn optional).
 
 Based on [AutoGear](https://github.com/BujuArena/AutoGear) by Synthetikaryote and BujuArena ([CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)).
 
@@ -9,8 +9,9 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 ## Getting started
 
 1. Type `/tg` to open options.
-2. Forever has one specialization per class, so TyGear uses a general class profile by default. Healers, tanks, or anyone who wants a focused damage profile should enable **Override specialization** and pick the closest match. That setting is saved per character.
-3. Use `/tg toggle` anytime you want to turn automatic gearing off (for example before a loot roll you want to control yourself).
+2. Under **Evaluation → Stat weights**, pick **MythicSim** (default) or **Pawn**. MythicSim uses imported EP weights from mythicsim.com; if a specialization has no MythicSim row, TyGear falls back to Pawn when it is installed.
+3. Forever has one specialization per class, so TyGear uses a general class profile by default. Healers, tanks, or anyone who wants a focused damage profile should enable **Override specialization** and pick the closest match. That setting is saved per character.
+4. Use `/tg toggle` anytime you want to turn automatic gearing off (for example before a loot roll you want to control yourself).
 
 ## What to expect
 
@@ -40,4 +41,4 @@ Esc → Key Bindings → TyGear: the **ignore list** key keeps the hovered item 
 
 ## Note
 
-TyGear is for leveling convenience. Its weights are not meant for end-game group content.
+TyGear is for leveling convenience. MythicSim weights are raid-reference EP values and a strong default for Forever; they are still a guide, not a substitute for your own sim.
