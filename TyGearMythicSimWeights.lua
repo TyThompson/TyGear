@@ -3,6 +3,8 @@
 -- Engine a667dce84 · Client 1.60.1.70707
 -- EP values (reference stat = 1). Tanks use threat weights where MythicSim publishes them.
 -- Armor is not published by MythicSim; use a tiny 0.001 weight so better armor still upgrades low-level gear.
+-- Class "None" profiles use weapons = "any" so Forever (always detected as None) can fill an empty
+-- off-hand with a shield before Dual Wield / without a tank override. Spec overrides keep DW/2h.
 -- Do not edit by hand; re-import from MythicSim when the Forever engine updates.
 
 local E = 0.000001
@@ -166,7 +168,7 @@ TyGearMythicSimWeights = {
 	},
 	["PALADIN"] = {
 		["None"] = {
-			weapons = "2h",
+			weapons = "any",
 			Strength = 1, Agility = 1.36, Stamina = E, Intellect = 1.6, Spirit = E,
 			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 2.11, SpellPenetration = E, Haste = 1.48, Mp5 = E,
@@ -266,7 +268,7 @@ TyGearMythicSimWeights = {
 	},
 	["ROGUE"] = {
 		["None"] = {
-			weapons = "dual wield",
+			weapons = "any",
 			Strength = 1.1, Agility = 1.81, Stamina = E, Intellect = E, Spirit = E,
 			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 1.6, Mp5 = E,
@@ -312,7 +314,7 @@ TyGearMythicSimWeights = {
 	},
 	["SHAMAN"] = {
 		["None"] = {
-			weapons = "dual wield",
+			weapons = "any",
 			Strength = 2.2, Agility = 1.43, Stamina = E, Intellect = 1.96, Spirit = E,
 			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = 1.37, SpellPenetration = E, Haste = 2.15, Mp5 = E,
@@ -398,7 +400,7 @@ TyGearMythicSimWeights = {
 	},
 	["WARRIOR"] = {
 		["None"] = {
-			weapons = "dual wield",
+			weapons = "any",
 			Strength = 1, Agility = 0.8, Stamina = E, Intellect = E, Spirit = E,
 			Armor = 0.001, Dodge = E, Parry = E, Block = E, Defense = E,
 			SpellPower = E, SpellPenetration = E, Haste = 0.87, Mp5 = E,

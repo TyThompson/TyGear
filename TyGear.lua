@@ -3265,10 +3265,26 @@ function TyGearGetWeightSourceLabel()
 	return "TyGear"
 end
 
+-- Resolve the weapons preference used for slot validity. Dual-wield profiles must not
+-- leave the off-hand empty before Dual Wield is learned (shields stay valid via "any").
+function TyGearApplyWeaponsPreference()
+	local pref = TyGearCurrentWeighting and (TyGearCurrentWeighting.weapons or "any") or "any"
+	if (pref == "dual wield" or pref == "2hDW") and not (CanDualWield and CanDualWield()) then
+		pref = "any"
+	end
+	if weapons ~= pref then
+		TyGearWipeTable(TyGearValidGearSlotsCache)
+		TyGearWipeTable(TyGearSetSlotsCache)
+	end
+	weapons = pref
+end
+
 function TyGearSetStatWeights()
 	local localizedClass, class, spec, classID = TyGearGetClassAndSpec()
 	local weightingKey = ((TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)).."|"..tostring(TyGearGetStatWeightSystem()).."|"..tostring(TyGearDB and TyGearDB.OverridePawnScale and TyGearDB.PawnScale or "")
 	if TyGearWeightingCacheKey == weightingKey then
+		-- CanDualWield can change after learning the skill; refresh weapons even on a cache hit.
+		TyGearApplyWeaponsPreference()
 		return
 	end
 	TyGearInvalidatePerformanceCaches()
@@ -3285,9 +3301,9 @@ function TyGearSetStatWeights()
 	else
 		TyGearCurrentWeighting = nil
 	end
-	weapons = TyGearCurrentWeighting and (TyGearCurrentWeighting.weapons or "any") or "any"
 	TyGearWeightingCacheKey = weightingKey
 	if (not TyGearCurrentWeighting) then
+		TyGearApplyWeaponsPreference()
 		if not TyGearUsingPawn() then
 			TyGearPrint("TyGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
 		end
@@ -3305,6 +3321,7 @@ function TyGearSetStatWeights()
 	if (TyGearCurrentWeighting.Armor or 0) <= E then
 		TyGearCurrentWeighting.Armor = 0.001
 	end
+	TyGearApplyWeaponsPreference()
 end
 
 local function newCheckbox(dbname, label, description, onClick, optionsMenu)
