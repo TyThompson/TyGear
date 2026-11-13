@@ -12,6 +12,7 @@ localization.core.lua
 localization.ru.lua
 localization.de.lua
 TyGearUnmeasurableGear.lua
+TyGearMythicSimWeights.lua
 TyGear.lua
 ## SavedVariables: TyGearDB
 ## SavedVariablesPerCharacter: TyGearDB, TyGearCharDB

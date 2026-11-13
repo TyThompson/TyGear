@@ -3127,9 +3127,33 @@ function TyGearColorizeSpecChoice(value)
 	return TyGearClassColoredText(classToken, localizedClass)..": "..TyGearSpecColoredText(classToken, spec)
 end
 
+function TyGearGetWeightSpecNames(className)
+	local specs = {}
+	if TyGearDefaultWeights[className] then
+		for specName in pairs(TyGearDefaultWeights[className]) do
+			specs[specName] = true
+		end
+	end
+	if TyGearMythicSimWeights and TyGearMythicSimWeights[className] then
+		for specName in pairs(TyGearMythicSimWeights[className]) do
+			specs[specName] = true
+		end
+	end
+	return specs
+end
+
 function TyGearGetOverrideSpecs()
-	local classOrder = {}
+	local classNames = {}
 	for className in pairs(TyGearDefaultWeights) do
+		classNames[className] = true
+	end
+	if TyGearMythicSimWeights then
+		for className in pairs(TyGearMythicSimWeights) do
+			classNames[className] = true
+		end
+	end
+	local classOrder = {}
+	for className in pairs(classNames) do
 		if (not IS_WOW_FOREVER) or (not TyGearClassesHiddenOnForever[className]) then
 			table.insert(classOrder, className)
 		end
@@ -3143,7 +3167,7 @@ function TyGearGetOverrideSpecs()
 		if localizedClassName then
 			local specOrder = {}
 			local hiddenSpecs = IS_WOW_FOREVER and TyGearSpecsHiddenOnForever[className]
-			for specName in pairs(TyGearDefaultWeights[className]) do
+			for specName in pairs(TyGearGetWeightSpecNames(className)) do
 				if not (hiddenSpecs and hiddenSpecs[specName]) then
 					table.insert(specOrder, specName)
 				end
@@ -3210,16 +3234,110 @@ function TyGearDetectClassAndSpec()
 	return localizedClass, class, spec, classID
 end
 
+TyGearStatWeightSystemMythicSim = "MythicSim"
+TyGearStatWeightSystemPawn = "Pawn"
+
+function TyGearIsPawnReady()
+	return (PawnIsReady ~= nil) and PawnIsReady()
+end
+
+function TyGearGetStatWeightSystem()
+	local system = TyGearDB and TyGearDB.StatWeightSystem
+	if system == TyGearStatWeightSystemPawn then
+		return TyGearStatWeightSystemPawn
+	end
+	return TyGearStatWeightSystemMythicSim
+end
+
+function TyGearSetStatWeightSystem(system)
+	if not TyGearDB then return end
+	if system == TyGearStatWeightSystemPawn then
+		TyGearDB.StatWeightSystem = TyGearStatWeightSystemPawn
+		TyGearDB.UsePawn = true
+	else
+		TyGearDB.StatWeightSystem = TyGearStatWeightSystemMythicSim
+		TyGearDB.UsePawn = false
+	end
+	TyGearWeightingCacheKey = nil
+	if TyGearSetStatWeights then TyGearSetStatWeights() end
+	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+end
+
+-- Older installs only had UsePawn. Prefer MythicSim unless the player had already enabled Pawn.
+function TyGearMigrateStatWeightSystem()
+	if not TyGearDB then return end
+	if TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemMythicSim
+	and TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemPawn then
+		if TyGearDB.UsePawn then
+			TyGearDB.StatWeightSystem = TyGearStatWeightSystemPawn
+		else
+			TyGearDB.StatWeightSystem = TyGearStatWeightSystemMythicSim
+		end
+	end
+	TyGearDB.UsePawn = (TyGearDB.StatWeightSystem == TyGearStatWeightSystemPawn)
+end
+
+function TyGearGetMythicSimWeighting(class, spec)
+	return TyGearMythicSimWeights and TyGearMythicSimWeights[class] and TyGearMythicSimWeights[class][spec] or nil
+end
+
+function TyGearGetBuiltInWeighting(class, spec)
+	return TyGearDefaultWeights[class] and TyGearDefaultWeights[class][spec] or nil
+end
+
+-- Prefer MythicSim EP weights; fall back to built-in healer/legacy profiles when MythicSim has no row.
+function TyGearGetInternalWeighting(class, spec)
+	local mythic = TyGearGetMythicSimWeighting(class, spec)
+	if mythic then
+		return mythic, TyGearStatWeightSystemMythicSim
+	end
+	local builtIn = TyGearGetBuiltInWeighting(class, spec)
+	if builtIn then
+		return builtIn, "BuiltIn"
+	end
+	return nil, nil
+end
+
+-- True when item scores should come from Pawn instead of internal weights.
+function TyGearUsingPawn()
+	if not TyGearIsPawnReady() then
+		return false
+	end
+	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemPawn then
+		return true
+	end
+	-- MythicSim is selected: fall back to Pawn only when this class/spec has no internal weights.
+	local _, class, spec = TyGearGetClassAndSpec()
+	local weighting = TyGearGetInternalWeighting(class, spec)
+	return weighting == nil
+end
+
+function TyGearGetWeightSourceLabel()
+	if TyGearUsingPawn() then
+		local pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
+		local pawnScaleColor = PawnGetScaleColor and PawnGetScaleColor(pawnScaleName)
+		if (pawnScaleLocalizedName or pawnScaleName) and pawnScaleColor then
+			return "Pawn \""..pawnScaleColor..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\""
+		end
+		return "Pawn"
+	end
+	if TyGearCurrentWeightSource == TyGearStatWeightSystemMythicSim then
+		return "MythicSim"
+	end
+	return "TyGear"
+end
+
 function TyGearSetStatWeights()
 	local localizedClass, class, spec, classID = TyGearGetClassAndSpec()
-	local weightingKey = ((TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)).."|"..tostring(TyGearDB and TyGearDB.UsePawn).."|"..tostring(TyGearDB and TyGearDB.OverridePawnScale and TyGearDB.PawnScale or "")
+	local weightingKey = ((TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)).."|"..tostring(TyGearGetStatWeightSystem()).."|"..tostring(TyGearDB and TyGearDB.OverridePawnScale and TyGearDB.PawnScale or "")
 	if TyGearWeightingCacheKey == weightingKey then
 		return
 	end
 	TyGearInvalidatePerformanceCaches()
 	TyGearCachedClassLocalized, TyGearCachedClass, TyGearCachedSpec, TyGearCachedClassID = localizedClass, class, spec, classID
 	TyGearClassSpecCacheKey = (TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)
-	local baseWeighting = TyGearDefaultWeights[class] and TyGearDefaultWeights[class][spec] or nil
+	local baseWeighting, weightSource = TyGearGetInternalWeighting(class, spec)
+	TyGearCurrentWeightSource = weightSource
 	if baseWeighting then
 		-- shallow copy so Crit/Hit merges do not mutate the shared defaults table
 		TyGearCurrentWeighting = {}
@@ -3232,12 +3350,12 @@ function TyGearSetStatWeights()
 	weapons = TyGearCurrentWeighting and (TyGearCurrentWeighting.weapons or "any") or "any"
 	TyGearWeightingCacheKey = weightingKey
 	if (not TyGearCurrentWeighting) then
-		if (not (TyGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
+		if not TyGearUsingPawn() then
 			TyGearPrint("TyGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
 		end
 		return
 	end
-	if (IS_WOW_FOREVER or TOC_VERSION_CURRENT >= TOC_VERSION_WOTLK) and (not (TyGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
+	if (IS_WOW_FOREVER or TOC_VERSION_CURRENT >= TOC_VERSION_WOTLK) and (not TyGearUsingPawn()) then
 		TyGearCurrentWeighting.Crit = math.max(TyGearCurrentWeighting.Crit or 0, TyGearCurrentWeighting.SpellCrit or 0)
 		if IS_WOW_FOREVER then
 			-- WoW Forever combines melee, ranged and spell hit on gear
@@ -5034,6 +5152,136 @@ local function optionsSetup(optionsMenu)
 			return
 		end
 
+		--standalone string dropdown (flat label/value list), e.g. MythicSim vs Pawn
+		if v["dropdown"] and v["options"] then
+			local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
+			if v["description"] then
+				addOptionsNote(page, v["description"])
+			end
+			local row = CreateFrame("Frame", nil, page)
+			row:SetSize(500, 28)
+			local labelText = row:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+			labelText:SetPoint("LEFT", 8, 0)
+			labelText:SetText(TyGearColorize(v["label"]))
+			local width = 220
+			local dropDown
+			local function labelForValue(value)
+				for _, entry in ipairs(v["options"]) do
+					if entry["value"] == value then
+						return entry["label"]
+					end
+				end
+				return value
+			end
+			if useModernDropdowns then
+				dropDown = CreateFrame("DropdownButton", "TyGear"..v["option"].."Dropdown", row, "WowStyle1DropdownTemplate")
+				dropDown:SetPoint("LEFT", labelText, "RIGHT", 16, 0)
+				dropDown:SetWidth(width)
+			else
+				dropDown = CreateFrame("FRAME", "TyGear"..v["option"].."Dropdown", row, "UIDropDownMenuTemplate")
+				dropDown:SetPoint("LEFT", labelText, "RIGHT", 0, 0)
+				UIDropDownMenu_SetWidth(dropDown, width)
+			end
+			setDropdownText(dropDown, labelForValue(TyGearSettingsTable(v["option"])[v["option"]]))
+			dropDown.SetValue = function(self, value)
+				TyGearSettingsTable(v["option"])[v["option"]] = value
+				setDropdownText(self, labelForValue(value))
+				closeDropdownMenu(self)
+			end
+			if v["dropdownPostHook"] then
+				hooksecurefunc(dropDown, "SetValue", v["dropdownPostHook"])
+			end
+			if useModernDropdowns then
+				dropDown:SetupMenu(function(dropdown, rootDescription)
+					for _, entry in ipairs(v["options"]) do
+						rootDescription:CreateRadio(TyGearColorize(entry["label"]), function()
+							return TyGearSettingsTable(v["option"])[v["option"]] == entry["value"]
+						end, function()
+							dropdown:SetValue(entry["value"])
+						end)
+					end
+				end)
+			else
+				UIDropDownMenu_Initialize(dropDown, function(self)
+					local info = UIDropDownMenu_CreateInfo()
+					info.func = self.SetValue
+					for _, entry in ipairs(v["options"]) do
+						info.text = TyGearColorize(entry["label"])
+						info.arg1 = entry["value"]
+						info.checked = (TyGearSettingsTable(v["option"])[v["option"]] == entry["value"])
+						UIDropDownMenu_AddButton(info)
+					end
+				end)
+			end
+			optionsPage:EnableWheel(dropDown)
+			if dropDown.HookScript and not dropDown.tyGearWheelShowHook then
+				dropDown.tyGearWheelShowHook = true
+				dropDown:HookScript("OnShow", function(self)
+					optionsPage:EnableWheel(self)
+				end)
+			end
+			frame[i] = row
+			optionsPage:AddRow(frame[i])
+			_G["TyGearToggle"..v["option"]] = function(force)
+				local system
+				if force == true then
+					system = TyGearStatWeightSystemPawn
+				elseif force == false then
+					system = TyGearStatWeightSystemMythicSim
+				elseif type(force) == "string" and string.lower(force) == "pawn" then
+					system = TyGearStatWeightSystemPawn
+				elseif type(force) == "string" and (string.lower(force) == "mythicsim" or string.lower(force) == "mythic") then
+					system = TyGearStatWeightSystemMythicSim
+				else
+					system = (TyGearGetStatWeightSystem() == TyGearStatWeightSystemPawn)
+						and TyGearStatWeightSystemMythicSim
+						or TyGearStatWeightSystemPawn
+				end
+				TyGearSetStatWeightSystem(system)
+				setDropdownText(dropDown, labelForValue(TyGearDB.StatWeightSystem))
+				TyGearPrint("TyGear: "..(system == TyGearStatWeightSystemPawn
+					and L["Using Pawn for evaluating gear upgrades is now enabled."]
+					or L["Using MythicSim for evaluating gear upgrades is now enabled."]), 0)
+			end
+			-- Keep the old slash name working: "/tg pawn on|off"
+			_G["TyGearToggleUsePawn"] = function(force)
+				_G["TyGearToggleStatWeightSystem"](force)
+			end
+			if v["cliCommands"] then
+				hooksecurefunc(SlashCmdList, "TyGear", function(msg, ...)
+					local command = nil
+					local force = nil
+					for _, w in ipairs(v["cliCommands"]) do
+						if param1 == w then
+							command = v["option"]
+							shouldPrintHelp = false
+							if param2 == "mythicsim" or param2 == "mythic" or param2 == "pawn" then
+								force = param2
+								break
+							end
+							if not v["cliTrue"] then break end
+							for _, x in ipairs(v["cliTrue"]) do
+								if param2 == x then
+									force = true
+									break
+								end
+							end
+							if force ~= nil or (not v["cliFalse"]) then break end
+							for _, x in ipairs(v["cliFalse"]) do
+								if param2 == x then
+									force = false
+									break
+								end
+							end
+							break
+						end
+					end
+					if command then _G["TyGearToggle"..command](force) end
+				end)
+			end
+			return
+		end
+
 		--standalone gear-slot grid: checked slots are locked, with no master toggle
 		if v["slotGrid"] then
 			local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
@@ -5487,7 +5735,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			KeepUnboundGreyGear = false,
 			AutoSellUnsuitableWhites = false,
 			AutoSellAllWhiteGear = false,
-			UsePawn = not IS_WOW_FOREVER, --TyGear built-in weights are deprecated.  We're using Pawn mainly now, so default true.  Pawn has no WoW Forever scales yet, so Forever uses the built-in class profiles.
+			-- Forever defaults to MythicSim EP weights; Pawn remains the optional fallback / alternate system.
+			StatWeightSystem = TyGearStatWeightSystemMythicSim,
+			UsePawn = false, -- kept in sync with StatWeightSystem for older saved-variable readers and slash commands
 			OverridePawnScale = false,
 			PawnScale = "",
 			DebugInfoInTooltips = false,
@@ -5496,6 +5746,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		}
 
 		TyGearInitializeDB(TyGearDBDefaults)
+		TyGearMigrateStatWeightSystem()
 		TyGearMigrateVendorKeepList()
 		TyGearPruneForeverVendorKeepList()
 		TyGearPruneRemovedDefaultKeepListItems()
@@ -5758,26 +6009,33 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				}
 			},
 			{
-				["option"] = "UsePawn",
+				["option"] = "StatWeightSystem",
 				["tab"] = L["Evaluation"],
-				["cliCommands"] = { "pawn", "usepawn" },
-				["cliTrue"] = { "enable", "on", "start" },
-				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Use Pawn to evaluate upgrades"],
-				["description"] = L["If Pawn (gear evaluation addon) is installed and configured, use a Pawn scale instead of TyGear's internal stat weights for evaluating gear upgrades.  TyGear will use the Pawn scale with a name matching the \"[class]: [spec]\" format; example \"Paladin: Retribution\". If \"Override specialization\" is also enabled, that class and spec will be used for detecting which Pawn scale name to use instead. Visible scales (not hidden in Pawn's settings) will be prioritized when detecting which scale to use."]..(((PawnIsReady ~= nil) and PawnIsReady()) and "" or "\n\n"..RED_FONT_COLOR_CODE..L["Pawn is not running, so this option will do nothing."]..FONT_COLOR_CODE_CLOSE),
-				["toggleDescriptionTrue"] = L["Using Pawn for evaluating gear upgrades is now enabled."],
-				["toggleDescriptionFalse"] = L["Using Pawn for evaluating gear upgrades is now disabled."],
-				["togglePostHook"] = function() TyGearUpdateBestItems() end
+				["section"] = L["Stat weights"],
+				["dropdown"] = true,
+				["cliCommands"] = { "weights", "statsystem", "statweights", "pawn", "usepawn" },
+				["cliTrue"] = { "pawn", "enable", "on", "start" },
+				["cliFalse"] = { "mythicsim", "mythic", "disable", "off", "stop" },
+				["options"] = {
+					{ ["label"] = L["MythicSim"], ["value"] = TyGearStatWeightSystemMythicSim },
+					{ ["label"] = L["Pawn"], ["value"] = TyGearStatWeightSystemPawn },
+				},
+				["label"] = L["Stat weight system"],
+				["description"] = L["Choose which stat weight system TyGear uses to score gear.\n\nMythicSim (default): EP weights from mythicsim.com for WoW Forever specs. Healers and specs MythicSim does not publish still use TyGear's built-in profiles, then fall back to Pawn when those are missing and Pawn is installed.\n\nPawn: use a Pawn scale when Pawn is installed. TyGear looks for a scale named \"[class]: [spec]\" (example \"Paladin: Retribution\"); with \"Override specialization\" enabled, that class and spec are used instead. Visible Pawn scales are preferred."]..(TyGearIsPawnReady() and "" or "\n\n"..RED_FONT_COLOR_CODE..L["Pawn is not running, so choosing Pawn will do nothing until Pawn is installed and ready."]..FONT_COLOR_CODE_CLOSE),
+				["dropdownPostHook"] = function()
+					TyGearSetStatWeightSystem(TyGearDB.StatWeightSystem)
+				end
 			},
 			{
 				["option"] = "OverridePawnScale",
 				["tab"] = L["Evaluation"],
-				["shouldUse"] = ((PawnIsReady ~= nil) and PawnIsReady()),
+				["section"] = L["Stat weights"],
+				["shouldUse"] = TyGearIsPawnReady(),
 				["cliCommands"] = { "scale", "overridepawn", "overridepawnscale" },
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Override Pawn scale"],
-				["description"] = L["Override the Pawn scale that would normally be automatically detected in \"[class]: [spec]\" format with the Pawn scale chosen in this dropdown.\n\nThis override does nothing unless \"Use Pawn to evaluate upgrades\" is enabled."],
+				["description"] = L["Override the Pawn scale that would normally be automatically detected in \"[class]: [spec]\" format with the Pawn scale chosen in this dropdown.\n\nThis override does nothing unless the stat weight system is set to Pawn (or MythicSim falls back to Pawn)."],
 				["toggleDescriptionTrue"] = L["Overriding Pawn scale with the selected scale is now enabled."],
 				["toggleDescriptionFalse"] = L["Overriding Pawn scale with the selected scale is now disabled."],
 				["togglePostHook"] = function() TyGearUpdateBestItems() end,
@@ -5928,13 +6186,14 @@ SlashCmdList["TyGear"] = function(msg)
 	elseif (param1 == "spec") then
 		local localizedRealClass, realClass, realSpec, realClassID = TyGearDetectClassAndSpec()
 		local localizedOverrideClass, overrideClass, overrideSpec, overrideClassID = TyGearGetClassAndSpec()
-		local usingPawn = TyGearDB.UsePawn and PawnIsReady and PawnIsReady()
+		local usingPawn = TyGearUsingPawn()
+		local weightSystem = TyGearGetStatWeightSystem()
 		local pawnScaleName = ""
 		local pawnScaleLocalizedName = ""
 		if usingPawn then
 			pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
 		end
-		TyGearPrint("TyGear: Looks like you are a"..(realSpec:find("^[AEIOUaeiou]") and "n " or " ")..RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass).."."..((usingPawn or (TyGearCharDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec)))) and ("  However, TyGear is using "..(usingPawn and ("Pawn scale \""..PawnGetScaleColor(pawnScaleName)..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass).." weights")).." for gear evaluation due to the \""..(usingPawn and "Use Pawn to evaluate upgrades" or "Override specialization").."\" option.") or "").."  TyGear is using weapons value \""..weapons.."\" from \""..((TyGearCharDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec))) and (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass)) or (RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass))).."\" to determine which weapons are valid.  CanDualWield() returns \""..(CanDualWield() and "true" or "false").."\".", 0) 
+		TyGearPrint("TyGear: Looks like you are a"..(realSpec:find("^[AEIOUaeiou]") and "n " or " ")..RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass).."."..((usingPawn or (TyGearCharDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec)))) and ("  However, TyGear is using "..(usingPawn and ("Pawn scale \""..PawnGetScaleColor(pawnScaleName)..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass).." weights")).." for gear evaluation due to the \""..(usingPawn and "Stat weight system: Pawn" or "Override specialization").."\" option.") or "").."  Stat weight system: "..weightSystem..(TyGearCurrentWeightSource and (" ("..TyGearCurrentWeightSource.." weights)") or "")..".  TyGear is using weapons value \""..weapons.."\" from \""..((TyGearCharDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec))) and (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass)) or (RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass))).."\" to determine which weapons are valid.  CanDualWield() returns \""..(CanDualWield() and "true" or "false").."\".", 0) 
 		if IS_WOW_FOREVER and (not TyGearCharDB.Override) then
 			TyGearPrint("TyGear: WoW Forever has one specialization per class, so TyGear uses the general class profile.  Enable \"Override specialization\" in \"/tg\" to use a healer, tank, or focused damage profile.", 0)
 		end
@@ -5947,7 +6206,8 @@ SlashCmdList["TyGear"] = function(msg)
 		local params = param2..(string.len(param3)>0 and " "..param3 or "")..(string.len(param4)>0 and " "..param4 or "")..(string.len(param5)>0 and " "..param5 or "")
 		local localizedClassName, spec = string.match(params, "^\"?([^:\"]-): ([^:\"]+)\"?$")
 		local class = TyGearReverseClassList[localizedClassName]
-		if class and TyGearDefaultWeights[class][spec] then
+		local hasWeights = class and (TyGearGetInternalWeighting(class, spec) ~= nil)
+		if hasWeights then
 			local overridespec = localizedClassName..": "..spec
 			TyGearCharDB.OverrideSpec = overridespec
 			if TyGearOverrideSpecDropdown then
@@ -5976,7 +6236,7 @@ SlashCmdList["TyGear"] = function(msg)
 						setDropdownText(TyGearPawnScaleDropdown, TyGearDB.PawnScale)
 					end
 
-					TyGearPrint("TyGear: "..(TyGearDB.UsePawn and "" or "While using Pawn is enabled, ").."TyGear will now use the \""..PawnGetScaleColor(truePawnScaleName)..(pawnScaleLocalizedName or truePawnScaleName)..FONT_COLOR_CODE_CLOSE.."\" Pawn scale to evaluate gear.",0)
+					TyGearPrint("TyGear: "..((TyGearGetStatWeightSystem() == TyGearStatWeightSystemPawn) and "" or "While the stat weight system is set to Pawn, ").."TyGear will now use the \""..PawnGetScaleColor(truePawnScaleName)..(pawnScaleLocalizedName or truePawnScaleName)..FONT_COLOR_CODE_CLOSE.."\" Pawn scale to evaluate gear.",0)
 				else
 					TyGearPrint("TyGear: According to Pawn, a Pawn scale named \""..userPawnScaleName.."\" does not exist.",0)
 				end
@@ -6028,7 +6288,8 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg compare [enable/on/start]/[disable/off/stop]': toggle always comparing gear", 0)
 	TyGearPrint("TyGear:    '/tg override [enable/on/start]/[disable/off/stop]': toggle specialization override", 0)
 	TyGearPrint("TyGear:    '/tg overridespec [class]: [spec]': set override spec to \"[class]: [spec]\"",0)
-	TyGearPrint("TyGear:    '/tg pawn [enable/on/start]/[disable/off/stop]': toggle using Pawn scales", 0)
+	TyGearPrint("TyGear:    '/tg weights [mythicsim/pawn]': choose MythicSim (default) or Pawn for stat weights", 0)
+	TyGearPrint("TyGear:    '/tg pawn [enable/on/start]/[disable/off/stop]': same as weights; on selects Pawn, off selects MythicSim", 0)
 	TyGearPrint("TyGear:    '/tg pawnscale [Pawn scale name]': set Pawn scale override to the specifed Pawn scale", 0)
 	TyGearPrint("TyGear:    '/tg sell [enable/on/start]/[disable/off/stop]': toggle automatic selling of grey items", 0)
 	TyGearPrint("TyGear:    '/tg sellunsuitable [enable/on/start]/[disable/off/stop]': toggle automatic selling of white gear you can't wear", 0)
@@ -7957,14 +8218,12 @@ end
 
 function TyGearPrintItem(info)
 	TyGearPrint("TyGear:     "..(info.link or info.name)..":", 2)
-	if TyGearDB.UsePawn and PawnIsReady and PawnIsReady() then
-		local pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
-		local pawnScaleColor = PawnGetScaleColor(pawnScaleName)
+	if TyGearUsingPawn() then
 		local score = TyGearDetermineItemScore(info)
 		-- 3 decimal places max
 		score = math.floor(score * 1000) / 1000
-		TyGearPrint("TyGear:         "..(((pawnScaleLocalizedName or pawnScaleName) and pawnScaleColor) and ("Pawn \""..pawnScaleColor..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or "TyGear").." score: "..(score or "nil"),2)
-	elseif (not (TyGearDB.UsePawn and PawnIsReady and PawnIsReady())) then
+		TyGearPrint("TyGear:         "..TyGearGetWeightSourceLabel().." score: "..(score or "nil"),2)
+	elseif TyGearCurrentWeighting then
 		for k,v in pairs(info) do
 			if (k ~= "Name" and TyGearCurrentWeighting[k]) then
 				TyGearPrint("TyGear:         "..k..": "..string.format("%.2f", v).." * "..TyGearCurrentWeighting[k].." = "..string.format("%.2f", v * TyGearCurrentWeighting[k]), 2)
@@ -8949,7 +9208,7 @@ function TyGearDetermineItemScore(info)
 		return storeScore(info.numBagSlots + (info.ammoBagRangedAttackSpeed and info.ammoBagRangedAttackSpeed or 0))
 	end
 
-	if TyGearDB.UsePawn and PawnIsReady and PawnIsReady() then
+	if TyGearUsingPawn() then
 		local pawnItemData = PawnGetItemData(info.link)
 		if pawnItemData then
 			local score = PawnGetSingleValueFromItem(pawnItemData, TyGearGetPawnScaleName())
@@ -9643,7 +9902,7 @@ function TyGearTooltipHook(tooltip, tooltipData)
 	local pawnScaleName
 	local pawnScaleLocalizedName
 	local pawnScaleColor
-	if TyGearDB.UsePawn and PawnIsReady and PawnIsReady() then
+	if TyGearUsingPawn() then
 		pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
 		pawnScaleColor = PawnGetScaleColor(pawnScaleName)
 	end
@@ -9676,7 +9935,7 @@ function TyGearTooltipHook(tooltip, tooltipData)
 		bestSetScore = math.floor(bestSetScore * 1000) / 1000
 		scoreWithBestSet = math.floor(scoreWithBestSet * 1000) / 1000
 		equippedSetScore = math.floor(equippedSetScore * 1000) / 1000
-		local scoreLinePrefix = (((pawnScaleLocalizedName or pawnScaleName) and pawnScaleColor) and "TyGear: Pawn \""..pawnScaleColor..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"" or "TyGear")
+		local scoreLinePrefix = "TyGear: "..TyGearGetWeightSourceLabel()
 		if shouldShowComparisonLine or shouldShowBestSet then
 			lowestScoringEquippedItemScore = math.floor(lowestScoringEquippedItemScore * 1000) / 1000
 			tooltip:AddDoubleLine(scoreLinePrefix.." score".." (equipped"..(((not TyGearIsTwoHandEquipped()) and info.isWeaponOrOffHand and not info.isRangedWeapon) and " pair" or (shouldShowBestSet and " set" or "")).."):",
