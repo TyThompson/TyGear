@@ -7626,7 +7626,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 						local mainScore = TyGearEquippedItems[INVSLOT_MAINHAND].score
 						local equippedOff = TyGearEquippedItems[INVSLOT_OFFHAND].info
 						local offScore = TyGearEquippedItems[INVSLOT_OFFHAND].score
-						TyGearPrint("TyGear: "..TyGearFormatItemWithScore(TyGearBestItems[INVSLOT_MAINHAND].info, TyGearBestItems[INVSLOT_MAINHAND].score).." combined with "..TyGearFormatItemWithScore(TyGearBestItems[INVSLOT_OFFHAND].info, TyGearBestItems[INVSLOT_OFFHAND].score).." was determined to be better than "..TyGearFormatItemWithScore(equippedMain, mainScore).." combined with "..TyGearFormatItemWithScore(equippedOff, offScore)..".  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+						TyGearPrint("TyGear: "..TyGearFormatPairingWithScores(TyGearBestItems[INVSLOT_MAINHAND].info, TyGearBestItems[INVSLOT_MAINHAND].score, TyGearBestItems[INVSLOT_OFFHAND].info, TyGearBestItems[INVSLOT_OFFHAND].score).." was determined to be better than "..TyGearFormatPairingWithScores(equippedMain, mainScore, equippedOff, offScore)..".  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
 						TyGearPrintItem(TyGearBestItems[INVSLOT_MAINHAND].info)
 						TyGearPrintItem(TyGearBestItems[INVSLOT_OFFHAND].info)
 						TyGearPrintItem(equippedMain)
@@ -7654,7 +7654,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 				local mainScore = TyGearEquippedItems[mainSlot].score
 				local equippedOff = TyGearEquippedItems[INVSLOT_OFFHAND].info
 				local offScore = TyGearEquippedItems[INVSLOT_OFFHAND].score
-				TyGearPrint("TyGear: "..TyGearFormatItemWithScore(TyGearBestItems[INVSLOT_TABARD].info, TyGearBestItems[INVSLOT_TABARD].score).." was determined to be better than "..TyGearFormatItemWithScore(equippedMain, mainScore)..(showBothSlots and (" combined with "..TyGearFormatItemWithScore(equippedOff, offScore)) or "")..".  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+				TyGearPrint("TyGear: "..TyGearFormatItemWithScore(TyGearBestItems[INVSLOT_TABARD].info, TyGearBestItems[INVSLOT_TABARD].score).." was determined to be better than "..(showBothSlots and TyGearFormatPairingWithScores(equippedMain, mainScore, equippedOff, offScore) or TyGearFormatItemWithScore(equippedMain, mainScore))..".  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
 				TyGearPrintItem(TyGearBestItems[INVSLOT_TABARD].info)
 				TyGearPrintItem(equippedMain)
 				if showBothSlots then TyGearPrintItem(equippedOff) end
@@ -7722,6 +7722,22 @@ function TyGearFormatItemWithScore(info, score)
 		return "nothing"
 	end
 	return (info.link or info.name or "nothing").." ("..TyGearFormatScore(score, info)..")"
+end
+
+-- MH+OH comparison text. Both empty → "nothing"; one empty → the other item alone.
+function TyGearFormatPairingWithScores(infoA, scoreA, infoB, scoreB)
+	local aEmpty = (not infoA) or infoA.empty
+	local bEmpty = (not infoB) or infoB.empty
+	if aEmpty and bEmpty then
+		return "nothing"
+	end
+	if aEmpty then
+		return TyGearFormatItemWithScore(infoB, scoreB)
+	end
+	if bEmpty then
+		return TyGearFormatItemWithScore(infoA, scoreA)
+	end
+	return TyGearFormatItemWithScore(infoA, scoreA).." combined with "..TyGearFormatItemWithScore(infoB, scoreB)
 end
 
 --when two bags have the same score (same slot count), prefer dedicated reagent bags, then Forever Warlock soul bags, then soulbound
