@@ -180,7 +180,7 @@ if GetLocale() == "deDE" then
 
 	-- option: OverridePawnScale
 	T.Localization["Override Pawn scale"] = "Pawn-Skala überschreiben"
-	T.Localization["Override the Pawn scale that would normally be automatically detected in \"[class]: [spec]\" format with the Pawn scale chosen in this dropdown.\n\nThis override does nothing unless the stat weight system is set to Pawn (or MythicSim falls back to Pawn)."] = "Die normalerweise im Format \"[Klasse]: [Spezialisierung]\" automatisch erkannte Pawn-Skala durch die in dieser Auswahlliste gewählte ersetzen.\n\nDies wirkt nur, wenn das Wertegewichtungssystem auf Pawn steht (oder MythicSim auf Pawn zurückfällt)."
+	T.Localization["Override the Pawn scale that would normally be automatically detected in \"[class]: [spec]\" format with the Pawn scale chosen in this dropdown.\n\nOnly shown when the stat weight system is set to Pawn."] = "Die normalerweise im Format \"[Klasse]: [Spezialisierung]\" automatisch erkannte Pawn-Skala durch die in dieser Auswahlliste gewählte ersetzen.\n\nWird nur angezeigt, wenn das Wertegewichtungssystem auf Pawn steht."
 	T.Localization["Overriding Pawn scale with the selected scale is now enabled."] = "Überschreiben der Pawn-Skala mit der gewählten Skala ist jetzt aktiviert."
 	T.Localization["Overriding Pawn scale with the selected scale is now disabled."] = "Überschreiben der Pawn-Skala mit der gewählten Skala ist jetzt deaktiviert."
 
