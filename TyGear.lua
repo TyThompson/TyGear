@@ -8422,11 +8422,17 @@ local ITEM_SET_NAME_PATTERN = "^"..(ITEM_SET_NAME:gsub("[%(%)%.%+%-%*%?%[%]%^%$]
 -- Forever/modern tooltips often put armor and block on a rightText column ("Armor" / "189")
 -- or omit readable tooltip numbers under secret-value rules. C_Item.GetItemStats still returns
 -- RESISTANCE0_NAME (armor) and ITEM_MOD_BLOCK_VALUE (shield block), which shields need to score.
+-- Include both SHORT and non-SHORT keys; clients vary on which GetItemStats emits.
 local TyGearItemStatsAPIFieldMap = {
+	ITEM_MOD_STRENGTH = "Strength",
 	ITEM_MOD_STRENGTH_SHORT = "Strength",
+	ITEM_MOD_AGILITY = "Agility",
 	ITEM_MOD_AGILITY_SHORT = "Agility",
+	ITEM_MOD_STAMINA = "Stamina",
 	ITEM_MOD_STAMINA_SHORT = "Stamina",
+	ITEM_MOD_INTELLECT = "Intellect",
 	ITEM_MOD_INTELLECT_SHORT = "Intellect",
+	ITEM_MOD_SPIRIT = "Spirit",
 	ITEM_MOD_SPIRIT_SHORT = "Spirit",
 	RESISTANCE0_NAME = "Armor",
 	ITEM_MOD_DEFENSE_SKILL_RATING = "Defense",
@@ -8435,12 +8441,17 @@ local TyGearItemStatsAPIFieldMap = {
 	ITEM_MOD_DODGE_RATING_SHORT = "Dodge",
 	ITEM_MOD_PARRY_RATING = "Parry",
 	ITEM_MOD_PARRY_RATING_SHORT = "Parry",
+	ITEM_MOD_ATTACK_POWER = "AttackPower",
 	ITEM_MOD_ATTACK_POWER_SHORT = "AttackPower",
 	ITEM_MOD_DAMAGE_PER_SECOND_SHORT = "DPS",
+	ITEM_MOD_SPELL_POWER = "SpellPower",
 	ITEM_MOD_SPELL_POWER_SHORT = "SpellPower",
+	ITEM_MOD_SPELL_DAMAGE_DONE = "SpellPower",
 	ITEM_MOD_SPELL_DAMAGE_DONE_SHORT = "SpellPower",
+	ITEM_MOD_SPELL_HEALING_DONE = "SpellPower",
 	ITEM_MOD_MANA_REGENERATION = "Mp5",
 	ITEM_MOD_MANA_REGENERATION_SHORT = "Mp5",
+	ITEM_MOD_POWER_REGEN0_SHORT = "Mp5",
 	ITEM_MOD_HIT_RATING = "Hit",
 	ITEM_MOD_HIT_RATING_SHORT = "Hit",
 	ITEM_MOD_HIT_MELEE_RATING = "Hit",
@@ -8448,12 +8459,15 @@ local TyGearItemStatsAPIFieldMap = {
 	ITEM_MOD_CRIT_RATING_SHORT = "Crit",
 	ITEM_MOD_CRIT_MELEE_RATING = "Crit",
 	ITEM_MOD_CRIT_SPELL_RATING = "SpellCrit",
+	ITEM_MOD_CRIT_SPELL_RATING_SHORT = "SpellCrit",
 	ITEM_MOD_HIT_SPELL_RATING = "SpellHit",
+	ITEM_MOD_HIT_SPELL_RATING_SHORT = "SpellHit",
 	ITEM_MOD_HASTE_RATING = "Haste",
 	ITEM_MOD_HASTE_RATING_SHORT = "Haste",
 	ITEM_MOD_EXPERTISE_RATING = "Expertise",
 	ITEM_MOD_EXPERTISE_RATING_SHORT = "Expertise",
 	ITEM_MOD_ARMOR_PENETRATION_RATING = "ArmorPenetration",
+	ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT = "ArmorPenetration",
 	ITEM_MOD_SPELL_PENETRATION = "SpellPenetration",
 	ITEM_MOD_SPELL_PENETRATION_SHORT = "SpellPenetration",
 	ITEM_MOD_MASTERY_RATING = "Mastery",
@@ -8461,20 +8475,46 @@ local TyGearItemStatsAPIFieldMap = {
 	ITEM_MOD_VERSATILITY = "Versatility",
 }
 
-function TyGearGetItemStatsTable(itemLink)
-	if type(itemLink) ~= "string" or itemLink == "" then return end
-	local stats
-	if C_Item and C_Item.GetItemStats then
-		local ok, result = pcall(C_Item.GetItemStats, itemLink)
-		if ok and type(result) == "table" then
-			stats = result
+-- Strip color/texture markup so "|cnIQ3:+5|r Strength" still yields value 5, not 3 from IQ3.
+function TyGearStripTooltipMarkup(text)
+	if type(text) ~= "string" or text == "" then return text end
+	text = string.gsub(text, "|c%x%x%x%x%x%x%x%x", "")
+	text = string.gsub(text, "|cn[^:]*:", "")
+	text = string.gsub(text, "|r", "")
+	text = string.gsub(text, "|A[^|]*|a", "")
+	text = string.gsub(text, "|T[^|]*|t", "")
+	text = string.gsub(text, "|H.-|h", "")
+	text = string.gsub(text, "|h", "")
+	return text
+end
+
+function TyGearReadableStatNumber(value)
+	if type(value) ~= "number" then return nil end
+	if issecretvalue and issecretvalue(value) then return nil end
+	if value > 0 then return value end
+end
+
+function TyGearGetItemStatsTable(itemLink, itemID)
+	local function tryStats(link)
+		if type(link) ~= "string" or link == "" then return end
+		if issecretvalue and issecretvalue(link) then return end
+		if C_Item and C_Item.GetItemStats then
+			local ok, result = pcall(C_Item.GetItemStats, link)
+			if ok and type(result) == "table" then
+				return result
+			end
+		end
+		if GetItemStats then
+			local ok, result = pcall(GetItemStats, link)
+			if ok and type(result) == "table" then
+				return result
+			end
 		end
 	end
-	if not stats and GetItemStats then
-		local ok, result = pcall(GetItemStats, itemLink)
-		if ok and type(result) == "table" then
-			stats = result
-		end
+	local stats = tryStats(itemLink)
+	-- Full hyperlinks can be secret or fail on Forever; plain item:id still returns green stats.
+	if not stats and itemID then
+		stats = tryStats("item:"..tostring(itemID))
 	end
 	return stats
 end
@@ -8482,19 +8522,21 @@ end
 -- Fill gaps left by tooltip parsing. Uses max() so tooltip enchants/procs are not wiped,
 -- while shields still pick up base armor and block value when the tooltip omitted them.
 function TyGearApplyItemStatsFromAPI(info)
-	if not info or not info.link or info.empty then return end
-	local stats = TyGearGetItemStatsTable(info.link)
+	if not info or info.empty then return end
+	local stats = TyGearGetItemStatsTable(info.link, info.id)
 	if not stats then return end
 	for apiKey, field in pairs(TyGearItemStatsAPIFieldMap) do
-		local apiValue = stats[apiKey]
-		if type(apiValue) == "number" and apiValue > 0 then
+		local apiValue = TyGearReadableStatNumber(stats[apiKey])
+		if apiValue then
 			info[field] = math.max(info[field] or 0, apiValue)
 		end
 	end
 	-- Block value and block rating are separate API keys; both feed info.Block like tooltip "block" matches.
-	local apiBlock = (stats.ITEM_MOD_BLOCK_VALUE or stats.ITEM_MOD_BLOCK_VALUE_SHORT or 0)
-		+ (stats.ITEM_MOD_BLOCK_RATING or stats.ITEM_MOD_BLOCK_RATING_SHORT or 0)
-	if type(apiBlock) == "number" and apiBlock > 0 then
+	local apiBlock = (TyGearReadableStatNumber(stats.ITEM_MOD_BLOCK_VALUE) or 0)
+		+ (TyGearReadableStatNumber(stats.ITEM_MOD_BLOCK_VALUE_SHORT) or 0)
+		+ (TyGearReadableStatNumber(stats.ITEM_MOD_BLOCK_RATING) or 0)
+		+ (TyGearReadableStatNumber(stats.ITEM_MOD_BLOCK_RATING_SHORT) or 0)
+	if apiBlock > 0 then
 		info.Block = math.max(info.Block or 0, apiBlock)
 	end
 end
@@ -8716,6 +8758,7 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	--disabled set bonuses used to be grey but turned red in Midnight, leading to needing this detection to prevent falsely detecting items with disabled set bonuses as unusable
 	--the item set section starts at its header line and comes after the item's own requirements; red text there (like an inactive set bonus's "Requires level 80 or below") is about the set, not about using the item
 	local isInItemSetSection = false
+	local sawSecretTooltipLine = false
 
 	for i = 1, numLines do
 		local textLeftText
@@ -8735,8 +8778,10 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			if not textLeftText then
 				textLeftText = textLeft:GetText() or ""
 			end
-			--tooltip text can be a secret value under the Midnight addon restrictions (Retail 12, WoW Forever); it can't be parsed then
+			-- Secret lines can't be parsed, but later lines (or GetItemStats) still may be.
+			-- Aborting here made rings/necks score as 0 when only some lines were restricted.
 			if issecretvalue and issecretvalue(textLeftText) then
+				sawSecretTooltipLine = true
 				if TyGearIsReagentBag(info) then
 					TyGearAssignReagentBagSlots(info)
 					return info
@@ -8756,24 +8801,10 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 					end
 					return info
 				end
-				-- Prefer GetItemStats over giving up: shields and other gear still score from API stats.
-				-- Weapon min/max/speed still need readable tooltip lines when available.
 				TyGearApplyItemStatsFromAPI(info)
 				TyGearNormalizeWeaponDamageStats(info)
-				if TyGearItemHasMeasurableStats(info) then
-					info.reason = nil
-					-- remaining tooltip lines are likely secret too; finish with API stats
-					break
-				end
-				info.unusable = 1
-				info.reason = "(item data is restricted right now)"
-				if TyGearIsLeftOut(info) then
-					info.ignored = 1
-					info.usable = nil
-					info.reason = "("..L["ignored"]..")"
-				end
-				return info
-			end
+			else
+			textLeftText = TyGearStripTooltipMarkup(textLeftText)
 			-- Read rightText early so split stat lines ("Armor" | "189") still score.
 			local textRight, textRightText
 			if tooltipData and tooltipData.lines then
@@ -8787,6 +8818,8 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			end
 			if textRightText and issecretvalue and issecretvalue(textRightText) then
 				textRightText = nil
+			elseif type(textRightText) == "string" then
+				textRightText = TyGearStripTooltipMarkup(textRightText)
 			end
 			local text = select(1,string.gsub(textLeftText:lower(),",",""))
 			if type(textRightText) == "string" and textRightText ~= "" then
@@ -8975,6 +9008,7 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 					info.unusable = 1
 				end
 			end
+			end -- non-secret tooltip line
 		end
 	end
 
@@ -8983,10 +9017,22 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	TyGearApplyItemStatsFromAPI(info)
 	TyGearNormalizeWeaponDamageStats(info)
 	-- Tooltip may be empty while GetItemStats already has armor/block (common for shields on Forever).
-	if info.unusable and info.reason == "(this item's tooltip is not yet available)"
-	and TyGearItemHasMeasurableStats(info) then
+	if info.unusable and (
+		info.reason == "(this item's tooltip is not yet available)"
+		or info.reason == "(item data is restricted right now)"
+	) and TyGearItemHasMeasurableStats(info) then
 		info.unusable = nil
 		info.reason = nil
+	end
+	-- Only mark restricted when every useful line was secret and GetItemStats found nothing.
+	if sawSecretTooltipLine and (not TyGearItemHasMeasurableStats(info)) and (not info.unusable) then
+		info.unusable = 1
+		info.reason = "(item data is restricted right now)"
+		if TyGearIsLeftOut(info) then
+			info.ignored = 1
+			info.usable = nil
+			info.reason = "("..L["ignored"]..")"
+		end
 	end
 
 	if info.RedSockets == 0 then info.RedSockets = nil end
