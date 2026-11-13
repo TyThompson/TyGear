@@ -3261,6 +3261,23 @@ function TyGearSetStatWeightSystem(system)
 	TyGearWeightingCacheKey = nil
 	if TyGearSetStatWeights then TyGearSetStatWeights() end
 	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+	if TyGearRefreshPawnOptionsVisibility then TyGearRefreshPawnOptionsVisibility() end
+end
+
+-- Override Pawn scale (and its dropdown) only belong in the menu while Pawn is the selected system.
+function TyGearRefreshPawnOptionsVisibility()
+	local show = TyGearGetStatWeightSystem() == TyGearStatWeightSystemPawn and TyGearIsPawnReady()
+	local check = _G["TyGearOverridePawnScaleCheckButton"]
+	local dropDown = _G["TyGearPawnScaleDropdown"]
+	if check then
+		check:SetShown(show)
+	end
+	if dropDown then
+		dropDown:SetShown(show)
+	end
+	if TyGearOptionsPage and TyGearOptionsPage.Relayout then
+		TyGearOptionsPage:Relayout()
+	end
 end
 
 -- Older installs only had UsePawn. Prefer MythicSim unless the player had already enabled Pawn.
@@ -3585,22 +3602,52 @@ local function newOptionsPage(optionsMenu)
 	enableWheel(container)
 	enableWheel(page)
 
-	function optionsPage:AddRow(row, spacing, offsetX)
-		spacing = page.lastRow and (spacing or OPTIONS_ROW_SPACING) or 0
-		--offsetX is always from the page's left padding, not relative to the previous row,
-		--so a one-off indent (Scan Bags, slot grids) does not shove later rows sideways
-		offsetX = offsetX or 0
+	page.rows = {}
+
+	local function placeRow(row, spacing, offsetX, afterRow)
 		row:SetParent(page)
 		row:ClearAllPoints()
-		if page.lastRow then
-			row:SetPoint("TOP", page.lastRow, "BOTTOM", 0, -spacing)
+		if afterRow then
+			row:SetPoint("TOP", afterRow, "BOTTOM", 0, -spacing)
 			row:SetPoint("LEFT", page, "LEFT", OPTIONS_PAGE_PADDING + offsetX, 0)
 		else
 			row:SetPoint("TOPLEFT", page, "TOPLEFT", OPTIONS_PAGE_PADDING + offsetX, -OPTIONS_PAGE_PADDING)
 		end
-		page.height = page.height + spacing + row:GetHeight()
-		page.lastRow = row
 		enableWheel(row)
+	end
+
+	function optionsPage:AddRow(row, spacing, offsetX)
+		--offsetX is always from the page's left padding, not relative to the previous row,
+		--so a one-off indent (Scan Bags, slot grids) does not shove later rows sideways
+		offsetX = offsetX or 0
+		local storedSpacing = spacing or OPTIONS_ROW_SPACING
+		local appliedSpacing = page.lastRow and storedSpacing or 0
+		placeRow(row, appliedSpacing, offsetX, page.lastRow)
+		page.height = page.height + appliedSpacing + (row:GetHeight() or 0)
+		page.lastRow = row
+		table.insert(page.rows, {
+			row = row,
+			spacing = storedSpacing,
+			offsetX = offsetX,
+		})
+	end
+
+	-- Re-chain visible rows after Show/Hide so hidden options leave no gap.
+	function optionsPage:Relayout()
+		page.lastRow = nil
+		page.height = OPTIONS_PAGE_PADDING
+		for _, entry in ipairs(page.rows) do
+			local row = entry.row
+			if row:IsShown() then
+				local appliedSpacing = page.lastRow and entry.spacing or 0
+				placeRow(row, appliedSpacing, entry.offsetX, page.lastRow)
+				page.height = page.height + appliedSpacing + (row:GetHeight() or 0)
+				page.lastRow = row
+			else
+				row:ClearAllPoints()
+			end
+		end
+		self:UpdateHeight()
 	end
 
 	function optionsPage:AddHeader(label, isMajor)
@@ -5049,6 +5096,7 @@ local function optionsSetup(optionsMenu)
 	frame[i]:SetJustifyH("LEFT")
 	frame[i]:SetText(L["Fork of AutoGear by Synthetikaryote and BujuArena."])
 	local optionsPage = newOptionsPage(optionsMenu)
+	TyGearOptionsPage = optionsPage
 	--keep each former tab's options together, in the order those tabs first appear
 	local tabOrder, buckets = {}, {}
 	for _, option in ipairs(TyGearOptions) do
@@ -6035,12 +6083,13 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["option"] = "OverridePawnScale",
 				["tab"] = L["Evaluation"],
 				["section"] = L["Stat weights"],
+				-- Built whenever Pawn is ready; shown only while the stat weight system is Pawn.
 				["shouldUse"] = TyGearIsPawnReady(),
 				["cliCommands"] = { "scale", "overridepawn", "overridepawnscale" },
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Override Pawn scale"],
-				["description"] = L["Override the Pawn scale that would normally be automatically detected in \"[class]: [spec]\" format with the Pawn scale chosen in this dropdown.\n\nThis override does nothing unless the stat weight system is set to Pawn (or MythicSim falls back to Pawn)."],
+				["description"] = L["Override the Pawn scale that would normally be automatically detected in \"[class]: [spec]\" format with the Pawn scale chosen in this dropdown.\n\nOnly shown when the stat weight system is set to Pawn."],
 				["toggleDescriptionTrue"] = L["Overriding Pawn scale with the selected scale is now enabled."],
 				["toggleDescriptionFalse"] = L["Overriding Pawn scale with the selected scale is now disabled."],
 				["togglePostHook"] = function() TyGearUpdateBestItems() end,
@@ -6086,6 +6135,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots()
 		end
 		optionsSetup(optionsMenu)
+		TyGearRefreshPawnOptionsVisibility()
 		if ignoredGearListMenu and not ignoredGearListMenu.built then
 			ignoredGearListMenu.built = true
 			buildIgnoredGearListPage(ignoredGearListMenu)
