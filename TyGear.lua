@@ -7685,11 +7685,12 @@ function TyGearIs1hWorthwhile(i)
 	return TyGearBestItems[i].score > minScore and TyGearBestItems[i].score > TyGearBestItems[INVSLOT_TABARD].score * (i == INVSLOT_MAINHAND and 0.15 or 0.05)
 end
 
--- Print bag slot counts as 6 / 4 instead of 6.00 / 4.00; keep decimals for gear scores.
+-- Print bag slot counts as "6 slots" / "4 slots" instead of 6.00 / 4.00; keep decimals for gear scores.
 function TyGearFormatScore(score, info)
 	score = tonumber(score) or 0
 	if info and (info.empty or info.classID == Enum.ItemClass.Container or info.isReagentBag or TyGearIsReagentBag(info) or TyGearUsesReagentBagSlot(info)) then
-		return tostring(math.floor(score + 0.5))
+		local slots = math.floor(score + 0.5)
+		return tostring(slots).." slot"..(slots == 1 and "" or "s")
 	end
 	if math.abs(score - math.floor(score + 0.5)) < 0.0005 then
 		return tostring(math.floor(score + 0.5))
