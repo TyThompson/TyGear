@@ -9846,9 +9846,6 @@ function TyGearGetTooltipScoreComparisonInfo(info, equipped)
 				end
 			end
 		end
-		if info.is1hWeaponOrOffHand and not equipped then
-			equippedSetScore = TyGearEquippedItems[INVSLOT_MAINHAND].score + TyGearEquippedItems[INVSLOT_OFFHAND].score
-		end
 	end
 	return lowestScoringValidGearInfo, lowestScoringValidGearSlotScore, lowestScoringValidGearSlot, equippedSetScore
 end
@@ -9901,52 +9898,52 @@ function TyGearGetBestSetItems(info)
 	-- Never trigger a full bag scan from tooltip hover; fall back to equipped scores
 	local bestSource = TyGearBestItems or TyGearEquippedItems
 	if not bestSource then
-		return {}, 0, 1, 0
+		return {}, 0, nil, 0
 	end
 	local setSlots = TyGearGetSetSlots(info)
-	local bestSetScore = 0
-	local bestSet = {}
-	local lowestBestItemIndex = 0
-	local lowestBestItemScore = 0
-	local bestItem
+	if not setSlots then
+		return {}, 0, nil, 0
+	end
+	-- Choose the slot this item would take: prefer empty, else the lowest-scoring valid slot.
+	-- Pairing is everything else in the set — never drop the main-hand when the off-hand is empty.
+	local replaceSlots = info.validGearSlots or setSlots
+	local replaceSlot
+	local replaceScore
 	local thisIsABestItem
-	if setSlots then
-		for i,slot in ipairs(setSlots) do
-			if (not bestSource) or (not bestSource[slot]) or (bestSource[slot].info and bestSource[slot].info.empty) then
-				return bestSet, bestSetScore, 1, lowestBestItemScore
-			end
-			local bestInfo = bestSource[slot].info
-			if bestInfo and (
-				(
-					bestInfo.link
-					and bestInfo.link == info.link
-				) or (
-					info.guid and
-					bestInfo.guid and
-					bestInfo.guid == info.guid
-				)
-			) then
-				thisIsABestItem = 1
-			end
-			if bestInfo
-			and TyGearIsGearPairEquippableTogether(info, bestInfo) then
-				bestItem = bestSource[slot]
-				if lowestBestItemScore == 0
-				or bestItem.score < lowestBestItemScore then
-					lowestBestItemIndex = i
-					lowestBestItemScore = bestItem.score
-				end
-				table.insert(bestSet, bestItem)
-			end
+	for _, slot in ipairs(replaceSlots) do
+		local slotBest = bestSource[slot]
+		local empty = (not slotBest) or (not slotBest.info) or slotBest.info.empty
+		local score = empty and 0 or (slotBest.score or 0)
+		local bestInfo = slotBest and slotBest.info
+		local isThis = bestInfo and (
+			(bestInfo.link and info.link and bestInfo.link == info.link)
+			or (info.guid and bestInfo.guid and bestInfo.guid == info.guid)
+		)
+		if isThis then
+			thisIsABestItem = 1
 		end
-		if not thisIsABestItem then
-			table.remove(bestSet, lowestBestItemIndex)
-		end
-		for i = 1,(#bestSet or 0) do
-			bestSetScore = bestSetScore + bestSet[i].score
+		if empty then
+			replaceSlot = slot
+			replaceScore = 0
+			break
+		elseif (not replaceSlot) or score < replaceScore then
+			replaceSlot = slot
+			replaceScore = score
 		end
 	end
-	return bestSet, bestSetScore, thisIsABestItem, lowestBestItemScore
+	local bestSet = {}
+	local bestSetScore = 0
+	for _, slot in ipairs(setSlots) do
+		if slot ~= replaceSlot then
+			local slotBest = bestSource[slot]
+			if slotBest and slotBest.info and (not slotBest.info.empty)
+			and TyGearIsGearPairEquippableTogether(info, slotBest.info) then
+				table.insert(bestSet, slotBest)
+				bestSetScore = bestSetScore + (slotBest.score or 0)
+			end
+		end
+	end
+	return bestSet, bestSetScore, thisIsABestItem, replaceScore or 0
 end
 
 function TyGearDetectHoveredItemGUID()
@@ -10036,35 +10033,56 @@ function TyGearTooltipHook(tooltip, tooltipData)
 	local bestSet
 	local scoreColor = HIGHLIGHT_FONT_COLOR
 	if info.shouldShowScoreInTooltip then
-		local shouldShowBestSet = ((info.is1hWeaponOrOffHand
-		or (info.numValidGearSlots and info.numValidGearSlots > 1))
-		and (not isAComparisonTooltip))
+		-- Weapon/off-hand "this and best pairing" is only meaningful against a two-hander.
+		-- Shields into an empty off-hand compare as a single slot, not against the main-hand.
+		local pairedAgainstTwoHand = info.is1hWeaponOrOffHand and TyGearIsTwoHandEquipped()
+		local multiSlotNonWeapon = (not info.is1hWeaponOrOffHand) and info.numValidGearSlots and info.numValidGearSlots > 1
+		local shouldShowBestSet = (not isAComparisonTooltip) and (pairedAgainstTwoHand or multiSlotNonWeapon)
 		score = TyGearDetermineItemScore(info)
 		bestSet, bestSetScore = TyGearGetBestSetItems(info)
 		scoreWithBestSet = score + (bestSetScore or 0)
 		lowestScoringEquippedItemInfo, lowestScoringEquippedItemScore, lowestScoringEquippedItemSlot, equippedSetScore = TyGearGetTooltipScoreComparisonInfo(info, equipped)
 		local isAnyComparisonTooltipVisible = ItemRefTooltip:IsVisible() or ShoppingTooltip1:IsVisible() or ShoppingTooltip2:IsVisible()
 		local shouldShowComparisonLine = (not isAComparisonTooltip and (not isAnyComparisonTooltipVisible or TyGearDB.AlwaysShowScoreComparisons)) and not equipped
-		if (scoreWithBestSet > equippedSetScore) and not info.ignored and not TyGearAllValidGearSlotsProtected(info) then
+		local usePairScore = shouldShowBestSet
+		local compareScore = usePairScore and scoreWithBestSet or score
+		local compareAgainst = usePairScore and equippedSetScore or lowestScoringEquippedItemScore
+		if (compareScore > compareAgainst) and not info.ignored and not TyGearAllValidGearSlotsProtected(info) then
 			scoreColor = GREEN_FONT_COLOR
-		elseif (scoreWithBestSet < equippedSetScore) and not info.ignored then
+		elseif (compareScore < compareAgainst) and not info.ignored then
 			scoreColor = RED_FONT_COLOR
 		end
 		-- 3 decimal places max
 		score = math.floor(score * 1000) / 1000
-		bestSetScore = math.floor(bestSetScore * 1000) / 1000
+		bestSetScore = math.floor((bestSetScore or 0) * 1000) / 1000
 		scoreWithBestSet = math.floor(scoreWithBestSet * 1000) / 1000
-		equippedSetScore = math.floor(equippedSetScore * 1000) / 1000
+		equippedSetScore = math.floor((equippedSetScore or 0) * 1000) / 1000
+		lowestScoringEquippedItemScore = math.floor((lowestScoringEquippedItemScore or 0) * 1000) / 1000
+		local displayScore = usePairScore and scoreWithBestSet or score
+		local displayEquipped = usePairScore and equippedSetScore or lowestScoringEquippedItemScore
 		local scoreLinePrefix = "TyGear: "..TyGearGetWeightSourceLabel()
 		if shouldShowComparisonLine or shouldShowBestSet then
-			lowestScoringEquippedItemScore = math.floor(lowestScoringEquippedItemScore * 1000) / 1000
-			tooltip:AddDoubleLine(scoreLinePrefix.." score".." (equipped"..(((not TyGearIsTwoHandEquipped()) and info.isWeaponOrOffHand and not info.isRangedWeapon) and " pair" or (shouldShowBestSet and " set" or "")).."):",
-			equippedSetScore,
+			local equippedLabel = "equipped"
+			if pairedAgainstTwoHand then
+				equippedLabel = "equipped (2h)"
+			elseif multiSlotNonWeapon then
+				equippedLabel = "equipped set"
+			end
+			tooltip:AddDoubleLine(scoreLinePrefix.." score ("..equippedLabel.."):",
+			displayEquipped,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b)
 		end
-		tooltip:AddDoubleLine(scoreLinePrefix.." score"..((shouldShowComparisonLine and not isAComparisonTooltip or shouldShowBestSet) and " (this"..((shouldShowBestSet) and " and best "..(info.numValidGearSlots > 2 and "set" or "pairing") or "")..")" or "")..":",
-		(((info.unusable == 1) and (RED_FONT_COLOR_CODE.."(won't equip) "..FONT_COLOR_CODE_CLOSE) or "")..scoreWithBestSet) or "nil",
+		local thisLabel = ""
+		if shouldShowComparisonLine or shouldShowBestSet then
+			if shouldShowBestSet then
+				thisLabel = " (this and best "..((info.numValidGearSlots or 0) > 2 and "set" or "pairing")..")"
+			else
+				thisLabel = " (this)"
+			end
+		end
+		tooltip:AddDoubleLine(scoreLinePrefix.." score"..thisLabel..":",
+		(((info.unusable == 1) and (RED_FONT_COLOR_CODE.."(won't equip) "..FONT_COLOR_CODE_CLOSE) or "")..displayScore) or "nil",
 		HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 		scoreColor.r, scoreColor.g, scoreColor.b)
 		if (TyGearDB.ReasonsInTooltips == true) and info.unusable then
