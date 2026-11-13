@@ -566,9 +566,9 @@ function TyGearBagSlotsForItem(info)
 	if TyGearIsReagentBag(info) then
 		return TyGearReagentBagSlot and { TyGearReagentBagSlot } or nil
 	end
-	-- Profession/soul bags prefer the reagent slot but can also use a normal bag slot.
+	-- Profession/soul bags fill an empty reagent slot; they are not scored as general bags.
 	if TyGearUsesReagentBagSlot(info) then
-		return TyGearReagentAndNormalBagSlots()
+		return TyGearReagentBagSlot and { TyGearReagentBagSlot } or nil
 	end
 	return TyGearEquippableBagSlots
 end
@@ -7514,6 +7514,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 	--create all future equip actions required (only if not rolling currently)
 	if (not lootRollItemID and not noActions) then
 		TyGearRedirectReagentBagsToReagentSlot()
+		local bagEquipDelay = 0
 		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
 			if TyGearIsManagedGearSlot(invSlot) then
 				if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND or invSlot == INVSLOT_TABARD then
@@ -7527,13 +7528,18 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					local equippedInfo = equippedSlot.info
 					local equippedScore = equippedSlot.score
 						anythingBetter = 1
-						TyGearPrint("TyGear: "..(TyGearBestItems[invSlot].info.link or TyGearBestItems[invSlot].info.name).." ("..string.format("%.2f", TyGearBestItems[invSlot].score)..") was determined to be better than "..(equippedInfo.link or equippedInfo.name).." ("..string.format("%.2f", equippedScore)..").  "..((TyGearDB.Enabled == true) and (isSlotLocked and "Would equip, but slot "..tostring(invSlot or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+						TyGearPrint("TyGear: "..(TyGearBestItems[invSlot].info.link or TyGearBestItems[invSlot].info.name).." ("..TyGearFormatScore(TyGearBestItems[invSlot].score, TyGearBestItems[invSlot].info)..") was determined to be better than "..(equippedInfo.link or equippedInfo.name).." ("..TyGearFormatScore(equippedScore, equippedInfo)..").  "..((TyGearDB.Enabled == true) and (isSlotLocked and "Would equip, but slot "..tostring(invSlot or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
 						TyGearPrintItem(TyGearBestItems[invSlot].info)
 						TyGearPrintItem(equippedInfo)
 						if not isSlotLocked then
 							local newAction = {}
 							newAction.action = "equip"
-							newAction.t = GetTime()
+							-- Space bag equips so a later bag can be re-found after the earlier one shifts bag contents.
+							local isBagEquip = TyGearGetContainerForEquippedBagSlot(invSlot) and true or false
+							newAction.t = GetTime() + (isBagEquip and bagEquipDelay or 0)
+							if isBagEquip then
+								bagEquipDelay = bagEquipDelay + 0.4
+							end
 							newAction.container = TyGearBestItems[invSlot].bag
 							newAction.slot = TyGearBestItems[invSlot].slot
 							newAction.replaceSlot = invSlot
@@ -7594,7 +7600,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					if (TyGearIsTwoHandEquipped()) then
 						local equippedMain = TyGearEquippedItems[INVSLOT_TABARD].info
 						local mainScore = TyGearEquippedItems[INVSLOT_TABARD].score
-						TyGearPrint("TyGear: "..(TyGearBestItems[INVSLOT_MAINHAND].info.link or TyGearBestItems[INVSLOT_MAINHAND].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_MAINHAND].score)..") combined with "..(TyGearBestItems[INVSLOT_OFFHAND].info.link or TyGearBestItems[INVSLOT_OFFHAND].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_OFFHAND].score)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..string.format("%.2f", mainScore)..").  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+						TyGearPrint("TyGear: "..(TyGearBestItems[INVSLOT_MAINHAND].info.link or TyGearBestItems[INVSLOT_MAINHAND].info.name).." ("..TyGearFormatScore(TyGearBestItems[INVSLOT_MAINHAND].score, TyGearBestItems[INVSLOT_MAINHAND].info)..") combined with "..(TyGearBestItems[INVSLOT_OFFHAND].info.link or TyGearBestItems[INVSLOT_OFFHAND].info.name).." ("..TyGearFormatScore(TyGearBestItems[INVSLOT_OFFHAND].score, TyGearBestItems[INVSLOT_OFFHAND].info)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..TyGearFormatScore(mainScore, equippedMain)..").  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
 						TyGearPrintItem(TyGearBestItems[INVSLOT_MAINHAND].info)
 						TyGearPrintItem(TyGearBestItems[INVSLOT_OFFHAND].info)
 						TyGearPrintItem(equippedMain)
@@ -7603,7 +7609,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 						local mainScore = TyGearEquippedItems[INVSLOT_MAINHAND].score
 						local equippedOff = TyGearEquippedItems[INVSLOT_OFFHAND].info
 						local offScore = TyGearEquippedItems[INVSLOT_OFFHAND].score
-						TyGearPrint("TyGear: "..(TyGearBestItems[INVSLOT_MAINHAND].info.link or TyGearBestItems[INVSLOT_MAINHAND].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_MAINHAND].score)..") combined with "..(TyGearBestItems[INVSLOT_OFFHAND].info.link or TyGearBestItems[INVSLOT_OFFHAND].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_OFFHAND].score)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..string.format("%.2f", mainScore)..") combined with "..(equippedOff.link or equippedOff.name).." ("..string.format("%.2f", offScore)..").  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+						TyGearPrint("TyGear: "..(TyGearBestItems[INVSLOT_MAINHAND].info.link or TyGearBestItems[INVSLOT_MAINHAND].info.name).." ("..TyGearFormatScore(TyGearBestItems[INVSLOT_MAINHAND].score, TyGearBestItems[INVSLOT_MAINHAND].info)..") combined with "..(TyGearBestItems[INVSLOT_OFFHAND].info.link or TyGearBestItems[INVSLOT_OFFHAND].info.name).." ("..TyGearFormatScore(TyGearBestItems[INVSLOT_OFFHAND].score, TyGearBestItems[INVSLOT_OFFHAND].info)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..TyGearFormatScore(mainScore, equippedMain)..") combined with "..(equippedOff.link or equippedOff.name).." ("..TyGearFormatScore(offScore, equippedOff)..").  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
 						TyGearPrintItem(TyGearBestItems[INVSLOT_MAINHAND].info)
 						TyGearPrintItem(TyGearBestItems[INVSLOT_OFFHAND].info)
 						TyGearPrintItem(equippedMain)
@@ -7614,7 +7620,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					if (offSwap) then invSlot = INVSLOT_OFFHAND end
 					local equippedInfo = TyGearEquippedItems[invSlot].info
 					local equippedScore = TyGearEquippedItems[invSlot].score
-					TyGearPrint("TyGear: "..(TyGearBestItems[invSlot].info.link or TyGearBestItems[invSlot].info.name).." ("..string.format("%.2f", TyGearBestItems[invSlot].score)..") was determined to be better than "..(equippedInfo.link or equippedInfo.name).." ("..string.format("%.2f", equippedScore)..").  "..((TyGearDB.Enabled == true) and (((invSlot == INVSLOT_MAINHAND and isMainHandSlotLocked) or (invSlot == INVSLOT_OFFHAND and isOffHandSlotLocked)) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+					TyGearPrint("TyGear: "..(TyGearBestItems[invSlot].info.link or TyGearBestItems[invSlot].info.name).." ("..TyGearFormatScore(TyGearBestItems[invSlot].score, TyGearBestItems[invSlot].info)..") was determined to be better than "..(equippedInfo.link or equippedInfo.name).." ("..TyGearFormatScore(equippedScore, equippedInfo)..").  "..((TyGearDB.Enabled == true) and (((invSlot == INVSLOT_MAINHAND and isMainHandSlotLocked) or (invSlot == INVSLOT_OFFHAND and isOffHandSlotLocked)) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
 					TyGearPrintItem(TyGearBestItems[invSlot].info)
 					TyGearPrintItem(equippedInfo)
 				end
@@ -7631,7 +7637,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 				local mainScore = TyGearEquippedItems[mainSlot].score
 				local equippedOff = TyGearEquippedItems[INVSLOT_OFFHAND].info
 				local offScore = TyGearEquippedItems[INVSLOT_OFFHAND].score
-				TyGearPrint("TyGear: "..(TyGearBestItems[INVSLOT_TABARD].info.link or TyGearBestItems[INVSLOT_TABARD].info.name).." ("..string.format("%.2f", TyGearBestItems[INVSLOT_TABARD].score)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..string.format("%.2f", mainScore)..")"..(showBothSlots and ((" combined with "..(equippedOff.link or equippedOff.name).." ("..string.format("%.2f", offScore))..")") or "")..".  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
+				TyGearPrint("TyGear: "..(TyGearBestItems[INVSLOT_TABARD].info.link or TyGearBestItems[INVSLOT_TABARD].info.name).." ("..TyGearFormatScore(TyGearBestItems[INVSLOT_TABARD].score, TyGearBestItems[INVSLOT_TABARD].info)..") was determined to be better than "..(equippedMain.link or equippedMain.name).." ("..TyGearFormatScore(mainScore, equippedMain)..")"..(showBothSlots and ((" combined with "..(equippedOff.link or equippedOff.name).." ("..TyGearFormatScore(offScore, equippedOff))..")") or "")..".  "..((TyGearDB.Enabled == true) and ((isMainHandSlotLocked or isOffHandSlotLocked) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
 				TyGearPrintItem(TyGearBestItems[INVSLOT_TABARD].info)
 				TyGearPrintItem(equippedMain)
 				if showBothSlots then TyGearPrintItem(equippedOff) end
@@ -7679,10 +7685,26 @@ function TyGearIs1hWorthwhile(i)
 	return TyGearBestItems[i].score > minScore and TyGearBestItems[i].score > TyGearBestItems[INVSLOT_TABARD].score * (i == INVSLOT_MAINHAND and 0.15 or 0.05)
 end
 
---when two bags have the same score (same slot count), prefer Forever Warlock soul bags, then soulbound
+-- Print bag slot counts as 6 / 4 instead of 6.00 / 4.00; keep decimals for gear scores.
+function TyGearFormatScore(score, info)
+	score = tonumber(score) or 0
+	if info and (info.empty or info.classID == Enum.ItemClass.Container or info.isReagentBag or TyGearIsReagentBag(info) or TyGearUsesReagentBagSlot(info)) then
+		return tostring(math.floor(score + 0.5))
+	end
+	if math.abs(score - math.floor(score + 0.5)) < 0.0005 then
+		return tostring(math.floor(score + 0.5))
+	end
+	return string.format("%.2f", score)
+end
+
+--when two bags have the same score (same slot count), prefer dedicated reagent bags, then Forever Warlock soul bags, then soulbound
 function TyGearBagShouldReplaceEqualScore(candidate, current)
 	if not candidate or candidate.classID ~= Enum.ItemClass.Container then return false end
 	if not current or current.empty then return true end
+	local candidateDedicated = TyGearIsReagentBag(candidate)
+	local currentDedicated = TyGearIsReagentBag(current)
+	if candidateDedicated and not currentDedicated then return true end
+	if currentDedicated and not candidateDedicated then return false end
 	if IS_WOW_FOREVER and UnitClassBase("player") == "WARLOCK" then
 		local candidateSoul = TyGearIsSoulBag(candidate)
 		local currentSoul = TyGearIsSoulBag(current)
@@ -7836,8 +7858,16 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 				TyGearBestItems[lowestScoringValidGearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
 			end
 			local currentBestInfo = TyGearBestItems[lowestScoringValidGearSlot].info
-			if (
-				((score > lowestScoringValidGearSlotScore) and (not info.isAmmoBag))
+			-- Dedicated reagent bags always beat profession/soul bags for the reagent slot.
+			local candidateDedicated = TyGearIsReagentBag(info)
+			local currentDedicated = TyGearIsReagentBag(currentBestInfo)
+			local candidateProfession = TyGearUsesReagentBagSlot(info)
+			local currentProfession = TyGearUsesReagentBagSlot(currentBestInfo)
+			local professionCannotReplaceDedicated = candidateProfession and not candidateDedicated and currentDedicated
+			local dedicatedBeatsProfession = candidateDedicated and currentProfession and not currentDedicated
+			if not professionCannotReplaceDedicated and (
+				dedicatedBeatsProfession
+				or ((score > lowestScoringValidGearSlotScore) and (not info.isAmmoBag))
 				or ((score == lowestScoringValidGearSlotScore)
 					and (not info.isAmmoBag)
 					and TyGearBagShouldReplaceEqualScore(info, currentBestInfo))
@@ -8546,6 +8576,8 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			and (
 				string.find(text, " bag") or
 				string.find(text, " pouch") or
+				string.find(text, " pack") or
+				string.find(text, " sack") or
 				string.find(text, " satchel") or
 				string.find(text, " quiver") or
 				string.find(text, " ammo pouch") or
@@ -9157,12 +9189,13 @@ function TyGearDetermineItemScore(info)
 		return score
 	end
 	if info.classID == Enum.ItemClass.Container then
-		-- Normal and dedicated reagent bags are scored by slot count.
-		-- Profession/soul bags only beat an empty slot (including an empty reagent slot), so a
-		-- dedicated reagent bag is always preferred over a mining/herb/soul bag for that slot.
+		-- Bags are scored by how many slots they add. Dedicated reagent bags and Forever
+		-- profession/soul bags (reagent-slot fillers) use the real slot count so a Mining Pack
+		-- shows as 4, not 0.00. Other specialized bags only beat an empty normal bag slot.
 		if info.subclassID == 0
 		or info.isReagentBag
-		or TyGearIsReagentBag(info) then
+		or TyGearIsReagentBag(info)
+		or TyGearUsesReagentBagSlot(info) then
 			return storeScore(info.numBagSlots or 0)
 		else
 			return storeScore((info.numBagSlots or 0) * E) -- specialized bags suck, so consider them only better than nothing
@@ -9424,6 +9457,32 @@ function TyGearTryPutReagentBag(info, tried, before)
 		return "pending", pendingID
 	end
 	return false
+end
+
+-- Equipping one bag shifts bag contents; re-find the item by id before the next pickup.
+function TyGearFindBagItemLocation(itemID, preferredBag, preferredSlot)
+	itemID = tonumber(itemID)
+	if not itemID or not GetContainerItemID then return end
+	if preferredBag and preferredSlot and GetContainerItemID(preferredBag, preferredSlot) == itemID then
+		return preferredBag, preferredSlot
+	end
+	for bag = 0, TyGearGetLastBagToScan() do
+		for slot = 1, (GetContainerNumSlots(bag) or 0) do
+			if GetContainerItemID(bag, slot) == itemID then
+				return bag, slot
+			end
+		end
+	end
+end
+
+function TyGearRefreshActionBagLocation(curAction)
+	if not curAction or not curAction.info or not curAction.info.id then return end
+	local bag, slot = TyGearFindBagItemLocation(curAction.info.id, curAction.container, curAction.slot)
+	if bag and slot then
+		curAction.container = bag
+		curAction.slot = slot
+		return true
+	end
 end
 
 function TyGearReturnCursorItem(curAction)
@@ -10331,6 +10390,8 @@ function TyGearMain()
 									local itemLocation = curAction.info.itemLocation or curAction.info.item:GetItemLocation()
 									curAction.container, curAction.slot = itemLocation:GetBagAndSlot()
 								end
+								-- Equipping an earlier bag shifts later bag/slot indexes; re-find by item id.
+								TyGearRefreshActionBagLocation(curAction)
 								if (not curAction.container) or (not curAction.slot) then
 									TyGearBrokenAction = curAction
 									TyGearPrint("Error: The current equip action has either no container or no slot! This should never happen, so it must be a bug. It's now been saved to global variable TyGearBrokenAction, so try \"/dump TyGearBrokenAction\" and send the output to the TyGear author.",0)
@@ -10370,6 +10431,7 @@ function TyGearMain()
 											queueQueueRebuild = 1
 										end
 									else
+										TyGearRefreshActionBagLocation(curAction)
 										local sourceContainer, sourceSlot = curAction.container, curAction.slot
 										PickupContainerItem(sourceContainer, sourceSlot)
 										local landed = TyGearEquipActionBag(curAction, function()
@@ -10394,6 +10456,7 @@ function TyGearMain()
 										end
 									end
 								else
+									TyGearRefreshActionBagLocation(curAction)
 									local sourceContainer, sourceSlot = curAction.container, curAction.slot
 									PickupContainerItem(sourceContainer, sourceSlot)
 									local landed = TyGearEquipActionBag(curAction, function()
