@@ -196,25 +196,55 @@ TyGearWouldRoll = "nil"
 TyGearSomeItemDataIsMissing = nil
 TyGearFirstEquippableBagSlot = ContainerIDToInventoryID(1) or 20
 TyGearLastEquippableBagSlot = ContainerIDToInventoryID(NUM_BAG_SLOTS) or 23
--- Reagent bags (retail Dragonflight+, and WoW Forever) can only be equipped in the reagent bag slot.
+-- Reagent bags can also be equipped in a normal bag slot. TyGear should use the reagent bag slot instead.
 -- Classic Era/Wrath clients may expose Enum.BagIndex.ReagentBag with mainline's number, where that container is a bank bag.
 -- Forever also lets Warlock Soul Bags use that same dedicated slot.
+-- A classic ContainerIDToInventoryID maps container 5 onto a bank bag (inventory ids from the mid-60s up).
+-- That is not the reagent bag. Forever and mainline use container 5 and inventory slot 35.
+local function TyGearInventorySlotIsBankBag(slot)
+	if not slot then return false end
+	local bankOffset = BANK_CONTAINER_INVENTORY_OFFSET
+	local bankCount = (NUM_BANKBAGSLOTS or 7) + 2
+	if type(bankOffset) == "number" and bankOffset >= 40 and slot >= bankOffset and slot < bankOffset + bankCount then
+		return true
+	end
+	return slot >= 63 and slot <= 98
+end
+
 TyGearReagentBagContainer = nil
 TyGearReagentBagSlot = nil
 if IS_WOW_FOREVER
 or (type(TOC_VERSION_CURRENT) == "number" and TOC_VERSION_CURRENT >= TOC_VERSION_DF) then
 	local reagentContainer = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or nil
+	if not reagentContainer and ((IS_WOW_FOREVER) or (NUM_REAGENTBAG_SLOTS and NUM_REAGENTBAG_SLOTS > 0)) then
+		reagentContainer = 5
+	end
 	if not reagentContainer and NUM_REAGENTBAG_SLOTS and NUM_REAGENTBAG_SLOTS > 0 then
 		reagentContainer = (NUM_BAG_SLOTS or 4) + 1
 	end
-	if reagentContainer and ContainerIDToInventoryID then
-		local reagentSlot = ContainerIDToInventoryID(reagentContainer)
-		if not reagentSlot and reagentContainer == 5 then
-			reagentSlot = 35 -- mainline reagent bag inventory slot
+	if reagentContainer then
+		local reagentSlot = ContainerIDToInventoryID and ContainerIDToInventoryID(reagentContainer)
+		local function isNormalBagSlot(slot)
+			return slot
+				and slot >= TyGearFirstEquippableBagSlot
+				and slot <= TyGearLastEquippableBagSlot
 		end
-		-- ignore a result that lands on a normal bag slot; that mapping is not the reagent bag
-		if reagentSlot
-		and (reagentSlot < TyGearFirstEquippableBagSlot or reagentSlot > TyGearLastEquippableBagSlot) then
+		-- The sequential slot for this container, used only when NUM_BAG_SLOTS already counts the reagent bag.
+		local sequentialSlot = TyGearFirstEquippableBagSlot + reagentContainer - 1
+		local countedAsNormalBag = reagentContainer <= (NUM_BAG_SLOTS or 4)
+		-- classic maps container 5 to a bank bag, or sometimes onto a normal bag slot
+		if reagentSlot and TyGearInventorySlotIsBankBag(reagentSlot) then
+			reagentSlot = nil
+		elseif reagentSlot and isNormalBagSlot(reagentSlot) and not (countedAsNormalBag and reagentSlot == sequentialSlot) then
+			reagentSlot = nil
+		end
+		if not reagentSlot and reagentContainer == 5 then
+			local fallback = 35 -- mainline and Forever reagent bag inventory slot
+			if not isNormalBagSlot(fallback) and not TyGearInventorySlotIsBankBag(fallback) then
+				reagentSlot = fallback
+			end
+		end
+		if reagentSlot and not TyGearInventorySlotIsBankBag(reagentSlot) then
 			TyGearReagentBagContainer = reagentContainer
 			TyGearReagentBagSlot = reagentSlot
 		end
@@ -6825,6 +6855,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 
 	--create all future equip actions required (only if not rolling currently)
 	if (not lootRollItemID and not noActions) then
+		TyGearRedirectReagentBagsToReagentSlot()
 		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
 			if TyGearIsManagedGearSlot(invSlot) then
 				if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND or invSlot == INVSLOT_TABARD then
@@ -6845,6 +6876,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 							newAction.container = TyGearBestItems[invSlot].bag
 							newAction.slot = TyGearBestItems[invSlot].slot
 							newAction.replaceSlot = invSlot
+							newAction.fromEquippedSlot = TyGearBestItems[invSlot].fromEquippedSlot
 							newAction.info = TyGearBestItems[invSlot].info
 							newAction.score = TyGearBestItems[invSlot].score
 							TyGearQueueAction(newAction)
@@ -6999,6 +7031,70 @@ function TyGearBagShouldReplaceEqualScore(candidate, current)
 	return false
 end
 
+--Forever reagent bags can equip in a normal bag slot. Right-click does that.
+--Keep them for the reagent bag slot instead, and move one that is already sitting in a normal slot when it is the better bag there.
+function TyGearRedirectReagentBagsToReagentSlot()
+	if not TyGearReagentBagSlot or not TyGearBestItems or not TyGearBestItems[TyGearReagentBagSlot] then return end
+	if TyGearIsGearSlotProtected(TyGearReagentBagSlot) then return end
+	local function beats(candidate, current)
+		if not candidate or not candidate.info or candidate.info.empty or candidate.info.unusable then
+			return false
+		end
+		if not TyGearIsReagentBag(candidate.info) or TyGearIsLeftOut(candidate.info) then
+			return false
+		end
+		if not current or not current.info or current.info.empty or current.info.unusable then
+			return true
+		end
+		local candidateScore = candidate.score or 0
+		local currentScore = current.score or 0
+		if candidateScore > currentScore then return true end
+		if candidateScore < currentScore then return false end
+		return TyGearBagShouldReplaceEqualScore(candidate.info, current.info)
+	end
+	local function restoreEquipped(bagSlot)
+		local equipped = TyGearEquippedItems and TyGearEquippedItems[bagSlot]
+		TyGearBestItems[bagSlot] = {
+			info = (equipped and equipped.info) or EMPTY_SLOT_INFO,
+			score = (equipped and equipped.score) or 0,
+			equipped = 1,
+		}
+	end
+	for _, bagSlot in ipairs(TyGearEquippableBagSlots) do
+		local best = TyGearBestItems[bagSlot]
+		local reagentBest = TyGearBestItems[TyGearReagentBagSlot]
+		--a reagent bag chosen for a normal slot this scan: send it to the reagent slot, or leave the normal slot alone
+		if best and not best.equipped and TyGearIsReagentBag(best.info) then
+			if beats(best, reagentBest) then
+				TyGearBestItems[TyGearReagentBagSlot] = {
+					info = best.info,
+					score = best.score,
+					equipped = nil,
+					bag = best.bag,
+					slot = best.slot,
+					fromEquippedSlot = best.fromEquippedSlot,
+					rollOn = best.rollOn,
+				}
+			end
+			restoreEquipped(bagSlot)
+		end
+		reagentBest = TyGearBestItems[TyGearReagentBagSlot]
+		local equipped = TyGearEquippedItems and TyGearEquippedItems[bagSlot]
+		--already worn in a normal slot: pick it up into the reagent slot when it belongs there
+		if equipped and beats(equipped, reagentBest) then
+			TyGearBestItems[TyGearReagentBagSlot] = {
+				info = equipped.info,
+				score = equipped.score,
+				equipped = nil,
+				bag = nil,
+				slot = nil,
+				fromEquippedSlot = bagSlot,
+			}
+			restoreEquipped(bagSlot)
+		end
+	end
+end
+
 --companion function to TyGearConsiderAllItems
 function TyGearConsiderItem(info, bag, slot, rollOn)
 	if info.empty
@@ -7084,7 +7180,7 @@ end
 function TyGearGetValidGearSlots(info)
 	local dualWield = CanDualWield() and 1 or 0
 	local titanGrip = IsPlayerSpell(46917) and 1 or 0
-	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0)
+	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0")
 	local cached = TyGearValidGearSlotsCache[cacheKey]
 	if cached ~= nil then
 		return cached ~= false and cached or nil
@@ -7191,7 +7287,7 @@ end
 function TyGearGetSetSlots(info)
 	local dualWield = CanDualWield() and 1 or 0
 	local titanGrip = IsPlayerSpell(46917) and 1 or 0
-	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0)
+	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0")
 	local cached = TyGearSetSlotsCache[cacheKey]
 	if cached ~= nil then
 		return cached ~= false and cached or nil
@@ -7490,7 +7586,15 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
 	info.isGear = info.invType > 0
 
-	--reagent bags (and Forever Warlock soul bags) equip only in the reagent bag slot;
+	--Forever reagent bags are normal bags that can also fill a regular slot.
+	--A name of "Reagent Bag" marks them before slot choice, including when subclass 11 is missing.
+	if TyGearReagentBagSlot and type(info.name) == "string"
+	and not (issecretvalue and issecretvalue(info.name))
+	and string.find(string.lower(info.name), "reagent bag", 1, true) then
+		info.isReagentBag = 1
+	end
+
+	--reagent bags (and Forever Warlock soul bags) belong in the reagent bag slot;
 	--keep them even if inventory type is missing
 	if TyGearIsReagentBag(info) then
 		info.isReagentBag = 1
@@ -7726,6 +7830,18 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 				string.find(text, " tackle box")
 			) then
 				info.numBagSlots = (info.numBagSlots or 0) + value
+			end
+			-- "6 Slot Reagent Bag": Forever reagent bags can equip in a normal slot, but they belong in the reagent slot
+			if TyGearReagentBagSlot and string.find(text, "reagent bag", 1, true) and not info.isReagentBag then
+				info.isReagentBag = 1
+				info.isGear = 1
+				info.validGearSlots = { TyGearReagentBagSlot }
+				info.numValidGearSlots = 1
+				info.unusable = nil
+				info.usable = 1
+				if info.reason and string.find(info.reason, "invalid item", 1, true) then
+					info.reason = nil
+				end
 			end
 			if value > 0
 			and info.isAmmoBag
@@ -8398,6 +8514,63 @@ function TyGearDetermineItemScore(info)
 	else
 		return storeScore(score or 0)
 	end
+end
+
+-- EquipCursorItem on a bag uses the first open regular bag slot.
+-- PutItemInBag targets the bag slot itself, including the reagent bag slot.
+function TyGearPlaceCursorItem(slot)
+	if slot and TyGearGetContainerForEquippedBagSlot(slot) and PutItemInBag then
+		PutItemInBag(slot)
+	else
+		EquipCursorItem(slot)
+	end
+end
+
+-- Put a displaced item into a bag. PutItemInBag would equip a bag, so this only fills empty slots.
+function TyGearStashCursorItem()
+	if not (CursorHasItem and CursorHasItem()) then return end
+	if GetContainerNumFreeSlots(BACKPACK_CONTAINER) > 0 and PutItemInBackpack then
+		PutItemInBackpack()
+		if not (CursorHasItem and CursorHasItem()) then return end
+	end
+	for bag = 1, (NUM_BAG_SLOTS or 0) do
+		if CursorHasItem and not CursorHasItem() then return end
+		local freeSlots, bagType = GetContainerNumFreeSlots(bag)
+		if bagType == 0 and freeSlots > 0 then
+			for slot = 1, (GetContainerNumSlots(bag) or 0) do
+				if not TyGearGetContainerItemInfo(bag, slot) then
+					PickupContainerItem(bag, slot)
+					return
+				end
+			end
+		end
+	end
+end
+
+-- true when the bag landed in replaceSlot. A cursor still holding that same item is put back by putBack.
+function TyGearResolveBagCursor(info, putBack)
+	if not (CursorHasItem and CursorHasItem()) then return true end
+	local cursorType, cursorID = nil, nil
+	if GetCursorInfo then
+		cursorType, cursorID = GetCursorInfo()
+	end
+	if issecretvalue and (issecretvalue(cursorType) or issecretvalue(cursorID)) then
+		TyGearStashCursorItem()
+		return true
+	end
+	if cursorType == "item" and info and cursorID == info.id then
+		if putBack then putBack() end
+		return false
+	end
+	TyGearStashCursorItem()
+	return true
+end
+
+function TyGearBagEquipSlotName(slot)
+	if TyGearReagentBagSlot and slot == TyGearReagentBagSlot then
+		return "reagent bag slot"
+	end
+	return "bag slot"
 end
 
 function TyGearGetAllBagsNumFreeSlots()
@@ -9073,6 +9246,34 @@ function TyGearMain()
 									end
 									curAction.t = nil
 									queueQueueRebuild = 1
+								elseif TyGearGetContainerForEquippedBagSlot(curAction.replaceSlot) then
+									curAction.ensureTicks = (curAction.ensureTicks or 0) + 1
+									if curAction.ensureTicks >= 40 then
+										TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot)..".", 0)
+										curAction.t = nil
+										queueQueueRebuild = 1
+									end
+								end
+							elseif curAction.fromEquippedSlot then
+								-- the bag is already worn in a normal slot; move it to the slot it belongs in
+								local sourceSlot = curAction.fromEquippedSlot
+								PickupInventoryItem(sourceSlot)
+								TyGearPlaceCursorItem(curAction.replaceSlot)
+								local landed = TyGearResolveBagCursor(curAction.info, function()
+									PutItemInBag(sourceSlot)
+								end)
+								if landed then
+									curAction.ensuringEquipped = 1
+									curAction.fromEquippedSlot = nil
+								else
+									curAction.attempts = (curAction.attempts or 0) + 1
+									if curAction.attempts >= 3 then
+										TyGearPrint("TyGear: Could not move "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot)..".", 0)
+										curAction.t = nil
+										queueQueueRebuild = 1
+									else
+										curAction.t = GetTime() + 0.5
+									end
 								end
 							else
 								if ((not curAction.container) or (not curAction.slot))
@@ -9119,15 +9320,53 @@ function TyGearMain()
 											queueQueueRebuild = 1
 										end
 									else
-										PickupContainerItem(curAction.container, curAction.slot)
-										EquipCursorItem(curAction.replaceSlot)
-										curAction.ensuringEquipped = 1
-										curAction.movedOutOfBag = nil
+										local sourceContainer, sourceSlot = curAction.container, curAction.slot
+										PickupContainerItem(sourceContainer, sourceSlot)
+										TyGearPlaceCursorItem(curAction.replaceSlot)
+										local landed = true
+										if TyGearGetContainerForEquippedBagSlot(curAction.replaceSlot) then
+											landed = TyGearResolveBagCursor(curAction.info, function()
+												PickupContainerItem(sourceContainer, sourceSlot)
+											end)
+										end
+										if landed then
+											curAction.ensuringEquipped = 1
+											curAction.movedOutOfBag = nil
+										else
+											curAction.ensuringEquipped = nil
+											curAction.movedOutOfBag = nil
+											curAction.attempts = (curAction.attempts or 0) + 1
+											if curAction.attempts >= 3 then
+												TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot)..".", 0)
+												curAction.t = nil
+												queueQueueRebuild = 1
+											else
+												curAction.t = GetTime() + 0.5
+											end
+										end
 									end
 								else
-									PickupContainerItem(curAction.container, curAction.slot)
-									EquipCursorItem(curAction.replaceSlot)
-									curAction.ensuringEquipped = 1
+									local sourceContainer, sourceSlot = curAction.container, curAction.slot
+									PickupContainerItem(sourceContainer, sourceSlot)
+									TyGearPlaceCursorItem(curAction.replaceSlot)
+									local landed = true
+									if TyGearGetContainerForEquippedBagSlot(curAction.replaceSlot) then
+										landed = TyGearResolveBagCursor(curAction.info, function()
+											PickupContainerItem(sourceContainer, sourceSlot)
+										end)
+									end
+									if landed then
+										curAction.ensuringEquipped = 1
+									else
+										curAction.attempts = (curAction.attempts or 0) + 1
+										if curAction.attempts >= 3 then
+											TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot)..".", 0)
+											curAction.t = nil
+											queueQueueRebuild = 1
+										else
+											curAction.t = GetTime() + 0.5
+										end
+									end
 								end
 							end
 						else
