@@ -197,10 +197,9 @@ TyGearSomeItemDataIsMissing = nil
 TyGearFirstEquippableBagSlot = ContainerIDToInventoryID(1) or 20
 TyGearLastEquippableBagSlot = ContainerIDToInventoryID(math.min(NUM_BAG_SLOTS or 4, 4)) or (TyGearFirstEquippableBagSlot + 3)
 -- Reagent bags can also be equipped in a normal bag slot. Right-click and EquipCursorItem do that.
--- PutItemInBag has to be given the reagent bag button's id. On classic-offset clients that id is
--- CONTAINER_BAG_OFFSET + 5 (24 when the offset is 19), not the mainline inventory id 35.
--- A classic ContainerIDToInventoryID(5) is a bank bag. Passing that, or 35, to PutItemInBag
--- equips the bag into the first open regular slot.
+-- PutItemInBag has to be given the reagent bag button's id. That id is GetInventorySlotInfo("ReagentBag0Slot")
+-- on the button, CONTAINER_BAG_OFFSET+5, 24 when the offset is still 19, or 35 after bag slots moved to 31-35.
+-- A classic ContainerIDToInventoryID(5) is a bank bag and must not be passed to PutItemInBag.
 -- Forever also lets Warlock Soul Bags use that same dedicated slot.
 local function TyGearInventorySlotIsBankBag(slot)
 	if not slot then return false end
@@ -225,6 +224,12 @@ local function TyGearSlotIsOneOfFourNormalBags(slot)
 	return type(slot) == "number" and type(first) == "number" and slot >= first and slot <= first + 3
 end
 
+-- Character bag inventory ids. Classic uses 20-23. Current clients use 31-34. The reagent slot is the one after those.
+local function TyGearSlotIsKnownNormalBag(slot)
+	if TyGearSlotIsOneOfFourNormalBags(slot) then return true end
+	return type(slot) == "number" and ((slot >= 20 and slot <= 23) or (slot >= 31 and slot <= 34))
+end
+
 TyGearReagentBagContainer = nil
 TyGearReagentBagSlot = nil
 TyGearReagentBagButtonID = nil
@@ -239,8 +244,54 @@ local function TyGearButtonPutID(button)
 	return id
 end
 
+local function TyGearFrameName(frame)
+	local name = frame and frame.GetName and frame:GetName()
+	if type(name) ~= "string" or name == "" then return nil end
+	if issecretvalue and issecretvalue(name) then return nil end
+	return name
+end
+
+local function TyGearButtonBagID(button)
+	if not button or not button.GetBagID then return nil end
+	local bagID = button:GetBagID()
+	if type(bagID) ~= "number" or bagID <= 0 then return nil end
+	if issecretvalue and issecretvalue(bagID) then return nil end
+	return bagID
+end
+
+-- Lower is better. The bag bar button is what a click passes to PutItemInBag.
+local function TyGearReagentButtonRank(button)
+	if not button or not button.GetID then return nil end
+	local name = TyGearFrameName(button) or ""
+	if string.find(name, "CharacterReagentBag", 1, true) then return 1 end
+	if string.find(name, "ReagentBag", 1, true) then return 2 end
+	if button.commandName == "TOGGLEREAGENTBAG1" then return 3 end
+	if string.find(name, "Reagent", 1, true) then return 4 end
+	if TyGearButtonBagID(button) == 5 then return 5 end
+end
+
+local function TyGearConsiderReagentButton(button, bestRank, bestButton, bestID, bestBag)
+	local rank = TyGearReagentButtonRank(button)
+	if not rank then return bestRank, bestButton, bestID, bestBag end
+	local id = TyGearButtonPutID(button)
+	if not id then return bestRank, bestButton, bestID, bestBag end
+	local bagID = TyGearButtonBagID(button)
+	local better = (not bestRank) or rank < bestRank
+	if (not better) and rank == bestRank and TyGearSlotIsOneOfFourNormalBags(bestID) and not TyGearSlotIsOneOfFourNormalBags(id) then
+		better = true
+	end
+	if better then
+		return rank, button, id, bagID
+	end
+	return bestRank, bestButton, bestID, bestBag
+end
+
 -- The id Blizzard passes to PutItemInBag when the reagent bag button is clicked.
 local function TyGearFindReagentBagButton()
+	local bestRank, bestButton, bestID, bestBag
+	local function consider(button)
+		bestRank, bestButton, bestID, bestBag = TyGearConsiderReagentButton(button, bestRank, bestButton, bestID, bestBag)
+	end
 	local names = {
 		"CharacterReagentBag0Slot",
 		"CharacterReagentBagSlot",
@@ -248,49 +299,84 @@ local function TyGearFindReagentBagButton()
 		"MainMenuBarReagentBagButton",
 	}
 	for _, name in ipairs(names) do
-		local button = _G[name]
-		local id = TyGearButtonPutID(button)
-		if id then
-			local bagID = button.GetBagID and button:GetBagID()
-			return button, id, (type(bagID) == "number" and bagID > 0) and bagID or nil
+		consider(_G[name])
+	end
+	if bestButton and bestRank <= 2 then
+		return bestButton, bestID, bestBag
+	end
+	local roots = {
+		_G.BagsBar,
+		_G.MainMenuBarBagButtons,
+		_G.MainMenuBarArtFrame,
+		_G.CharacterBag0Slot and _G.CharacterBag0Slot.GetParent and _G.CharacterBag0Slot:GetParent(),
+		_G.MainMenuBarBackpackButton and _G.MainMenuBarBackpackButton.GetParent and _G.MainMenuBarBackpackButton:GetParent(),
+	}
+	local function walk(frame, depth)
+		if not frame or depth > 5 or not frame.GetChildren then return end
+		local children = { frame:GetChildren() }
+		for _, child in ipairs(children) do
+			consider(child)
+			walk(child, depth + 1)
 		end
 	end
-	local anchors = {
-		_G.CharacterBag0Slot,
-		_G.CharacterBag1Slot,
-		_G.CharacterBag2Slot,
-		_G.CharacterBag3Slot,
-		_G.MainMenuBarBackpackButton,
-	}
 	local seen = {}
-	for _, anchor in ipairs(anchors) do
-		local parent = anchor and anchor.GetParent and anchor:GetParent()
-		if parent and not seen[parent] and parent.GetChildren then
-			seen[parent] = true
-			local children = { parent:GetChildren() }
-			for _, child in ipairs(children) do
-				local name = child.GetName and child:GetName()
-				local bagID = child.GetBagID and child:GetBagID()
-				local looksReagent = (type(bagID) == "number" and bagID == 5)
-					or (type(name) == "string" and string.find(name, "Reagent", 1, true))
-				if looksReagent then
-					local id = TyGearButtonPutID(child)
-					if id then
-						return child, id, (type(bagID) == "number" and bagID > 0) and bagID or 5
-					end
-				end
-			end
+	for _, root in ipairs(roots) do
+		if root and not seen[root] then
+			seen[root] = true
+			consider(root)
+			walk(root, 1)
+		end
+	end
+	if not bestButton and EnumerateFrames then
+		local frame = EnumerateFrames()
+		local n = 0
+		while frame and n < 5000 do
+			n = n + 1
+			consider(frame)
+			if bestRank and bestRank <= 2 then break end
+			frame = EnumerateFrames(frame)
+		end
+	end
+	if bestButton then
+		return bestButton, bestID, bestBag
+	end
+end
+
+local function TyGearInventorySlotInfoID(slotName)
+	if type(slotName) ~= "string" then return nil end
+	local getters = {}
+	if C_PaperDollInfo and C_PaperDollInfo.GetInventorySlotInfo then
+		table.insert(getters, C_PaperDollInfo.GetInventorySlotInfo)
+	end
+	if GetInventorySlotInfo then
+		table.insert(getters, GetInventorySlotInfo)
+	end
+	for _, getter in ipairs(getters) do
+		local ok, id = pcall(getter, slotName)
+		if ok and type(id) == "number" and id > 0 and not (issecretvalue and issecretvalue(id)) then
+			return id
 		end
 	end
 end
 
+-- The global may be nil at file load. Look it up again once the container API exists.
+local function TyGearContainerToInventoryID(container)
+	local fn = ContainerIDToInventoryID
+	if (not fn) and C_Container and C_Container.ContainerIDToInventoryID then
+		fn = C_Container.ContainerIDToInventoryID
+	end
+	if not fn or not container then return nil end
+	local ok, slot = pcall(fn, container)
+	if ok and type(slot) == "number" and slot > 0 and not (issecretvalue and issecretvalue(slot)) then
+		return slot
+	end
+end
+
 local function TyGearRefreshNormalBagSlotRange()
-	if not ContainerIDToInventoryID then return false end
-	local okFirst, first = pcall(ContainerIDToInventoryID, 1)
 	local normalBags = math.min(NUM_BAG_SLOTS or 4, 4)
-	local okLast, last = pcall(ContainerIDToInventoryID, normalBags)
-	if not okFirst or not okLast then return false end
-	if type(first) ~= "number" or type(last) ~= "number" then return false end
+	local first = TyGearContainerToInventoryID(1)
+	local last = TyGearContainerToInventoryID(normalBags)
+	if not first or not last then return false end
 	if TyGearInventorySlotIsBankBag(first) or TyGearInventorySlotIsBankBag(last) then return false end
 	if TyGearInventorySlotIsGear(first) or last < first then return false end
 	local changed = first ~= TyGearFirstEquippableBagSlot or last ~= TyGearLastEquippableBagSlot
@@ -314,6 +400,7 @@ local function TyGearRebuildEquippableBagSlots()
 end
 
 -- Ids worth giving to PutItemInBag, best first. The button id is what a click on the reagent slot uses.
+-- Classic offset 19 makes that id 24. After bag slots moved, it is 35. Try each one that is not a normal or bank bag.
 local function TyGearCollectReagentBagSlotCandidates()
 	local list = {}
 	local seen = {}
@@ -323,7 +410,7 @@ local function TyGearCollectReagentBagSlotCandidates()
 		if TyGearInventorySlotIsGear(id) then return end
 		if not trustButton then
 			if TyGearInventorySlotIsBankBag(id) then return end
-			if TyGearSlotIsOneOfFourNormalBags(id) then return end
+			if TyGearSlotIsKnownNormalBag(id) then return end
 		end
 		seen[id] = true
 		table.insert(list, id)
@@ -331,19 +418,20 @@ local function TyGearCollectReagentBagSlotCandidates()
 	if TyGearReagentBagSlotOverride then
 		add(TyGearReagentBagSlotOverride, true)
 	end
-	-- A button id that is one of the four normal bags would equip there. Skip it and use the offset formula.
-	if TyGearReagentBagButtonID and not TyGearSlotIsOneOfFourNormalBags(TyGearReagentBagButtonID) then
+	if TyGearReagentBagButtonID then
 		add(TyGearReagentBagButtonID, true)
 	end
+	add(TyGearInventorySlotInfoID("ReagentBag0Slot"), false)
+	add(TyGearInventorySlotInfoID("REAGENTBAG0SLOT"), false)
 	local container = TyGearReagentBagContainer or 5
 	local offset = (type(CONTAINER_BAG_OFFSET) == "number" and CONTAINER_BAG_OFFSET) or 19
 	add(offset + container, false)
-	if ContainerIDToInventoryID then
-		local ok, apiSlot = pcall(ContainerIDToInventoryID, container)
-		if ok then
-			add(apiSlot, false)
-		end
+	add(19 + container, false)
+	add(30 + container, false)
+	if container == 5 then
+		add(35, false)
 	end
+	add(TyGearContainerToInventoryID(container), false)
 	return list
 end
 
@@ -378,7 +466,14 @@ function TyGearRefreshReagentBagSlot()
 	end
 	TyGearReagentBagContainer = container
 	local candidates = TyGearCollectReagentBagSlotCandidates()
-	local slot = candidates[1]
+	local slot
+	for _, id in ipairs(candidates) do
+		if not TyGearSlotIsKnownNormalBag(id) then
+			slot = id
+			break
+		end
+	end
+	slot = slot or candidates[1]
 	local slotChanged = slot ~= previousSlot or container ~= previousContainer or buttonID ~= previousButton or rangeChanged
 	if not slotChanged and TyGearEquippableBagSlots[1] then
 		return
@@ -393,6 +488,7 @@ end
 
 function TyGearAdoptReagentBagSlot(id)
 	if type(id) ~= "number" or id <= 0 then return end
+	if TyGearSlotIsKnownNormalBag(id) then return end
 	if id == TyGearReagentBagSlot and id == TyGearReagentBagSlotOverride then return end
 	TyGearReagentBagSlotOverride = id
 	TyGearRefreshReagentBagSlot()
@@ -7024,6 +7120,26 @@ function TyGearResetBestItemsFromEquipped()
 	end
 end
 
+-- GetItemInfoInstant's first return is the item id, not the name.
+function TyGearItemIdentity(itemID)
+	if not itemID or not GetItemInfoInstant then return end
+	local ok, _, _, itemSubType, _, _, classID, subclassID = pcall(GetItemInfoInstant, itemID)
+	if not ok then return end
+	if issecretvalue then
+		if issecretvalue(itemSubType) then itemSubType = nil end
+		if issecretvalue(classID) then classID = nil end
+		if issecretvalue(subclassID) then subclassID = nil end
+	end
+	local name
+	if C_Item and C_Item.GetItemNameByID then
+		local nameOk, itemName = pcall(C_Item.GetItemNameByID, itemID)
+		if nameOk and type(itemName) == "string" and itemName ~= "" and not (issecretvalue and issecretvalue(itemName)) then
+			name = itemName
+		end
+	end
+	return name, itemSubType, classID, subclassID
+end
+
 function TyGearScanBagsForBestItems()
 	local info
 	for bag = 0, TyGearGetLastBagToScan() do
@@ -7032,9 +7148,9 @@ function TyGearScanBagsForBestItems()
 			local itemID = GetContainerItemID and GetContainerItemID(bag, slot)
 			if itemID then
 				local invType = C_Item.GetItemInventoryTypeByID(itemID) or 0
-				local instantName, _, itemSubType, _, _, classID, subclassID = GetItemInfoInstant(itemID)
+				local itemName, itemSubType, classID, subclassID = TyGearItemIdentity(itemID)
 				local isReagentBag = (classID == Enum.ItemClass.Container) and (subclassID == REAGENT_BAG_SUBCLASS_ID)
-					or TyGearTextIsReagentBag(itemSubType) or TyGearTextIsReagentBag(instantName)
+					or TyGearTextIsReagentBag(itemSubType) or TyGearTextIsReagentBag(itemName)
 				local isSoulBag = (classID == Enum.ItemClass.Container) and (subclassID == SOUL_BAG_SUBCLASS_ID)
 				if (invType > 0) or isReagentBag or isSoulBag then
 					info = TyGearReadItemInfo(nil, nil, bag, slot)
@@ -7081,10 +7197,13 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 				if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND or invSlot == INVSLOT_TABARD then
 					--skip weapons for now
 				else
+					local equippedSlot = TyGearEquippedItems[invSlot]
+					local bestSlot = TyGearBestItems[invSlot]
+					if equippedSlot and bestSlot
+					and (not TyGearIsGearSlotProtected(invSlot)) and (not bestSlot.equipped) then
 					local isSlotLocked = TyGearIsGearSlotLocked(invSlot)
-					local equippedInfo = TyGearEquippedItems[invSlot].info
-					local equippedScore = TyGearEquippedItems[invSlot].score
-					if (not TyGearIsGearSlotProtected(invSlot)) and (not TyGearBestItems[invSlot].equipped) then
+					local equippedInfo = equippedSlot.info
+					local equippedScore = equippedSlot.score
 						anythingBetter = 1
 						TyGearPrint("TyGear: "..(TyGearBestItems[invSlot].info.link or TyGearBestItems[invSlot].info.name).." ("..string.format("%.2f", TyGearBestItems[invSlot].score)..") was determined to be better than "..(equippedInfo.link or equippedInfo.name).." ("..string.format("%.2f", equippedScore)..").  "..((TyGearDB.Enabled == true) and (isSlotLocked and "Would equip, but slot "..tostring(invSlot or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
 						TyGearPrintItem(TyGearBestItems[invSlot].info)
@@ -7096,6 +7215,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 							newAction.container = TyGearBestItems[invSlot].bag
 							newAction.slot = TyGearBestItems[invSlot].slot
 							newAction.replaceSlot = invSlot
+							newAction.reagentEquip = (invSlot == TyGearReagentBagSlot) and TyGearBestItems[invSlot].info and (TyGearIsReagentBag(TyGearBestItems[invSlot].info) or TyGearUsesReagentBagSlot(TyGearBestItems[invSlot].info)) and true or nil
 							newAction.fromEquippedSlot = TyGearBestItems[invSlot].fromEquippedSlot
 							newAction.info = TyGearBestItems[invSlot].info
 							newAction.score = TyGearBestItems[invSlot].score
@@ -7253,7 +7373,15 @@ end
 
 --The best reagent bag goes in the reagent slot. Another reagent bag keeps a normal slot when it beats what is worn there, including an empty slot.
 function TyGearRedirectReagentBagsToReagentSlot()
-	if not TyGearReagentBagSlot or not TyGearBestItems or not TyGearBestItems[TyGearReagentBagSlot] then return end
+	if not TyGearReagentBagSlot or not TyGearBestItems then return end
+	if not TyGearBestItems[TyGearReagentBagSlot] then
+		local equipped = TyGearEquippedItems and TyGearEquippedItems[TyGearReagentBagSlot]
+		TyGearBestItems[TyGearReagentBagSlot] = {
+			info = (equipped and equipped.info) or EMPTY_SLOT_INFO,
+			score = (equipped and equipped.score) or 0,
+			equipped = 1,
+		}
+	end
 	if TyGearIsGearSlotProtected(TyGearReagentBagSlot) then return end
 	local function beats(candidate, current)
 		if not candidate or not candidate.info or candidate.info.empty or candidate.info.unusable then
@@ -7366,9 +7494,15 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 			if not lowestScoringValidGearSlot then return end
 			for _, gearSlot in pairs(info.validGearSlots) do
 				if not TyGearIsGearSlotProtected(gearSlot) then
+				if not TyGearBestItems[gearSlot] then
+					TyGearBestItems[gearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
+				end
 				local skipThisSlot = false
 				for _, otherGearSlot in pairs(info.validGearSlots) do
 					if gearSlot ~= otherGearSlot then
+						if not TyGearBestItems[otherGearSlot] then
+							TyGearBestItems[otherGearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
+						end
 						if not TyGearIsGearPairEquippableTogether(info, TyGearBestItems[otherGearSlot].info) then
 							skipThisSlot = true
 						end
@@ -7385,6 +7519,9 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 				end
 			end
 
+			if not TyGearBestItems[lowestScoringValidGearSlot] then
+				TyGearBestItems[lowestScoringValidGearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
+			end
 			local currentBestInfo = TyGearBestItems[lowestScoringValidGearSlot].info
 			if (
 				((score > lowestScoringValidGearSlotScore) and (not info.isAmmoBag))
@@ -7824,10 +7961,17 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 		)
 		return info
 	end
-	local instantName, _, itemSubType, _, _, classID, subclassID = GetItemInfoInstant(info.id)
+	local itemName, itemSubType, classID, subclassID = TyGearItemIdentity(info.id)
 	info.classID, info.subclassID = classID, subclassID
 	info.subclassName = itemSubType
-	info.name = C_Item.GetItemNameByID(info.id) or instantName
+	if type(itemName) == "string" then
+		info.name = itemName
+	elseif info.item and info.item.GetItemName then
+		local fromItem = info.item:GetItemName()
+		if type(fromItem) == "string" and fromItem ~= "" and not (issecretvalue and issecretvalue(fromItem)) then
+			info.name = fromItem
+		end
+	end
 	info.rarity = info.item:GetItemQuality()
 	info.rarityColor = info.item:GetItemQualityColor()
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
@@ -8789,6 +8933,13 @@ function TyGearSnapshotEquippedBags()
 			take(id)
 		end
 	end
+	-- Classic bag ids are 20-23. Current clients use 31-34. Record both so a bag that lands in the other range is visible.
+	for id = 20, 23 do
+		take(id)
+	end
+	for id = 31, 34 do
+		take(id)
+	end
 	for _, id in ipairs(TyGearEquippableBagSlots) do
 		take(id)
 	end
@@ -8821,6 +8972,33 @@ function TyGearFindRegularBagSlotHolding(itemID, before)
 			return id
 		end
 	end
+	for id = 20, 23 do
+		if id ~= TyGearReagentBagSlot and TyGearBagSlotNewlyHolds(itemID, id, before) then
+			return id
+		end
+	end
+	for id = 31, 34 do
+		if id ~= TyGearReagentBagSlot and TyGearBagSlotNewlyHolds(itemID, id, before) then
+			return id
+		end
+	end
+end
+
+function TyGearReagentTriedSuffix(tried)
+	if type(tried) ~= "table" then return "" end
+	local ids = {}
+	for id in pairs(tried) do
+		if type(id) == "number" then
+			table.insert(ids, id)
+		end
+	end
+	if not ids[1] then return "" end
+	table.sort(ids)
+	local parts = {}
+	for i, id in ipairs(ids) do
+		parts[i] = tostring(id)
+	end
+	return " Tried inventory slot "..table.concat(parts, ", ").."."
 end
 
 -- Put the cursor item into the reagent bag slot. A wrong id equips it in a normal bag; pick that back up and try the next id.
@@ -8828,31 +9006,76 @@ end
 function TyGearTryPutReagentBag(info, tried, before)
 	if not info or not PutItemInBag then return false end
 	tried = tried or {}
+	local function cursorHasItem()
+		return CursorHasItem and CursorHasItem()
+	end
+	local function reagentSlotHolding()
+		for _, id in ipairs(TyGearReagentBagSlotCandidates()) do
+			-- A normal bag slot is not a successful reagent equip, even if a bad id just put the bag there.
+			if not TyGearSlotIsKnownNormalBag(id) and TyGearBagSlotNewlyHolds(info.id, id, before) then
+				return id
+			end
+		end
+	end
+	local function accept(id)
+		TyGearAdoptReagentBagSlot(id)
+		return true
+	end
+	local function pullOutOfRegularSlot()
+		local wrong = TyGearFindRegularBagSlotHolding(info.id, before)
+		if wrong and PickupInventoryItem then
+			PickupInventoryItem(wrong)
+			return true
+		end
+		return false
+	end
+	-- nil means keep trying. true means the bag is in a reagent-slot id. "pending" means the cursor is empty and the slot has not updated yet.
+	local function afterPut(id)
+		local holding = reagentSlotHolding()
+		if holding then
+			return accept(holding)
+		end
+		if pullOutOfRegularSlot() then
+			return nil
+		end
+		if not cursorHasItem() then
+			return "pending", id
+		end
+	end
+
+	local button = TyGearReagentBagButton
+	if button and button.PutItemInBag then
+		local id = TyGearButtonPutID(button)
+		if id and not tried[id] and cursorHasItem() then
+			tried[id] = true
+			pcall(button.PutItemInBag, button)
+			local result, pendingID = afterPut(id)
+			if result ~= nil then
+				return result, pendingID
+			end
+		end
+	end
+
 	local pendingID
 	for _, id in ipairs(TyGearReagentBagSlotCandidates()) do
 		if not tried[id] then
-			if not (CursorHasItem and CursorHasItem()) then
+			if not cursorHasItem() then
+				local holding = reagentSlotHolding()
+				if holding then return accept(holding) end
 				return false
 			end
 			tried[id] = true
 			PutItemInBag(id)
-			if TyGearBagSlotNewlyHolds(info.id, id, before) then
-				TyGearAdoptReagentBagSlot(id)
-				return true
-			end
-			local wrong = TyGearFindRegularBagSlotHolding(info.id, before)
-			if wrong then
-				PickupInventoryItem(wrong)
-			elseif not (CursorHasItem and CursorHasItem()) then
-				pendingID = id
+			local result, pending = afterPut(id)
+			if result == true then return true end
+			if result == "pending" then
+				pendingID = pending
 				break
 			end
 		end
 	end
-	if TyGearReagentBagSlot and TyGearBagSlotNewlyHolds(info.id, TyGearReagentBagSlot, before) then
-		TyGearAdoptReagentBagSlot(TyGearReagentBagSlot)
-		return true
-	end
+	local holding = reagentSlotHolding()
+	if holding then return accept(holding) end
 	if pendingID then
 		return "pending", pendingID
 	end
@@ -8893,7 +9116,8 @@ end
 function TyGearEquipActionBag(curAction, putBack)
 	local info = curAction and curAction.info
 	--Only the reagent slot uses the reagent button id. A reagent bag aimed at a normal slot uses that slot.
-	if curAction.replaceSlot == TyGearReagentBagSlot and info and (TyGearIsReagentBag(info) or TyGearUsesReagentBagSlot(info)) then
+	if (curAction.reagentEquip or curAction.replaceSlot == TyGearReagentBagSlot) and info and (TyGearIsReagentBag(info) or TyGearUsesReagentBagSlot(info)) then
+		curAction.reagentEquip = true
 		TyGearRefreshReagentBagSlot()
 		if not TyGearReagentBagSlot then
 			if CursorHasItem and CursorHasItem() and putBack then
@@ -9650,12 +9874,14 @@ function TyGearMain()
 									curAction.t = nil
 									queueQueueRebuild = 1
 								end
-								if (GetInventoryItemID("player", curAction.replaceSlot) == curAction.info.id) then
+								if (GetInventoryItemID("player", curAction.replaceSlot) == curAction.info.id)
+								and not (curAction.reagentEquip and TyGearSlotIsKnownNormalBag(curAction.replaceSlot)) then
 									finishEquipped()
-								elseif curAction.replaceSlot == TyGearReagentBagSlot and curAction.info and (TyGearIsReagentBag(curAction.info) or TyGearUsesReagentBagSlot(curAction.info)) then
+								elseif curAction.reagentEquip or (curAction.replaceSlot == TyGearReagentBagSlot and curAction.info and (TyGearIsReagentBag(curAction.info) or TyGearUsesReagentBagSlot(curAction.info))) then
+									curAction.reagentEquip = true
 									local foundSlot
 									for _, candidate in ipairs(TyGearReagentBagSlotCandidates()) do
-										if TyGearBagSlotNewlyHolds(curAction.info.id, candidate, curAction.bagSnapshot) then
+										if not TyGearSlotIsKnownNormalBag(candidate) and TyGearBagSlotNewlyHolds(curAction.info.id, candidate, curAction.bagSnapshot) then
 											foundSlot = candidate
 											break
 										end
@@ -9667,7 +9893,7 @@ function TyGearMain()
 									elseif curAction.reagentGaveUp then
 										curAction.ensureTicks = (curAction.ensureTicks or 0) + 1
 										if curAction.ensureTicks >= 40 then
-											TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the reagent bag slot.", 0)
+											TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the reagent bag slot."..TyGearReagentTriedSuffix(curAction.reagentTried), 0)
 											curAction.t = nil
 											queueQueueRebuild = 1
 										end
@@ -9678,19 +9904,26 @@ function TyGearMain()
 										local landed = TyGearEquipActionBag(curAction, function()
 											TyGearReturnCursorItem(curAction)
 										end)
-										if landed and GetInventoryItemID("player", curAction.replaceSlot) == curAction.info.id then
+										if landed and not TyGearSlotIsKnownNormalBag(curAction.replaceSlot) and GetInventoryItemID("player", curAction.replaceSlot) == curAction.info.id then
 											finishEquipped()
 										elseif not landed then
 											curAction.reagentGaveUp = 1
 											TyGearReturnCursorItem(curAction)
-											TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the reagent bag slot.", 0)
+											TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the reagent bag slot."..TyGearReagentTriedSuffix(curAction.reagentTried), 0)
 											curAction.t = nil
 											queueQueueRebuild = 1
+										else
+											curAction.ensureTicks = (curAction.ensureTicks or 0) + 1
+											if curAction.ensureTicks >= 40 then
+												TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the reagent bag slot."..TyGearReagentTriedSuffix(curAction.reagentTried), 0)
+												curAction.t = nil
+												queueQueueRebuild = 1
+											end
 										end
 									else
 										curAction.ensureTicks = (curAction.ensureTicks or 0) + 1
 										if curAction.ensureTicks >= 40 then
-											TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the reagent bag slot.", 0)
+											TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the reagent bag slot."..TyGearReagentTriedSuffix(curAction.reagentTried), 0)
 											curAction.t = nil
 											queueQueueRebuild = 1
 										end
@@ -9699,7 +9932,7 @@ function TyGearMain()
 								elseif TyGearGetContainerForEquippedBagSlot(curAction.replaceSlot) then
 									curAction.ensureTicks = (curAction.ensureTicks or 0) + 1
 									if curAction.ensureTicks >= 40 then
-										TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot)..".", 0)
+										TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot).."."..TyGearReagentTriedSuffix(curAction.reagentTried), 0)
 										curAction.t = nil
 										queueQueueRebuild = 1
 									end
@@ -9716,10 +9949,11 @@ function TyGearMain()
 									curAction.ensuringEquipped = 1
 									curAction.fromEquippedSlot = nil
 								else
+									local triedSuffix = TyGearReagentTriedSuffix(curAction.reagentTried)
 									curAction.reagentTried = nil
 									curAction.attempts = (curAction.attempts or 0) + 1
 									if curAction.attempts >= 3 then
-										TyGearPrint("TyGear: Could not move "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot)..".", 0)
+										TyGearPrint("TyGear: Could not move "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot).."."..triedSuffix, 0)
 										curAction.t = nil
 										queueQueueRebuild = 1
 									else
@@ -9782,10 +10016,11 @@ function TyGearMain()
 										else
 											curAction.ensuringEquipped = nil
 											curAction.movedOutOfBag = nil
+											local triedSuffix = TyGearReagentTriedSuffix(curAction.reagentTried)
 											curAction.reagentTried = nil
 											curAction.attempts = (curAction.attempts or 0) + 1
 											if curAction.attempts >= 3 then
-												TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot)..".", 0)
+												TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot).."."..triedSuffix, 0)
 												curAction.t = nil
 												queueQueueRebuild = 1
 											else
@@ -9802,10 +10037,11 @@ function TyGearMain()
 									if landed then
 										curAction.ensuringEquipped = 1
 									else
+										local triedSuffix = TyGearReagentTriedSuffix(curAction.reagentTried)
 										curAction.reagentTried = nil
 										curAction.attempts = (curAction.attempts or 0) + 1
 										if curAction.attempts >= 3 then
-											TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot)..".", 0)
+											TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot).."."..triedSuffix, 0)
 											curAction.t = nil
 											queueQueueRebuild = 1
 										else
