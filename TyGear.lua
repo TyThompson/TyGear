@@ -3196,44 +3196,44 @@ TyGearStatWeightSystemPersonal = "Personal"
 TyGearPersonalStatWeightsExportHeader = "TyGear Personal Stat Weights v1"
 
 -- Editable EP weights. forever = false stays out of the Forever tab (those stats are not on gear there).
--- localeKey reuses the lowercase tooltip word when a translation exists.
+-- code is the short token used by the TG2 import/export string. localeKey reuses the lowercase tooltip word.
 TyGearPersonalStatFields = {
-	{ key = "Strength", label = "Strength", localeKey = "strength" },
-	{ key = "Agility", label = "Agility", localeKey = "agility" },
-	{ key = "Stamina", label = "Stamina", localeKey = "stamina" },
-	{ key = "Intellect", label = "Intellect", localeKey = "intellect" },
-	{ key = "Spirit", label = "Spirit", localeKey = "spirit" },
-	{ key = "Armor", label = "Armor", localeKey = "armor" },
-	{ key = "Dodge", label = "Dodge" },
-	{ key = "Parry", label = "Parry" },
-	{ key = "Block", label = "Block", localeKey = "block" },
-	{ key = "Defense", label = "Defense" },
-	{ key = "AttackPower", label = "Attack Power" },
-	{ key = "SpellPower", label = "Spell Power" },
-	{ key = "Crit", label = "Crit" },
-	{ key = "SpellCrit", label = "Spell Crit" },
-	{ key = "Hit", label = "Hit" },
-	{ key = "SpellHit", label = "Spell Hit" },
-	{ key = "Haste", label = "Haste" },
-	{ key = "Expertise", label = "Expertise" },
-	{ key = "ArmorPenetration", label = "Armor Penetration" },
-	{ key = "SpellPenetration", label = "Spell Penetration" },
-	{ key = "Mp5", label = "Mana per 5" },
-	{ key = "DPS", label = "Weapon DPS" },
-	{ key = "Damage", label = "Weapon Damage" },
-	{ key = "HealingProc", label = "Healing Proc" },
-	{ key = "DamageProc", label = "Damage Proc" },
-	{ key = "DamageSpellProc", label = "Spell Damage Proc" },
-	{ key = "MeleeProc", label = "Melee Proc" },
-	{ key = "RangedProc", label = "Ranged Proc" },
-	{ key = "Mastery", label = "Mastery", forever = false },
-	{ key = "Versatility", label = "Versatility", forever = false },
-	{ key = "Multistrike", label = "Multistrike", forever = false },
-	{ key = "RedSockets", label = "Red Socket", forever = false },
-	{ key = "YellowSockets", label = "Yellow Socket", forever = false },
-	{ key = "BlueSockets", label = "Blue Socket", forever = false },
-	{ key = "MetaSockets", label = "Meta Socket", forever = false },
-	{ key = "ExperienceGained", label = "Experience Gained" },
+	{ key = "Strength", code = "Str", label = "Strength", localeKey = "strength" },
+	{ key = "Agility", code = "Agi", label = "Agility", localeKey = "agility" },
+	{ key = "Stamina", code = "Sta", label = "Stamina", localeKey = "stamina" },
+	{ key = "Intellect", code = "Int", label = "Intellect", localeKey = "intellect" },
+	{ key = "Spirit", code = "Spi", label = "Spirit", localeKey = "spirit" },
+	{ key = "Armor", code = "Arm", label = "Armor", localeKey = "armor" },
+	{ key = "Dodge", code = "Dod", label = "Dodge" },
+	{ key = "Parry", code = "Par", label = "Parry" },
+	{ key = "Block", code = "Blk", label = "Block", localeKey = "block" },
+	{ key = "Defense", code = "Def", label = "Defense" },
+	{ key = "AttackPower", code = "AP", label = "Attack Power" },
+	{ key = "SpellPower", code = "SP", label = "Spell Power" },
+	{ key = "Crit", code = "Cri", label = "Crit" },
+	{ key = "SpellCrit", code = "SC", label = "Spell Crit" },
+	{ key = "Hit", code = "Hit", label = "Hit" },
+	{ key = "SpellHit", code = "SH", label = "Spell Hit" },
+	{ key = "Haste", code = "Has", label = "Haste" },
+	{ key = "Expertise", code = "Exp", label = "Expertise" },
+	{ key = "ArmorPenetration", code = "ArP", label = "Armor Penetration" },
+	{ key = "SpellPenetration", code = "SpP", label = "Spell Penetration" },
+	{ key = "Mp5", code = "Mp5", label = "Mana per 5" },
+	{ key = "DPS", code = "DPS", label = "Weapon DPS" },
+	{ key = "Damage", code = "Dmg", label = "Weapon Damage" },
+	{ key = "HealingProc", code = "HP", label = "Healing Proc" },
+	{ key = "DamageProc", code = "DP", label = "Damage Proc" },
+	{ key = "DamageSpellProc", code = "DSP", label = "Spell Damage Proc" },
+	{ key = "MeleeProc", code = "MP", label = "Melee Proc" },
+	{ key = "RangedProc", code = "RP", label = "Ranged Proc" },
+	{ key = "Mastery", code = "Mas", label = "Mastery", forever = false },
+	{ key = "Versatility", code = "Ver", label = "Versatility", forever = false },
+	{ key = "Multistrike", code = "MS", label = "Multistrike", forever = false },
+	{ key = "RedSockets", code = "RS", label = "Red Socket", forever = false },
+	{ key = "YellowSockets", code = "YS", label = "Yellow Socket", forever = false },
+	{ key = "BlueSockets", code = "BS", label = "Blue Socket", forever = false },
+	{ key = "MetaSockets", code = "Meta", label = "Meta Socket", forever = false },
+	{ key = "ExperienceGained", code = "XP", label = "Experience Gained" },
 }
 
 function TyGearIsPawnReady()
@@ -3394,11 +3394,11 @@ end
 function TyGearFindPersonalStatKey(name)
 	if type(name) ~= "string" then return nil end
 	local wanted = string.lower(name)
-	if wanted == "weapons" then
+	if wanted == "weapons" or wanted == "w" then
 		return "weapons"
 	end
 	for _, field in ipairs(TyGearPersonalStatFields) do
-		if string.lower(field.key) == wanted then
+		if string.lower(field.key) == wanted or (field.code and string.lower(field.code) == wanted) then
 			return field.key
 		end
 	end
@@ -3441,22 +3441,30 @@ function TyGearNewPersonalSpecWeights(className, specName)
 	return row
 end
 
-function TyGearGetPersonalWeighting(className, specName)
-	if not className or not specName or className == "" or specName == "" then
-		return nil
-	end
+-- Fill any missing spec for this class with its MythicSim weights (built-in profile when MythicSim has no row).
+-- Existing edits are left alone.
+function TyGearEnsurePersonalClassWeights(className)
+	if not className or className == "" then return nil end
 	local root = TyGearPersonalWeightsRoot()
 	local classWeights = root[className]
 	if type(classWeights) ~= "table" then
 		classWeights = {}
 		root[className] = classWeights
 	end
-	local row = classWeights[specName]
-	if type(row) ~= "table" then
-		row = TyGearNewPersonalSpecWeights(className, specName)
-		classWeights[specName] = row
+	for _, specName in ipairs(TyGearGetPersonalSpecNames(className)) do
+		if type(classWeights[specName]) ~= "table" then
+			classWeights[specName] = TyGearNewPersonalSpecWeights(className, specName)
+		end
 	end
-	return row
+	return classWeights
+end
+
+function TyGearGetPersonalWeighting(className, specName)
+	if not className or not specName or className == "" or specName == "" then
+		return nil
+	end
+	local classWeights = TyGearEnsurePersonalClassWeights(className)
+	return classWeights and classWeights[specName] or nil
 end
 
 -- Saved weights when the player has edited this spec, otherwise the MythicSim/built-in starting values.
@@ -3487,22 +3495,162 @@ function TyGearSetPersonalStatWeight(className, specName, statKey, value)
 	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 end
 
+-- TG2 is one line: the class, then only the stats that differ from that spec's MythicSim (or built-in) start.
+-- TG2:MAGE@engine|Frost:Int=2,Has=-0.04|Fire:W=any
+function TyGearPersonalStatWeightsDiffer(current, starting)
+	return TyGearFormatPersonalStatWeight(current) ~= TyGearFormatPersonalStatWeight(starting)
+end
+
 function TyGearExportPersonalStatWeights(className)
-	local lines = { TyGearPersonalStatWeightsExportHeader, "Class: "..tostring(className) }
+	local classWeights = TyGearEnsurePersonalClassWeights(className)
+	local header = "TG2:"..tostring(className)
+	local engine = TyGearMythicSimMeta and TyGearMythicSimMeta.engine
+	if type(engine) == "string" and engine ~= "" then
+		header = header.."@"..engine
+	end
+	local parts = { header }
 	for _, specName in ipairs(TyGearGetPersonalSpecNames(className)) do
-		local row = TyGearGetPersonalWeighting(className, specName)
-		table.insert(lines, "Spec: "..specName)
-		for _, field in ipairs(TyGearPersonalStatFieldsForUI()) do
-			table.insert(lines, field.key..": "..TyGearFormatPersonalStatWeight(row and row[field.key] or 0))
+		local row = classWeights and classWeights[specName]
+		local base = TyGearNewPersonalSpecWeights(className, specName)
+		local bits = {}
+		for _, field in ipairs(TyGearPersonalStatFields) do
+			local current = row and row[field.key] or 0
+			local starting = base and base[field.key] or 0
+			if TyGearPersonalStatWeightsDiffer(current, starting) then
+				table.insert(bits, field.code.."="..TyGearFormatPersonalStatWeight(current))
+			end
 		end
-		if row and type(row.weapons) == "string" and row.weapons ~= "" then
-			table.insert(lines, "weapons: "..row.weapons)
+		local currentWeapons = (row and row.weapons) or ""
+		local baseWeapons = (base and base.weapons) or ""
+		if currentWeapons ~= baseWeapons then
+			table.insert(bits, "W="..currentWeapons)
+		end
+		if #bits > 0 then
+			table.insert(parts, specName..":"..table.concat(bits, ","))
 		end
 	end
-	return table.concat(lines, "\n")
+	return table.concat(parts, "|")
+end
+
+function TyGearImportPersonalStatWeightsV2(text, currentClass)
+	local body = string.match(text, "^TG2:(.*)$")
+	if not body or body == "" then
+		return false, L["Could not find any specs in that text."]
+	end
+	local segments = {}
+	for segment in string.gmatch(body, "[^|]+") do
+		segment = string.gsub(segment, "^%s+", "")
+		segment = string.gsub(segment, "%s+$", "")
+		if segment ~= "" then
+			table.insert(segments, segment)
+		end
+	end
+	if #segments == 0 then
+		return false, L["Could not find any specs in that text."]
+	end
+	local classText, engine = string.match(segments[1], "^([^@]+)@(.+)$")
+	if not classText then
+		classText = segments[1]
+	end
+	local parsedClass = TyGearNormalizePersonalClassToken(classText)
+	if not parsedClass then
+		return false, string.format(L["Unrecognized class in that export: %s"], classText)
+	end
+	if currentClass and parsedClass ~= currentClass then
+		local parsedName = (TyGearClassList and TyGearClassList[parsedClass]) or parsedClass
+		local currentName = (TyGearClassList and TyGearClassList[currentClass]) or currentClass
+		return false, string.format(L["That export is for %s. This tab edits %s."], parsedName, currentName)
+	end
+	local parsed = {}
+	local unknownSpecs = {}
+	local badPairs = 0
+	for index = 2, #segments do
+		local specText, pairsText = string.match(segments[index], "^(.-):(.+)$")
+		if not specText or specText == "" or not pairsText then
+			badPairs = badPairs + 1
+		else
+			local specName = TyGearFindPersonalSpecName(parsedClass, specText)
+			if not specName then
+				table.insert(unknownSpecs, specText)
+			else
+				parsed[specName] = parsed[specName] or {}
+				for pair in string.gmatch(pairsText, "[^,]+") do
+					local code, valueText = string.match(pair, "^%s*([^=]+)%s*=%s*(.*)$")
+					if not code then
+						badPairs = badPairs + 1
+					else
+						local statKey = TyGearFindPersonalStatKey(code)
+						if statKey == "weapons" then
+							valueText = string.gsub(valueText or "", "^%s+", "")
+							valueText = string.gsub(valueText, "%s+$", "")
+							parsed[specName].weapons = valueText
+						elseif statKey then
+							local value = TyGearNormalizePersonalStatWeight(valueText)
+							if value == nil then
+								badPairs = badPairs + 1
+							else
+								parsed[specName][statKey] = value
+							end
+						else
+							badPairs = badPairs + 1
+						end
+					end
+				end
+			end
+		end
+	end
+	-- The string lists only changes, so start from MythicSim and then apply those changes.
+	local root = TyGearPersonalWeightsRoot()
+	local classWeights = {}
+	root[parsedClass] = classWeights
+	local specCount = 0
+	for _, specName in ipairs(TyGearGetPersonalSpecNames(parsedClass)) do
+		local row = TyGearNewPersonalSpecWeights(parsedClass, specName)
+		classWeights[specName] = row
+		specCount = specCount + 1
+		local incoming = parsed[specName]
+		if incoming then
+			for statKey, value in pairs(incoming) do
+				if statKey == "weapons" then
+					if value ~= "" then
+						row.weapons = value
+					else
+						row.weapons = nil
+					end
+				else
+					row[statKey] = value
+				end
+			end
+		end
+	end
+	TyGearWeightingCacheKey = nil
+	if TyGearSetStatWeights then TyGearSetStatWeights() end
+	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+	local message = string.format(L["Imported personal stat weights for %d specs."], specCount)
+	if type(engine) == "string" and engine ~= "" and TyGearMythicSimMeta and TyGearMythicSimMeta.engine and engine ~= TyGearMythicSimMeta.engine then
+		message = message.." "..L["Those changes were applied on top of the current MythicSim weights. The MythicSim baseline in that string is older."]
+	end
+	if #unknownSpecs > 0 then
+		message = message.." "..string.format(L["Skipped unknown spec: %s."], table.concat(unknownSpecs, ", "))
+	end
+	if badPairs > 0 then
+		message = message.." "..string.format(L["Skipped %d unreadable lines."], badPairs)
+	end
+	return true, message
 end
 
 function TyGearImportPersonalStatWeights(text, currentClass)
+	if type(text) == "string" then
+		local trimmed = string.gsub(text, "^%s+", "")
+		trimmed = string.gsub(trimmed, "%s+$", "")
+		if string.sub(trimmed, 1, 4) == "TG2:" then
+			return TyGearImportPersonalStatWeightsV2(trimmed, currentClass)
+		end
+	end
+	return TyGearImportPersonalStatWeightsV1(text, currentClass)
+end
+
+function TyGearImportPersonalStatWeightsV1(text, currentClass)
 	if type(text) ~= "string" then
 		return false, L["Paste exported weights into the box, then click Import."]
 	end
@@ -6137,6 +6285,9 @@ end
 --Personal Stat Weights tab: one block of stat boxes per spec of the logged-in class, import/export at the bottom
 local function buildPersonalStatWeightsPage(listMenu)
 	local classToken = UnitClassBase and UnitClassBase("player")
+	if classToken then
+		TyGearEnsurePersonalClassWeights(classToken)
+	end
 	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 8, -8)
 	title:SetText(L["Personal Stat Weights"])
@@ -6145,7 +6296,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 	note:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
 	note:SetWidth(480)
 	note:SetJustifyH("LEFT")
-	note:SetText(L["Fill in an EP weight for every stat on each spec of your class. A spec starts from its MythicSim or built-in weights the first time it is used. 0 means that stat adds nothing to the score. On WoW Forever, Hit and Spell Hit share the higher weight, and Crit and Spell Crit do the same. None is the general profile TyGear uses unless Override specialization is on.\n\nWhen Stat weight system is Personal Stat Weights, item tooltips show TyGear: Personal score:"])
+	note:SetText(L["Every spec starts filled with its MythicSim weights. Specs MythicSim does not publish start from TyGear's built-in profile instead. Change any number to make it yours. 0 means that stat adds nothing to the score. On WoW Forever, Hit and Spell Hit share the higher weight, and Crit and Spell Crit do the same. None is the general profile TyGear uses unless Override specialization is on.\n\nWhen Stat weight system is Personal Stat Weights, item tooltips show TyGear: Personal score:"])
 	listMenu.personalNote = note
 
 	local status = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -6306,7 +6457,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 	importNote:SetPoint("TOPLEFT", importHeader, "BOTTOMLEFT", 0, -6)
 	importNote:SetWidth(480)
 	importNote:SetJustifyH("LEFT")
-	importNote:SetText(L["Export fills the box so you can copy every spec of this class. Import reads the box and updates the specs it lists. The Class line has to match this character."])
+	importNote:SetText(L["Export fills the box with a short TG2 string of only the weights you changed from MythicSim. An unchanged class exports as TG2:CLASS. Import reads that string, or an older line-by-line export, and replaces this class's weights. The class in the string has to match this character."])
 	listMenu.personalImportNote = importNote
 
 	local importBox = CreateFrame("EditBox", "TyGearPersonalStatWeightsImportEditBox", listMenu, "InputBoxTemplate")
@@ -6321,7 +6472,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
 		GameTooltip:AddLine(L["Import and export"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Export fills the box so you can copy every spec of this class. Import reads the box and updates the specs it lists. The Class line has to match this character."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Export fills the box with a short TG2 string of only the weights you changed from MythicSim. An unchanged class exports as TG2:CLASS. Import reads that string, or an older line-by-line export, and replaces this class's weights. The class in the string has to match this character."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 		GameTooltip:Show()
 	end)
 	importBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -6337,14 +6488,14 @@ local function buildPersonalStatWeightsPage(listMenu)
 		importBox:SetText(text or "")
 		importBox:SetFocus()
 		importBox:HighlightText()
-		TyGearPrint("TyGear: "..L["Exported personal stat weights. Copy the text in the box."], 0)
+		TyGearPrint("TyGear: "..L["Exported personal stat weights. The box lists only weights that differ from MythicSim."], 0)
 		if TyGearRefreshPersonalStatWeightEditors then TyGearRefreshPersonalStatWeightEditors() end
 	end)
 	exportButton:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
 		GameTooltip:AddLine(L["Export"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Fill the box with this class's personal stat weights so you can copy them."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Fill the box with a short string of the weights you changed. Copy that string to share or restore them."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 		GameTooltip:Show()
 	end)
 	exportButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -6565,6 +6716,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 
 		TyGearInitializeDB(TyGearDBDefaults)
 		TyGearMigrateStatWeightSystem()
+		if UnitClassBase then
+			TyGearEnsurePersonalClassWeights(UnitClassBase("player"))
+		end
 		TyGearMigrateVendorKeepList()
 		TyGearPruneForeverVendorKeepList()
 		TyGearPruneRemovedDefaultKeepListItems()
