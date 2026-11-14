@@ -182,6 +182,8 @@ if GetLocale() == "deDE" then
 	T.Localization["Import"] = "Importieren"
 	T.Localization["Export"] = "Exportieren"
 	T.Localization["Import and export"] = "Import und Export"
+	T.Localization["Exported personal stat weights. The box lists only weights that differ from MythicSim."] = "Persönliche Wertegewichtung exportiert. Das Feld enthält nur Werte, die von MythicSim abweichen."
+	T.Localization["Those changes were applied on top of the current MythicSim weights. The MythicSim baseline in that string is older."] = "Diese Änderungen wurden auf die aktuellen MythicSim-Werte gelegt. Die MythicSim-Basis in diesem Text ist älter."
 
 	-- option: OverridePawnScale
 	T.Localization["Override Pawn scale"] = "Pawn-Skala überschreiben"
