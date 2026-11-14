@@ -1018,14 +1018,98 @@ function TyGearInitializeDB(defaults, reset)
 	end
 end
 
+-- Talent tab info. WotLK-style returns id, name, description, icon, pointsSpent.
+-- Vanilla returns name, icon, pointsSpent. Use the global, not GetNumSpecializations.
+local function TyGearReadTalentTab(index)
+	if not _G.GetTalentTabInfo then return nil end
+	local ok, a, b, c, _, e = pcall(_G.GetTalentTabInfo, index)
+	if not ok then return nil end
+	if type(b) == "string" and type(e) == "number" then
+		return b, e
+	end
+	if type(a) == "string" and type(c) == "number" then
+		return a, c
+	end
+end
+
+-- The talent tree with the most points. Equal totals keep the earlier tree. Nil when every tree has 0.
+function TyGearHighestTalentTabName()
+	if not _G.GetNumTalentTabs or not _G.GetTalentTabInfo then return nil end
+	local numTalentTabs = _G.GetNumTalentTabs()
+	if type(numTalentTabs) ~= "number" or numTalentTabs < 1 then return nil end
+	local bestName, bestPoints
+	for i = 1, numTalentTabs do
+		local name, points = TyGearReadTalentTab(i)
+		if type(name) == "string" and type(points) == "number" and (bestPoints == nil or points > bestPoints) then
+			bestPoints = points
+			bestName = name
+		end
+	end
+	if not bestPoints or bestPoints <= 0 or type(bestName) ~= "string" then return nil end
+	bestName = string.gsub(bestName, "^%s+", "")
+	bestName = string.gsub(bestName, "%s+$", "")
+	if bestName == "" then return nil end
+	return bestName
+end
+
+-- Match a talent-tab name to a weight-table spec. Unknown names are returned as-is.
+function TyGearMatchWeightSpecName(className, talentName)
+	if type(talentName) ~= "string" or talentName == "" then return nil end
+	local wanted = string.lower(talentName)
+	if className and TyGearGetWeightSpecNames then
+		for specName in pairs(TyGearGetWeightSpecNames(className)) do
+			if string.lower(specName) == wanted then
+				return specName
+			end
+		end
+		local aliases = {
+			["feral"] = "Feral Combat",
+			["outlaw"] = "Combat",
+		}
+		local alias = aliases[wanted]
+		if alias then
+			for specName in pairs(TyGearGetWeightSpecNames(className)) do
+				if specName == alias then
+					return specName
+				end
+			end
+		end
+	end
+	return talentName
+end
+
+function TyGearActiveSpecializationLine()
+	local localizedClass, class, spec
+	if TyGearDetectClassAndSpec then
+		local ok, a, b, c = pcall(TyGearDetectClassAndSpec)
+		if ok then
+			localizedClass, class, spec = a, b, c
+		end
+	end
+	spec = spec or "None"
+	local specText = (class and TyGearSpecColoredText(class, spec)) or spec
+	local classText = (class and localizedClass and TyGearClassColoredText(class, localizedClass)) or (localizedClass or "")
+	if classText ~= "" then
+		specText = specText.." "..classText
+	end
+	return L["Active specialization: "]..specText
+end
+
+function TyGearRefreshActiveSpecCallout()
+	if TyGearActiveSpecCallout and TyGearActiveSpecCallout.SetText then
+		TyGearActiveSpecCallout:SetText(TyGearActiveSpecializationLine())
+	end
+end
+
 -- Specializations appeared only in Mists Of Pandaria. We also have make changes to Cataclysm with preferred talent tree
 -- later
 if IS_WOW_FOREVER then
 	function TyGearDetectSpec()
-		-- WoW Forever has one specialization per class; builds live in C_Traits, so there is no
-		-- reliable spec to detect. Use the general class profile; role-specific profiles are
-		-- available through the "Override specialization" option.
-		return "None"
+		-- The active spec is the talent tree with the most points. No points spent uses the general profile.
+		local className = UnitClassBase and UnitClassBase("player")
+		local tab = TyGearHighestTalentTabName()
+		if not tab then return "None" end
+		return TyGearMatchWeightSpecName(className, tab) or "None"
 	end
 elseif TOC_VERSION_CURRENT < TOC_VERSION_MOP then
 	function TyGearDetectSpec()
@@ -5781,6 +5865,17 @@ local function optionsSetup(optionsMenu)
 		end
 		table.insert(buckets[tab], option)
 	end
+	local tabRank = {
+		[L["Evaluation"]] = 1,
+		[L["Loot"]] = 2,
+		[L["Tooltips"]] = 3,
+		[L["Vendor"]] = 4,
+	}
+	table.sort(tabOrder, function(a, b)
+		local rankA, rankB = tabRank[a] or 50, tabRank[b] or 50
+		if rankA ~= rankB then return rankA < rankB end
+		return tostring(a) < tostring(b)
+	end)
 	local orderedOptions = {}
 	for _, tab in ipairs(tabOrder) do
 		for _, option in ipairs(buckets[tab]) do
@@ -5863,6 +5958,38 @@ local function optionsSetup(optionsMenu)
 		return editBox
 	end
 
+	local function addActiveSpecCallout(page)
+		local holder = CreateFrame("Frame", nil, page)
+		holder:SetSize(500, 24)
+		local font = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		font:SetPoint("LEFT", 8, 0)
+		font:SetPoint("RIGHT", -8, 0)
+		font:SetJustifyH("LEFT")
+		font:SetWordWrap(false)
+		font:SetText(TyGearActiveSpecializationLine())
+		TyGearActiveSpecCallout = font
+		holder:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_NONE")
+			GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+			GameTooltip:AddLine(L["Active specialization"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+			GameTooltip:AddLine(L["The talent tree with the most points. TyGear uses this unless Override specialization is on. With no points spent, this is None, the general profile."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+			GameTooltip:Show()
+		end)
+		holder:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		holder:EnableMouse(true)
+		optionsPage:EnableWheel(holder)
+		optionsPage:AddRow(holder, 2)
+	end
+
+	local function beginListedOption(v)
+		local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
+		if (v["tab"] or L["Other"]) == L["Evaluation"] and not optionsPage.activeSpecShown then
+			optionsPage.activeSpecShown = true
+			addActiveSpecCallout(page)
+		end
+		return page
+	end
+
 	--loop through options table to build our options menu programmatically
 	for _, v in ipairs(TyGearOptions) do (function()
 		if (not v["option"]) or ((v["shouldUse"] ~= nil) and (v["shouldUse"] == false)) then return end
@@ -5871,7 +5998,7 @@ local function optionsSetup(optionsMenu)
 
 		--standalone item-ID lists get a labeled section row, not a checkbox with a mystery box beside it
 		if v["editBox"] then
-			local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
+			local page = beginListedOption(v)
 			if v["description"] then
 				addOptionsNote(page, v["description"])
 			end
@@ -5881,7 +6008,7 @@ local function optionsSetup(optionsMenu)
 
 		--standalone string dropdown (flat label/value list), e.g. MythicSim vs Pawn
 		if v["dropdown"] and v["options"] then
-			local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
+			local page = beginListedOption(v)
 			if v["description"] then
 				addOptionsNote(page, v["description"])
 			end
@@ -6021,7 +6148,7 @@ local function optionsSetup(optionsMenu)
 
 		--standalone gear-slot grid: checked slots are locked, with no master toggle
 		if v["slotGrid"] then
-			local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
+			local page = beginListedOption(v)
 			if v["description"] then
 				addOptionsNote(page, v["description"])
 			end
@@ -6090,7 +6217,7 @@ local function optionsSetup(optionsMenu)
 		local description = v["description"]..(v["cvar"] and "\n\n"..L["This is a shortcut for the \"%s\" CVar provided by Blizzard.  Toggling this will toggle that CVar."]:format(v["cvar"]) or "")
 
 		--make a checkbox for this option on the single scrolling page
-		local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
+		local page = beginListedOption(v)
 		frame[i] = newCheckbox(v["option"], v["label"], description, _G["TyGearSimpleToggle"..v["option"]], page)
 		optionsPage:AddRow(frame[i])
 		frame[i]:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
@@ -6350,6 +6477,12 @@ local function optionsSetup(optionsMenu)
 	if not IS_WOW_FOREVER then
 		buildIgnoreSection(optionsPage)
 	end
+	local optionsScroll = optionsMenu:GetParent()
+	if optionsScroll and optionsScroll.HookScript then
+		optionsScroll:HookScript("OnShow", function()
+			if TyGearRefreshActiveSpecCallout then TyGearRefreshActiveSpecCallout() end
+		end)
+	end
 	optionsPage:Finish()
 end
 
@@ -6367,7 +6500,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 	note:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
 	note:SetWidth(480)
 	note:SetJustifyH("LEFT")
-	note:SetText(L["Every spec starts filled with its MythicSim weights. Specs MythicSim does not publish start from TyGear's built-in profile instead. Change any number to make it yours. 0 means that stat adds nothing to the score. On WoW Forever, Hit and Spell Hit share the higher weight, and Crit and Spell Crit do the same. None is the general profile TyGear uses unless Override specialization is on.\n\nWhen Stat weight system is Personal Stat Weights, item tooltips show TyGear: Personal score:"])
+	note:SetText(L["Every spec starts filled with its MythicSim weights. Specs MythicSim does not publish start from TyGear's built-in profile instead. Change any number to make it yours. 0 means that stat adds nothing to the score. On WoW Forever, Hit and Spell Hit share the higher weight, and Crit and Spell Crit do the same. None is the general profile, used when no talent tree has points and Override specialization is off.\n\nWhen Stat weight system is Personal Stat Weights, item tooltips show TyGear: Personal score:"])
 	listMenu.personalNote = note
 
 	local status = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -6844,7 +6977,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		TyGearOptions = {
 			{
 				["option"] = "Enabled",
-				["tab"] = L["Evaluation"],
+				["tab"] = L["Loot"],
 				["cliCommands"] = { "toggle", "gear", "equip" },
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
@@ -7275,6 +7408,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_EQUIPMENT_CHANGED")     --Fires when equipment is equipped or unequipped from the player, excluding bags
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"BAG_CONTAINER_UPDATE")         --Fires when bags are equipped or unequipped from the player
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_SPECIALIZATION_CHANGED")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CHARACTER_POINTS_CHANGED")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_TALENT_UPDATE")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CONFIRM_DISENCHANT_ROLL")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"ADDON_LOADED")                 --late-loaded Baganator/Bagnon junk plugins
 
@@ -7312,8 +7447,8 @@ SlashCmdList["TyGear"] = function(msg)
 			pawnScaleName, pawnScaleLocalizedName = TyGearGetPawnScaleName()
 		end
 		TyGearPrint("TyGear: Looks like you are a"..(realSpec:find("^[AEIOUaeiou]") and "n " or " ")..RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass).."."..((usingPawn or (TyGearCharDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec)))) and ("  However, TyGear is using "..(usingPawn and ("Pawn scale \""..PawnGetScaleColor(pawnScaleName)..(pawnScaleLocalizedName or pawnScaleName)..FONT_COLOR_CODE_CLOSE.."\"") or (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass).." weights")).." for gear evaluation due to the \""..(usingPawn and "Stat weight system: Pawn" or "Override specialization").."\" option.") or "").."  Stat weight system: "..weightSystem..(TyGearCurrentWeightSource and (" ("..TyGearCurrentWeightSource.." weights)") or "")..".  TyGear is using weapons value \""..weapons.."\" from \""..((TyGearCharDB.Override and ((realClassID ~= overrideClassID) or (realSpec ~= overrideSpec))) and (RAID_CLASS_COLORS[overrideClass]:WrapTextInColorCode(overrideSpec.." "..localizedOverrideClass)) or (RAID_CLASS_COLORS[realClass]:WrapTextInColorCode(realSpec.." "..localizedRealClass))).."\" to determine which weapons are valid.  CanDualWield() returns \""..(CanDualWield() and "true" or "false").."\".", 0) 
-		if IS_WOW_FOREVER and (not TyGearCharDB.Override) then
-			TyGearPrint("TyGear: WoW Forever has one specialization per class, so TyGear uses the general class profile.  Enable \"Override specialization\" in \"/tg\" to use a healer, tank, or focused damage profile.", 0)
+		if IS_WOW_FOREVER and (not TyGearCharDB.Override) and realSpec == "None" then
+			TyGearPrint("TyGear: No talent points spent, so TyGear uses the general class profile.  Spend points in a talent tree, or enable \"Override specialization\", to use a healer, tank, or focused damage profile.", 0)
 		end
 	elseif (param1 == "verbosity") or (param1 == "allowedverbosity") then
 		TyGearSetAllowedVerbosity(param2)
@@ -7452,13 +7587,25 @@ function TyGearGetContainerItemInfo(bagIndex, bagSlot)
 	end
 end
 
+function TyGearOnDetectedSpecChanged()
+	local hadSpec = TyGearCachedSpec ~= nil
+	local previousSpec = TyGearCachedSpec
+	TyGearInvalidatePerformanceCaches()
+	if TyGearSetStatWeights then TyGearSetStatWeights() end
+	if TyGearRefreshActiveSpecCallout then TyGearRefreshActiveSpecCallout() end
+	local localizedClass, class, spec = TyGearGetClassAndSpec()
+	if hadSpec and spec ~= previousSpec and class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class] then
+		TyGearPrint("TyGear: Talent specialization changed.  Considering all items for gear that's better suited for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 2)
+		if TyGearConsiderAllItems then TyGearConsiderAllItems() end
+	end
+end
+
 TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, ...)
 
-	if event == "PLAYER_SPECIALIZATION_CHANGED" and arg1 == "player" then
-		TyGearSetStatWeights()
-		local localizedClass, class, spec = TyGearGetClassAndSpec()
-		TyGearPrint("TyGear: Talent specialization changed.  Considering all items for gear that's better suited for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 2)
-		TyGearConsiderAllItems()
+	if (event == "PLAYER_SPECIALIZATION_CHANGED" and arg1 == "player")
+	or event == "CHARACTER_POINTS_CHANGED"
+	or event == "PLAYER_TALENT_UPDATE" then
+		TyGearOnDetectedSpecChanged()
 	elseif event == "PLAYER_EQUIPMENT_CHANGED" then
 		-- Only refresh the changed equipped slot; avoid a full bag tooltip rescan per equip event
 		TyGearHandleEquipmentChanged(arg1)

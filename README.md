@@ -10,7 +10,7 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 
 1. Type `/tg` to open options.
 2. Under **Evaluation → Stat weights**, pick **MythicSim** (default), **Pawn**, or **Personal Stat Weights**. MythicSim uses imported EP weights from mythicsim.com; if a specialization has no MythicSim row, TyGear falls back to Pawn when it is installed. Personal Stat Weights starts from the MythicSim numbers for every spec of your class (built-in profiles where MythicSim has no row). The import/export box at the bottom of that tab uses a short `TG2` string of only the weights you changed. Tooltips label that score **TyGear: Personal score:**.
-3. Forever has one specialization per class, so TyGear uses a general class profile by default. Healers, tanks, or anyone who wants a focused damage profile should enable **Override specialization** and pick the closest match. That setting is saved per character.
+3. Under **Evaluation**, TyGear shows the active specialization: the talent tree with the most points. With no points spent, it uses the general profile (None). **Override specialization** is directly under that. **Automatically equip gear** is under **Loot**. The override is saved per character.
 4. Use `/tg toggle` anytime you want to turn automatic gearing off (for example before a loot roll you want to control yourself).
 
 ## What to expect
