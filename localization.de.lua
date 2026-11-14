@@ -187,6 +187,7 @@ if GetLocale() == "deDE" then
 	T.Localization["Export"] = "Exportieren"
 	T.Localization["Import and export"] = "Import und Export"
 	T.Localization["Exported personal stat weights. The box lists only weights that differ from MythicSim."] = "Persönliche Wertegewichtung exportiert. Das Feld enthält nur Werte, die von MythicSim abweichen."
+	T.Localization["Imported personal stat weights."] = "Persönliche Wertegewichtung importiert."
 	T.Localization["Reset to default"] = "Auf Standard zurücksetzen"
 	T.Localization["Replace every spec on this tab with its MythicSim weights. Specs MythicSim does not publish go back to TyGear's built-in profile."] = "Setzt jede Spezialisierung in diesem Reiter auf ihre MythicSim-Werte zurück. Spezialisierungen ohne MythicSim-Daten nutzen wieder das eingebaute Profil."
 	T.Localization["Reset personal stat weights to MythicSim."] = "Persönliche Wertegewichtung auf MythicSim zurückgesetzt."

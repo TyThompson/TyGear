@@ -3986,11 +3986,9 @@ function TyGearImportPersonalStatWeightsV2(text, currentClass)
 	local root = TyGearPersonalWeightsRoot()
 	local classWeights = {}
 	root[parsedClass] = classWeights
-	local specCount = 0
 	for _, specName in ipairs(TyGearGetPersonalSpecNames(parsedClass)) do
 		local row = TyGearNewPersonalSpecWeights(parsedClass, specName)
 		classWeights[specName] = row
-		specCount = specCount + 1
 		local incoming = parsed[specName]
 		if incoming then
 			for statKey, value in pairs(incoming) do
@@ -4009,7 +4007,7 @@ function TyGearImportPersonalStatWeightsV2(text, currentClass)
 	TyGearWeightingCacheKey = nil
 	if TyGearSetStatWeights then TyGearSetStatWeights() end
 	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
-	local message = string.format(L["Imported personal stat weights for %d specs."], specCount)
+	local message = L["Imported personal stat weights."]
 	if type(engine) == "string" and engine ~= "" and TyGearMythicSimMeta and TyGearMythicSimMeta.engine and engine ~= TyGearMythicSimMeta.engine then
 		message = message.." "..L["Those changes were applied on top of the current MythicSim weights. The MythicSim baseline in that string is older."]
 	end
@@ -4116,7 +4114,7 @@ function TyGearImportPersonalStatWeightsV1(text, currentClass)
 	TyGearWeightingCacheKey = nil
 	if TyGearSetStatWeights then TyGearSetStatWeights() end
 	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
-	local message = string.format(L["Imported personal stat weights for %d specs."], #order)
+	local message = L["Imported personal stat weights."]
 	if #unknownSpecs > 0 then
 		message = message.." "..string.format(L["Skipped unknown spec: %s."], table.concat(unknownSpecs, ", "))
 	end
@@ -6937,13 +6935,15 @@ local function buildPersonalStatWeightsPage(listMenu)
 	importNote:SetText(L["Export fills the box with a short TG2 string of only the weights you changed from MythicSim. An unchanged class exports as TG2:CLASS. Import reads that string, or an older line-by-line export, and replaces this class's weights. The class in the string has to match this character."])
 	listMenu.personalImportNote = importNote
 
+	-- Single-line InputBoxTemplate: multi-line height left the cursor under the short border after Enter.
 	local importBox = CreateFrame("EditBox", "TyGearPersonalStatWeightsImportEditBox", listMenu, "InputBoxTemplate")
 	importBox:SetPoint("TOPLEFT", importNote, "BOTTOMLEFT", 4, -8)
-	importBox:SetSize(460, 120)
+	importBox:SetSize(460, 20)
 	importBox:SetAutoFocus(false)
-	importBox:SetMultiLine(true)
+	importBox:SetMultiLine(false)
 	importBox:SetMaxLetters(20000)
 	importBox:SetFontObject(ChatFontNormal or GameFontHighlightSmall)
+	importBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 	importBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 	importBox:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
