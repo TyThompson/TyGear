@@ -3552,6 +3552,29 @@ function TyGearIsPawnReady()
 	return (PawnIsReady ~= nil) and PawnIsReady()
 end
 
+-- Gray label used when a dropdown choice exists but cannot be selected (e.g. Pawn not loaded).
+function TyGearFadeDisabledOptionLabel(label)
+	if type(label) ~= "string" then return label end
+	if GRAY_FONT_COLOR and GRAY_FONT_COLOR.WrapTextInColorCode then
+		return GRAY_FONT_COLOR:WrapTextInColorCode(label)
+	end
+	if GRAY_FONT_COLOR_CODE and FONT_COLOR_CODE_CLOSE then
+		return GRAY_FONT_COLOR_CODE..label..FONT_COLOR_CODE_CLOSE
+	end
+	return "|cff808080"..label.."|r"
+end
+
+-- Stat weight system dropdown entries. Pawn stays visible when unloaded, but faded and not selectable.
+function TyGearGetStatWeightSystemDropdownOptions()
+	local pawnReady = TyGearIsPawnReady()
+	local pawnLabel = pawnReady and L["Pawn"] or TyGearFadeDisabledOptionLabel(L["Pawn (not loaded)"])
+	return {
+		{ ["label"] = L["MythicSim"], ["value"] = TyGearStatWeightSystemMythicSim },
+		{ ["label"] = pawnLabel, ["value"] = TyGearStatWeightSystemPawn, ["disabled"] = not pawnReady },
+		{ ["label"] = L["Personal Stat Weights"], ["value"] = TyGearStatWeightSystemPersonal },
+	}
+end
+
 function TyGearGetStatWeightSystem()
 	local system = TyGearDB and TyGearDB.StatWeightSystem
 	if system == TyGearStatWeightSystemPawn or system == TyGearStatWeightSystemPersonal then
@@ -3561,8 +3584,11 @@ function TyGearGetStatWeightSystem()
 end
 
 function TyGearSetStatWeightSystem(system)
-	if not TyGearDB then return end
+	if not TyGearDB then return false end
 	if system == TyGearStatWeightSystemPawn then
+		if not TyGearIsPawnReady() then
+			return false
+		end
 		TyGearDB.StatWeightSystem = TyGearStatWeightSystemPawn
 		TyGearDB.UsePawn = true
 	elseif system == TyGearStatWeightSystemPersonal then
@@ -3577,9 +3603,10 @@ function TyGearSetStatWeightSystem(system)
 	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 	if TyGearRefreshPawnOptionsVisibility then TyGearRefreshPawnOptionsVisibility() end
 	if TyGearRefreshPersonalStatWeightEditors then TyGearRefreshPersonalStatWeightEditors() end
+	return true
 end
 
--- Override Pawn scale (and its dropdown) only belong in the menu while Pawn is the selected system.
+-- Override Pawn scale (and its dropdown) only belong in the menu while Pawn is loaded and selected.
 function TyGearRefreshPawnOptionsVisibility()
 	local show = TyGearGetStatWeightSystem() == TyGearStatWeightSystemPawn and TyGearIsPawnReady()
 	local check = _G["TyGearOverridePawnScaleCheckButton"]
@@ -3596,16 +3623,20 @@ function TyGearRefreshPawnOptionsVisibility()
 end
 
 -- Older installs only had UsePawn. Prefer MythicSim unless the player had already enabled Pawn.
+-- If Pawn was saved as the system but is not loaded, fall back to MythicSim.
 function TyGearMigrateStatWeightSystem()
 	if not TyGearDB then return end
 	if TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemMythicSim
 	and TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemPawn
 	and TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemPersonal then
-		if TyGearDB.UsePawn then
+		if TyGearDB.UsePawn and TyGearIsPawnReady() then
 			TyGearDB.StatWeightSystem = TyGearStatWeightSystemPawn
 		else
 			TyGearDB.StatWeightSystem = TyGearStatWeightSystemMythicSim
 		end
+	end
+	if TyGearDB.StatWeightSystem == TyGearStatWeightSystemPawn and not TyGearIsPawnReady() then
+		TyGearDB.StatWeightSystem = TyGearStatWeightSystemMythicSim
 	end
 	TyGearDB.UsePawn = (TyGearDB.StatWeightSystem == TyGearStatWeightSystemPawn)
 end
@@ -6245,13 +6276,22 @@ local function optionsSetup(optionsMenu)
 			labelText:SetText(TyGearColorize(v["label"]))
 			local width = v["dropdownWidth"] or 220
 			local dropDown
+			local function dropdownOptions()
+				if type(v["options"]) == "function" then
+					return v["options"]()
+				end
+				return v["options"]
+			end
 			local function labelForValue(value)
-				for _, entry in ipairs(v["options"]) do
+				for _, entry in ipairs(dropdownOptions()) do
 					if entry["value"] == value then
 						return entry["label"]
 					end
 				end
 				return value
+			end
+			local function entryIsDisabled(entry)
+				return entry and entry["disabled"] and true or false
 			end
 			if useModernDropdowns then
 				dropDown = CreateFrame("DropdownButton", "TyGear"..v["option"].."Dropdown", row, "WowStyle1DropdownTemplate")
@@ -6264,6 +6304,11 @@ local function optionsSetup(optionsMenu)
 			end
 			setDropdownText(dropDown, labelForValue(TyGearSettingsTable(v["option"])[v["option"]]))
 			dropDown.SetValue = function(self, value)
+				for _, entry in ipairs(dropdownOptions()) do
+					if entry["value"] == value and entryIsDisabled(entry) then
+						return
+					end
+				end
 				TyGearSettingsTable(v["option"])[v["option"]] = value
 				setDropdownText(self, labelForValue(value))
 				closeDropdownMenu(self)
@@ -6273,22 +6318,27 @@ local function optionsSetup(optionsMenu)
 			end
 			if useModernDropdowns then
 				dropDown:SetupMenu(function(dropdown, rootDescription)
-					for _, entry in ipairs(v["options"]) do
-						rootDescription:CreateRadio(TyGearColorize(entry["label"]), function()
+					for _, entry in ipairs(dropdownOptions()) do
+						local radio = rootDescription:CreateRadio(TyGearColorize(entry["label"]), function()
 							return TyGearSettingsTable(v["option"])[v["option"]] == entry["value"]
 						end, function()
+							if entryIsDisabled(entry) then return end
 							dropdown:SetValue(entry["value"])
 						end)
+						if entryIsDisabled(entry) and radio and radio.SetEnabled then
+							radio:SetEnabled(false)
+						end
 					end
 				end)
 			else
 				UIDropDownMenu_Initialize(dropDown, function(self)
 					local info = UIDropDownMenu_CreateInfo()
 					info.func = self.SetValue
-					for _, entry in ipairs(v["options"]) do
+					for _, entry in ipairs(dropdownOptions()) do
 						info.text = TyGearColorize(entry["label"])
 						info.arg1 = entry["value"]
 						info.checked = (TyGearSettingsTable(v["option"])[v["option"]] == entry["value"])
+						info.disabled = entryIsDisabled(entry)
 						UIDropDownMenu_AddButton(info)
 					end
 				end)
@@ -6306,6 +6356,10 @@ local function optionsSetup(optionsMenu)
 				local system
 				local lowered = type(force) == "string" and string.lower(force) or nil
 				if force == true or lowered == "pawn" then
+					if not TyGearIsPawnReady() then
+						TyGearPrint("TyGear: "..L["Pawn is not installed."], 0)
+						return
+					end
 					system = TyGearStatWeightSystemPawn
 				elseif lowered == "personal" or lowered == "personalstatweights" or lowered == "custom" then
 					system = TyGearStatWeightSystemPersonal
@@ -6314,14 +6368,20 @@ local function optionsSetup(optionsMenu)
 				else
 					local current = TyGearGetStatWeightSystem()
 					if current == TyGearStatWeightSystemMythicSim then
-						system = TyGearStatWeightSystemPawn
+						system = TyGearIsPawnReady() and TyGearStatWeightSystemPawn or TyGearStatWeightSystemPersonal
 					elseif current == TyGearStatWeightSystemPawn then
 						system = TyGearStatWeightSystemPersonal
 					else
 						system = TyGearStatWeightSystemMythicSim
 					end
 				end
-				TyGearSetStatWeightSystem(system)
+				if system == TyGearStatWeightSystemPawn and not TyGearIsPawnReady() then
+					TyGearPrint("TyGear: "..L["Pawn is not installed."], 0)
+					return
+				end
+				if not TyGearSetStatWeightSystem(system) then
+					return
+				end
 				setDropdownText(dropDown, labelForValue(TyGearDB.StatWeightSystem))
 				local message
 				if system == TyGearStatWeightSystemPawn then
@@ -7464,13 +7524,10 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "pawn", "enable", "on", "start" },
 				["cliFalse"] = { "mythicsim", "mythic", "disable", "off", "stop" },
 				["dropdownWidth"] = 250,
-				["options"] = {
-					{ ["label"] = L["MythicSim"], ["value"] = TyGearStatWeightSystemMythicSim },
-					{ ["label"] = L["Pawn"], ["value"] = TyGearStatWeightSystemPawn },
-					{ ["label"] = L["Personal Stat Weights"], ["value"] = TyGearStatWeightSystemPersonal },
-				},
+				-- Function so the Pawn row refreshes faded/disabled state if the menu is rebuilt.
+				["options"] = TyGearGetStatWeightSystemDropdownOptions,
 				["label"] = L["Stat weight system"],
-				["description"] = L["Choose which stat weight system TyGear uses to score gear.\n\nMythicSim (default): EP weights from mythicsim.com for WoW Forever specs. Healers and specs MythicSim does not publish still use TyGear's built-in profiles, then fall back to Pawn when those are missing and Pawn is installed.\n\nPawn: use a Pawn scale when Pawn is installed. TyGear looks for a scale named \"[class]: [spec]\" (example \"Paladin: Retribution\"); with \"Override specialization\" enabled, that class and spec are used instead. Visible Pawn scales are preferred.\n\nPersonal Stat Weights: the numbers you enter on the Personal Stat Weights tab, for each spec of your class. Tooltips call that score \"TyGear: Personal score:\"."]..(TyGearIsPawnReady() and "" or "\n\n"..RED_FONT_COLOR_CODE..L["Pawn is not running, so choosing Pawn will do nothing until Pawn is installed and ready."]..FONT_COLOR_CODE_CLOSE),
+				["description"] = L["Choose which stat weight system TyGear uses to score gear.\n\nMythicSim (default): EP weights from mythicsim.com for WoW Forever specs. Healers and specs MythicSim does not publish still use TyGear's built-in profiles, then fall back to Pawn when those are missing and Pawn is installed.\n\nPawn: use a Pawn scale when Pawn is installed. TyGear looks for a scale named \"[class]: [spec]\" (example \"Paladin: Retribution\"); with \"Override specialization\" enabled, that class and spec are used instead. Visible Pawn scales are preferred. When Pawn is not loaded, that choice appears faded and cannot be selected, and Override Pawn scale stays hidden.\n\nPersonal Stat Weights: the numbers you enter on the Personal Stat Weights tab, for each spec of your class. Tooltips call that score \"TyGear: Personal score:\"."],
 				["dropdownPostHook"] = function()
 					TyGearSetStatWeightSystem(TyGearDB.StatWeightSystem)
 				end
@@ -7479,7 +7536,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["option"] = "OverridePawnScale",
 				["tab"] = L["Evaluation"],
 				["section"] = L["Stat weights"],
-				-- Built whenever Pawn is ready; shown only while the stat weight system is Pawn.
+				-- Built only when Pawn is loaded; shown only while the stat weight system is Pawn.
 				["shouldUse"] = TyGearIsPawnReady(),
 				["cliCommands"] = { "scale", "overridepawn", "overridepawnscale" },
 				["cliTrue"] = { "enable", "on", "start" },
@@ -7728,7 +7785,7 @@ SlashCmdList["TyGear"] = function(msg)
 				TyGearPrint("TyGear: Pawn is not ready yet.",0)
 			end
 		else
-			TyGearPrint("TyGear: Pawn is not installed.",0)
+			TyGearPrint("TyGear: "..L["Pawn is not installed."],0)
 		end
 	elseif (param1 == "") then
 		if InCombatLockdown() then
