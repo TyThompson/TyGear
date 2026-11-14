@@ -3337,6 +3337,15 @@ function TyGearFormatPersonalStatWeight(value)
 	return text
 end
 
+-- Edit boxes created while the tab is hidden keep a bad scroll offset and look empty until clicked.
+function TyGearSetPersonalWeightEditText(edit, value)
+	if not edit or (edit.HasFocus and edit:HasFocus()) then return end
+	edit:SetText(TyGearFormatPersonalStatWeight(value))
+	if edit.SetCursorPosition then
+		edit:SetCursorPosition(0)
+	end
+end
+
 function TyGearNormalizePersonalStatWeight(value)
 	value = tonumber(value)
 	if not value or value ~= value or value == math.huge or value == -math.huge then
@@ -3441,10 +3450,56 @@ function TyGearNewPersonalSpecWeights(className, specName)
 	return row
 end
 
+-- True when this saved spec has no real weight yet (missing, or every stat still 0 with no weapon preference).
+function TyGearPersonalSpecRowIsBlank(row)
+	if type(row) ~= "table" then return true end
+	for _, field in ipairs(TyGearPersonalStatFields) do
+		local value = tonumber(row[field.key])
+		if value and math.abs(value) > 0.000001 then
+			return false
+		end
+	end
+	return not (type(row.weapons) == "string" and row.weapons ~= "")
+end
+
+function TyGearCopyMissingPersonalStatWeights(row, defaults)
+	if type(row) ~= "table" or type(defaults) ~= "table" then return end
+	for _, field in ipairs(TyGearPersonalStatFields) do
+		if row[field.key] == nil then
+			row[field.key] = defaults[field.key]
+		end
+	end
+	if row.weapons == nil and type(defaults.weapons) == "string" and defaults.weapons ~= "" then
+		row.weapons = defaults.weapons
+	end
+end
+
+-- Saved rows from the first version could be empty. Fill those once from MythicSim.
+-- A spec the player later sets entirely to 0 stays 0, because this does not run again.
+function TyGearMigrateBlankPersonalWeights()
+	if not TyGearDB or TyGearDB.PersonalStatWeightsBlankMigrated then return end
+	local root = TyGearDB.PersonalStatWeights
+	if type(root) == "table" then
+		for className, classWeights in pairs(root) do
+			if type(classWeights) == "table" and type(className) == "string" then
+				for specName, row in pairs(classWeights) do
+					if type(specName) == "string" and TyGearPersonalSpecRowIsBlank(row) then
+						classWeights[specName] = TyGearNewPersonalSpecWeights(className, specName)
+					elseif type(row) == "table" then
+						TyGearCopyMissingPersonalStatWeights(row, TyGearNewPersonalSpecWeights(className, specName))
+					end
+				end
+			end
+		end
+	end
+	TyGearDB.PersonalStatWeightsBlankMigrated = true
+end
+
 -- Fill any missing spec for this class with its MythicSim weights (built-in profile when MythicSim has no row).
--- Existing edits are left alone.
+-- Existing edits are left alone. Missing stats inside an edited spec are filled from that same default.
 function TyGearEnsurePersonalClassWeights(className)
 	if not className or className == "" then return nil end
+	TyGearMigrateBlankPersonalWeights()
 	local root = TyGearPersonalWeightsRoot()
 	local classWeights = root[className]
 	if type(classWeights) ~= "table" then
@@ -3452,10 +3507,26 @@ function TyGearEnsurePersonalClassWeights(className)
 		root[className] = classWeights
 	end
 	for _, specName in ipairs(TyGearGetPersonalSpecNames(className)) do
-		if type(classWeights[specName]) ~= "table" then
-			classWeights[specName] = TyGearNewPersonalSpecWeights(className, specName)
+		local defaults = TyGearNewPersonalSpecWeights(className, specName)
+		local row = classWeights[specName]
+		if type(row) ~= "table" then
+			classWeights[specName] = defaults
+		else
+			TyGearCopyMissingPersonalStatWeights(row, defaults)
 		end
 	end
+	return classWeights
+end
+
+function TyGearResetPersonalClassWeights(className)
+	if not className or className == "" then return nil end
+	local root = TyGearPersonalWeightsRoot()
+	root[className] = nil
+	local classWeights = TyGearEnsurePersonalClassWeights(className)
+	TyGearWeightingCacheKey = nil
+	if TyGearSetStatWeights then TyGearSetStatWeights() end
+	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+	if TyGearRefreshPersonalStatWeightEditors then TyGearRefreshPersonalStatWeightEditors() end
 	return classWeights
 end
 
@@ -3467,8 +3538,8 @@ function TyGearGetPersonalWeighting(className, specName)
 	return classWeights and classWeights[specName] or nil
 end
 
--- Saved weights when the player has edited this spec, otherwise the MythicSim/built-in starting values.
--- Does not write saved variables, so opening the tab does not store a copy until a number changes.
+-- Saved weights for this spec, or the MythicSim/built-in starting values when nothing is saved yet.
+-- Reading does not write saved variables. Opening the tab stores any spec that is still missing.
 function TyGearPeekPersonalSpecWeights(className, specName)
 	local saved = TyGearDB and TyGearDB.PersonalStatWeights
 		and TyGearDB.PersonalStatWeights[className]
@@ -6305,6 +6376,39 @@ local function buildPersonalStatWeightsPage(listMenu)
 	status:SetJustifyH("LEFT")
 	listMenu.personalStatus = status
 
+	local resetButton
+	if classToken then
+		resetButton = CreateFrame("Button", "TyGearPersonalStatWeightsResetButton", listMenu, "UIPanelButtonTemplate")
+		resetButton:SetSize(200, 22)
+		resetButton:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 0, -8)
+		resetButton:SetText(L["Reset to default"])
+		resetButton:SetScript("OnClick", function()
+			local editors = TyGearPersonalWeightEditors
+			if editors and editors.specs then
+				for _, specEditors in pairs(editors.specs) do
+					if specEditors.edits then
+						for _, edit in pairs(specEditors.edits) do
+							edit.tyGearSuppress = true
+							if edit.ClearFocus then edit:ClearFocus() end
+							edit.tyGearSuppress = nil
+						end
+					end
+				end
+			end
+			TyGearResetPersonalClassWeights(classToken)
+			TyGearPrint("TyGear: "..L["Reset personal stat weights to MythicSim."], 0)
+		end)
+		resetButton:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_NONE")
+			GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+			GameTooltip:AddLine(L["Reset to default"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+			GameTooltip:AddLine(L["Replace every spec on this tab with its MythicSim weights. Specs MythicSim does not publish go back to TyGear's built-in profile."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+			GameTooltip:Show()
+		end)
+		resetButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		listMenu.personalResetButton = resetButton
+	end
+
 	local function statusText()
 		if not classToken then
 			return L["Log in on a character to edit personal stat weights."]
@@ -6369,7 +6473,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 	else
 		local localized = (TyGearClassList and TyGearClassList[classToken]) or classToken
 		local classLine = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-		classLine:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 0, -8)
+		classLine:SetPoint("TOPLEFT", resetButton or status, "BOTTOMLEFT", 0, -8)
 		classLine:SetText(TyGearClassColoredText(classToken, localized))
 		anchor = classLine
 		status:SetText(statusText())
@@ -6408,16 +6512,26 @@ local function buildPersonalStatWeightsPage(listMenu)
 				label:SetWordWrap(false)
 				label:SetText(TyGearPersonalStatLabel(field))
 				local edit = CreateFrame("EditBox", "TyGearPersonalWeight"..serial, cell, "InputBoxTemplate")
-				edit:SetSize(68, 18)
+				edit:SetSize(72, 20)
 				edit:SetPoint("LEFT", label, "RIGHT", 4, 0)
 				edit:SetAutoFocus(false)
 				edit:SetMaxLetters(16)
-				edit:SetText(TyGearFormatPersonalStatWeight(starting and starting[field.key]))
+				edit:SetTextInsets(5, 4, 0, 0)
+				if edit.SetTextColor then
+					edit:SetTextColor(1, 1, 1)
+				end
+				edit:SetFrameLevel((cell:GetFrameLevel() or 1) + 2)
+				TyGearSetPersonalWeightEditText(edit, starting and starting[field.key])
+				edit:HookScript("OnShow", function(self)
+					local row = TyGearPeekPersonalSpecWeights(classToken, specName)
+					TyGearSetPersonalWeightEditText(self, row and row[field.key])
+				end)
 				edit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 				edit:SetScript("OnEscapePressed", function(self)
 					local row = TyGearPeekPersonalSpecWeights(classToken, specName)
 					self.tyGearSuppress = true
 					self:SetText(TyGearFormatPersonalStatWeight(row and row[field.key]))
+					if self.SetCursorPosition then self:SetCursorPosition(0) end
 					self:ClearFocus()
 					self.tyGearSuppress = nil
 				end)
@@ -6427,10 +6541,12 @@ local function buildPersonalStatWeightsPage(listMenu)
 					if value == nil then
 						local row = TyGearPeekPersonalSpecWeights(classToken, specName)
 						self:SetText(TyGearFormatPersonalStatWeight(row and row[field.key]))
+						if self.SetCursorPosition then self:SetCursorPosition(0) end
 						return
 					end
 					TyGearSetPersonalStatWeight(classToken, specName, field.key, value)
 					self:SetText(TyGearFormatPersonalStatWeight(value))
+					if self.SetCursorPosition then self:SetCursorPosition(0) end
 				end)
 				edit:SetScript("OnEnter", function(self)
 					GameTooltip:SetOwner(self, "ANCHOR_NONE")
@@ -6562,9 +6678,7 @@ function TyGearRefreshPersonalStatWeightEditors()
 		local row = TyGearPeekPersonalSpecWeights(classToken, specName)
 		if specEditors.edits and row then
 			for statKey, edit in pairs(specEditors.edits) do
-				if edit and not edit:HasFocus() then
-					edit:SetText(TyGearFormatPersonalStatWeight(row[statKey]))
-				end
+				TyGearSetPersonalWeightEditText(edit, row[statKey])
 			end
 		end
 	end
