@@ -3192,6 +3192,49 @@ end
 
 TyGearStatWeightSystemMythicSim = "MythicSim"
 TyGearStatWeightSystemPawn = "Pawn"
+TyGearStatWeightSystemPersonal = "Personal"
+TyGearPersonalStatWeightsExportHeader = "TyGear Personal Stat Weights v1"
+
+-- Editable EP weights. forever = false stays out of the Forever tab (those stats are not on gear there).
+-- localeKey reuses the lowercase tooltip word when a translation exists.
+TyGearPersonalStatFields = {
+	{ key = "Strength", label = "Strength", localeKey = "strength" },
+	{ key = "Agility", label = "Agility", localeKey = "agility" },
+	{ key = "Stamina", label = "Stamina", localeKey = "stamina" },
+	{ key = "Intellect", label = "Intellect", localeKey = "intellect" },
+	{ key = "Spirit", label = "Spirit", localeKey = "spirit" },
+	{ key = "Armor", label = "Armor", localeKey = "armor" },
+	{ key = "Dodge", label = "Dodge" },
+	{ key = "Parry", label = "Parry" },
+	{ key = "Block", label = "Block", localeKey = "block" },
+	{ key = "Defense", label = "Defense" },
+	{ key = "AttackPower", label = "Attack Power" },
+	{ key = "SpellPower", label = "Spell Power" },
+	{ key = "Crit", label = "Crit" },
+	{ key = "SpellCrit", label = "Spell Crit" },
+	{ key = "Hit", label = "Hit" },
+	{ key = "SpellHit", label = "Spell Hit" },
+	{ key = "Haste", label = "Haste" },
+	{ key = "Expertise", label = "Expertise" },
+	{ key = "ArmorPenetration", label = "Armor Penetration" },
+	{ key = "SpellPenetration", label = "Spell Penetration" },
+	{ key = "Mp5", label = "Mana per 5" },
+	{ key = "DPS", label = "Weapon DPS" },
+	{ key = "Damage", label = "Weapon Damage" },
+	{ key = "HealingProc", label = "Healing Proc" },
+	{ key = "DamageProc", label = "Damage Proc" },
+	{ key = "DamageSpellProc", label = "Spell Damage Proc" },
+	{ key = "MeleeProc", label = "Melee Proc" },
+	{ key = "RangedProc", label = "Ranged Proc" },
+	{ key = "Mastery", label = "Mastery", forever = false },
+	{ key = "Versatility", label = "Versatility", forever = false },
+	{ key = "Multistrike", label = "Multistrike", forever = false },
+	{ key = "RedSockets", label = "Red Socket", forever = false },
+	{ key = "YellowSockets", label = "Yellow Socket", forever = false },
+	{ key = "BlueSockets", label = "Blue Socket", forever = false },
+	{ key = "MetaSockets", label = "Meta Socket", forever = false },
+	{ key = "ExperienceGained", label = "Experience Gained" },
+}
 
 function TyGearIsPawnReady()
 	return (PawnIsReady ~= nil) and PawnIsReady()
@@ -3199,8 +3242,8 @@ end
 
 function TyGearGetStatWeightSystem()
 	local system = TyGearDB and TyGearDB.StatWeightSystem
-	if system == TyGearStatWeightSystemPawn then
-		return TyGearStatWeightSystemPawn
+	if system == TyGearStatWeightSystemPawn or system == TyGearStatWeightSystemPersonal then
+		return system
 	end
 	return TyGearStatWeightSystemMythicSim
 end
@@ -3210,6 +3253,9 @@ function TyGearSetStatWeightSystem(system)
 	if system == TyGearStatWeightSystemPawn then
 		TyGearDB.StatWeightSystem = TyGearStatWeightSystemPawn
 		TyGearDB.UsePawn = true
+	elseif system == TyGearStatWeightSystemPersonal then
+		TyGearDB.StatWeightSystem = TyGearStatWeightSystemPersonal
+		TyGearDB.UsePawn = false
 	else
 		TyGearDB.StatWeightSystem = TyGearStatWeightSystemMythicSim
 		TyGearDB.UsePawn = false
@@ -3218,6 +3264,7 @@ function TyGearSetStatWeightSystem(system)
 	if TyGearSetStatWeights then TyGearSetStatWeights() end
 	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 	if TyGearRefreshPawnOptionsVisibility then TyGearRefreshPawnOptionsVisibility() end
+	if TyGearRefreshPersonalStatWeightEditors then TyGearRefreshPersonalStatWeightEditors() end
 end
 
 -- Override Pawn scale (and its dropdown) only belong in the menu while Pawn is the selected system.
@@ -3240,7 +3287,8 @@ end
 function TyGearMigrateStatWeightSystem()
 	if not TyGearDB then return end
 	if TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemMythicSim
-	and TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemPawn then
+	and TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemPawn
+	and TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemPersonal then
 		if TyGearDB.UsePawn then
 			TyGearDB.StatWeightSystem = TyGearStatWeightSystemPawn
 		else
@@ -3248,6 +3296,303 @@ function TyGearMigrateStatWeightSystem()
 		end
 	end
 	TyGearDB.UsePawn = (TyGearDB.StatWeightSystem == TyGearStatWeightSystemPawn)
+end
+
+function TyGearPersonalStatFieldsForUI()
+	local fields = {}
+	for _, field in ipairs(TyGearPersonalStatFields) do
+		if (not IS_WOW_FOREVER) or field.forever ~= false then
+			table.insert(fields, field)
+		end
+	end
+	return fields
+end
+
+function TyGearPersonalStatLabel(field)
+	local named = L[field.label]
+	if named ~= field.label then
+		return named
+	end
+	if field.localeKey then
+		local lower = L[field.localeKey]
+		if lower ~= field.localeKey then
+			local first = string.sub(lower, 1, 1)
+			if string.byte(first) < 128 then
+				return string.upper(first)..string.sub(lower, 2)
+			end
+			return lower
+		end
+	end
+	return field.label
+end
+
+function TyGearFormatPersonalStatWeight(value)
+	value = tonumber(value) or 0
+	if math.abs(value) <= 0.0000005 then
+		return "0"
+	end
+	local text = string.format("%.4f", value)
+	text = string.gsub(text, "(%..-)0+$", "%1")
+	text = string.gsub(text, "%.$", "")
+	return text
+end
+
+function TyGearNormalizePersonalStatWeight(value)
+	value = tonumber(value)
+	if not value or value ~= value or value == math.huge or value == -math.huge then
+		return nil
+	end
+	-- MythicSim stores unused stats as a tiny epsilon. Treat that as zero in the editor.
+	if math.abs(value) <= 0.000001 then
+		return 0
+	end
+	return value
+end
+
+function TyGearPersonalWeightsRoot()
+	if not TyGearDB then TyGearDB = {} end
+	if type(TyGearDB.PersonalStatWeights) ~= "table" then
+		TyGearDB.PersonalStatWeights = {}
+	end
+	return TyGearDB.PersonalStatWeights
+end
+
+function TyGearGetPersonalSpecNames(className)
+	local names = {}
+	if not className then return names end
+	local hidden = IS_WOW_FOREVER and TyGearSpecsHiddenOnForever[className]
+	for specName in pairs(TyGearGetWeightSpecNames(className)) do
+		if not (hidden and hidden[specName]) then
+			table.insert(names, specName)
+		end
+	end
+	table.sort(names, function(a, b)
+		if a == "None" then
+			return true
+		elseif b == "None" then
+			return false
+		end
+		return a < b
+	end)
+	return names
+end
+
+function TyGearFindPersonalSpecName(className, text)
+	if not className or type(text) ~= "string" then return nil end
+	text = string.gsub(text, "^%s+", "")
+	text = string.gsub(text, "%s+$", "")
+	if text == "" then return nil end
+	local wanted = string.lower(text)
+	for _, specName in ipairs(TyGearGetPersonalSpecNames(className)) do
+		if string.lower(specName) == wanted then
+			return specName
+		end
+	end
+	return nil
+end
+
+function TyGearFindPersonalStatKey(name)
+	if type(name) ~= "string" then return nil end
+	local wanted = string.lower(name)
+	if wanted == "weapons" then
+		return "weapons"
+	end
+	for _, field in ipairs(TyGearPersonalStatFields) do
+		if string.lower(field.key) == wanted then
+			return field.key
+		end
+	end
+	return nil
+end
+
+function TyGearNormalizePersonalClassToken(text)
+	if type(text) ~= "string" then return nil end
+	text = string.gsub(text, "^%s+", "")
+	text = string.gsub(text, "%s+$", "")
+	text = string.gsub(text, "^\"", "")
+	text = string.gsub(text, "\"$", "")
+	if text == "" then return nil end
+	local upper = string.upper(text)
+	if TyGearClassList and TyGearClassList[upper] then
+		return upper
+	end
+	if TyGearReverseClassList then
+		if TyGearReverseClassList[text] then
+			return TyGearReverseClassList[text]
+		end
+		for localized, token in pairs(TyGearReverseClassList) do
+			if string.lower(localized) == string.lower(text) then
+				return token
+			end
+		end
+	end
+	return nil
+end
+
+function TyGearNewPersonalSpecWeights(className, specName)
+	local source = TyGearGetMythicSimWeighting(className, specName) or TyGearGetBuiltInWeighting(className, specName)
+	local row = {}
+	for _, field in ipairs(TyGearPersonalStatFields) do
+		row[field.key] = TyGearNormalizePersonalStatWeight(source and source[field.key]) or 0
+	end
+	if source and type(source.weapons) == "string" and source.weapons ~= "" then
+		row.weapons = source.weapons
+	end
+	return row
+end
+
+function TyGearGetPersonalWeighting(className, specName)
+	if not className or not specName or className == "" or specName == "" then
+		return nil
+	end
+	local root = TyGearPersonalWeightsRoot()
+	local classWeights = root[className]
+	if type(classWeights) ~= "table" then
+		classWeights = {}
+		root[className] = classWeights
+	end
+	local row = classWeights[specName]
+	if type(row) ~= "table" then
+		row = TyGearNewPersonalSpecWeights(className, specName)
+		classWeights[specName] = row
+	end
+	return row
+end
+
+-- Saved weights when the player has edited this spec, otherwise the MythicSim/built-in starting values.
+-- Does not write saved variables, so opening the tab does not store a copy until a number changes.
+function TyGearPeekPersonalSpecWeights(className, specName)
+	local saved = TyGearDB and TyGearDB.PersonalStatWeights
+		and TyGearDB.PersonalStatWeights[className]
+		and TyGearDB.PersonalStatWeights[className][specName]
+	if type(saved) == "table" then
+		return saved
+	end
+	return TyGearNewPersonalSpecWeights(className, specName)
+end
+
+function TyGearSetPersonalStatWeight(className, specName, statKey, value)
+	local row = TyGearGetPersonalWeighting(className, specName)
+	if not row or not statKey then return end
+	if statKey == "weapons" then
+		if type(value) ~= "string" or value == "" or row.weapons == value then return end
+		row.weapons = value
+	else
+		value = TyGearNormalizePersonalStatWeight(value)
+		if value == nil or row[statKey] == value then return end
+		row[statKey] = value
+	end
+	TyGearWeightingCacheKey = nil
+	if TyGearSetStatWeights then TyGearSetStatWeights() end
+	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+end
+
+function TyGearExportPersonalStatWeights(className)
+	local lines = { TyGearPersonalStatWeightsExportHeader, "Class: "..tostring(className) }
+	for _, specName in ipairs(TyGearGetPersonalSpecNames(className)) do
+		local row = TyGearGetPersonalWeighting(className, specName)
+		table.insert(lines, "Spec: "..specName)
+		for _, field in ipairs(TyGearPersonalStatFieldsForUI()) do
+			table.insert(lines, field.key..": "..TyGearFormatPersonalStatWeight(row and row[field.key] or 0))
+		end
+		if row and type(row.weapons) == "string" and row.weapons ~= "" then
+			table.insert(lines, "weapons: "..row.weapons)
+		end
+	end
+	return table.concat(lines, "\n")
+end
+
+function TyGearImportPersonalStatWeights(text, currentClass)
+	if type(text) ~= "string" then
+		return false, L["Paste exported weights into the box, then click Import."]
+	end
+	text = string.gsub(text, "\r\n", "\n")
+	text = string.gsub(text, "\r", "\n")
+	if string.gsub(text, "%s", "") == "" then
+		return false, L["Paste exported weights into the box, then click Import."]
+	end
+	local parsedClass
+	local specs = {}
+	local order = {}
+	local currentSpec
+	local unknownSpecs = {}
+	local badLines = 0
+	for line in string.gmatch(text, "[^\n]+") do
+		line = string.gsub(line, "^%s+", "")
+		line = string.gsub(line, "%s+$", "")
+		if line ~= "" and line ~= TyGearPersonalStatWeightsExportHeader and not string.find(line, "^TyGear Personal Stat Weights") then
+			local classText = string.match(line, "^[Cc]lass:%s*(.+)$")
+			local specText = string.match(line, "^[Ss]pec:%s*(.+)$")
+			local keyText, valueText = string.match(line, "^([^:]+):%s*(.+)$")
+			if classText and not specText then
+				parsedClass = TyGearNormalizePersonalClassToken(classText)
+				if not parsedClass then
+					return false, string.format(L["Unrecognized class in that export: %s"], classText)
+				end
+			elseif specText then
+				local specName = TyGearFindPersonalSpecName(parsedClass or currentClass, specText)
+				if not specName then
+					currentSpec = nil
+					table.insert(unknownSpecs, specText)
+				else
+					currentSpec = specName
+					if not specs[specName] then
+						specs[specName] = {}
+						table.insert(order, specName)
+					end
+				end
+			elseif keyText and valueText and currentSpec then
+				local statKey = TyGearFindPersonalStatKey(keyText)
+				if statKey == "weapons" then
+					valueText = string.gsub(valueText, "^%s+", "")
+					valueText = string.gsub(valueText, "%s+$", "")
+					if valueText ~= "" then
+						specs[currentSpec].weapons = valueText
+					else
+						badLines = badLines + 1
+					end
+				elseif statKey then
+					local value = TyGearNormalizePersonalStatWeight(valueText)
+					if value == nil then
+						badLines = badLines + 1
+					else
+						specs[currentSpec][statKey] = value
+					end
+				else
+					badLines = badLines + 1
+				end
+			elseif not classText then
+				badLines = badLines + 1
+			end
+		end
+	end
+	if parsedClass and currentClass and parsedClass ~= currentClass then
+		local parsedName = (TyGearClassList and TyGearClassList[parsedClass]) or parsedClass
+		local currentName = (TyGearClassList and TyGearClassList[currentClass]) or currentClass
+		return false, string.format(L["That export is for %s. This tab edits %s."], parsedName, currentName)
+	end
+	local className = parsedClass or currentClass
+	if not className or #order == 0 then
+		return false, L["Could not find any specs in that text."]
+	end
+	for _, specName in ipairs(order) do
+		local row = TyGearGetPersonalWeighting(className, specName)
+		local incoming = specs[specName]
+		for statKey, value in pairs(incoming) do
+			row[statKey] = value
+		end
+	end
+	TyGearWeightingCacheKey = nil
+	if TyGearSetStatWeights then TyGearSetStatWeights() end
+	if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+	local message = string.format(L["Imported personal stat weights for %d specs."], #order)
+	if #unknownSpecs > 0 then
+		message = message.." "..string.format(L["Skipped unknown spec: %s."], table.concat(unknownSpecs, ", "))
+	end
+	if badLines > 0 then
+		message = message.." "..string.format(L["Skipped %d unreadable lines."], badLines)
+	end
+	return true, message
 end
 
 function TyGearGetMythicSimWeighting(class, spec)
@@ -3273,6 +3618,9 @@ end
 
 -- True when item scores should come from Pawn instead of internal weights.
 function TyGearUsingPawn()
+	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemPersonal then
+		return false
+	end
 	if not TyGearIsPawnReady() then
 		return false
 	end
@@ -3294,10 +3642,22 @@ function TyGearGetWeightSourceLabel()
 		end
 		return "Pawn"
 	end
+	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemPersonal
+	or TyGearCurrentWeightSource == TyGearStatWeightSystemPersonal then
+		return "Personal"
+	end
 	if TyGearCurrentWeightSource == TyGearStatWeightSystemMythicSim then
 		return "MythicSim"
 	end
 	return "TyGear"
+end
+
+-- Item tooltips. Personal weights use "TyGear: Personal score:" rather than the system name.
+function TyGearGetTooltipScorePrefix()
+	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemPersonal and not TyGearUsingPawn() then
+		return "TyGear: Personal"
+	end
+	return "TyGear: "..TyGearGetWeightSourceLabel()
 end
 
 -- Resolve the weapons preference used for slot validity. Dual-wield profiles must not
@@ -3429,7 +3789,13 @@ function TyGearSetStatWeights()
 	TyGearInvalidatePerformanceCaches()
 	TyGearCachedClassLocalized, TyGearCachedClass, TyGearCachedSpec, TyGearCachedClassID = localizedClass, class, spec, classID
 	TyGearClassSpecCacheKey = (TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)
-	local baseWeighting, weightSource = TyGearGetInternalWeighting(class, spec)
+	local baseWeighting, weightSource
+	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemPersonal then
+		baseWeighting = TyGearGetPersonalWeighting(class, spec)
+		weightSource = baseWeighting and TyGearStatWeightSystemPersonal or nil
+	else
+		baseWeighting, weightSource = TyGearGetInternalWeighting(class, spec)
+	end
 	TyGearCurrentWeightSource = weightSource
 	if baseWeighting then
 		-- shallow copy so Crit/Hit merges do not mutate the shared defaults table
@@ -3455,17 +3821,20 @@ function TyGearSetStatWeights()
 			TyGearCurrentWeighting.Hit = math.max(TyGearCurrentWeighting.Hit or 0, TyGearCurrentWeighting.SpellHit or 0)
 		end
 	end
+	-- Personal weights keep the numbers the player typed, including zero.
 	-- MythicSim (and some built-ins) omit Armor. Keep a tiny floor so better armor
 	-- still upgrades otherwise-equal low-level pieces without competing with real EPs.
-	if (TyGearCurrentWeighting.Armor or 0) <= E then
-		TyGearCurrentWeighting.Armor = 0.001
-	end
-	-- MythicSim sets unused primaries to E (e.g. Warrior Spirit/Stamina). Rings, necks,
-	-- and trinkets that only have those stats then score as 0 (Lookie's Spyglass = +1 Spirit).
-	-- A small floor keeps jewelry comparable without competing with real EPs (Str/Agi/etc.).
-	for _, stat in ipairs({ "Strength", "Agility", "Stamina", "Intellect", "Spirit" }) do
-		if (TyGearCurrentWeighting[stat] or 0) <= E then
-			TyGearCurrentWeighting[stat] = 0.01
+	if TyGearCurrentWeightSource ~= TyGearStatWeightSystemPersonal then
+		if (TyGearCurrentWeighting.Armor or 0) <= E then
+			TyGearCurrentWeighting.Armor = 0.001
+		end
+		-- MythicSim sets unused primaries to E (e.g. Warrior Spirit/Stamina). Rings, necks,
+		-- and trinkets that only have those stats then score as 0 (Lookie's Spyglass = +1 Spirit).
+		-- A small floor keeps jewelry comparable without competing with real EPs (Str/Agi/etc.).
+		for _, stat in ipairs({ "Strength", "Agility", "Stamina", "Intellect", "Spirit" }) do
+			if (TyGearCurrentWeighting[stat] or 0) <= E then
+				TyGearCurrentWeighting[stat] = 0.01
+			end
 		end
 	end
 	TyGearEnsureWeaponWeights()
@@ -5302,7 +5671,7 @@ local function optionsSetup(optionsMenu)
 			local labelText = row:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 			labelText:SetPoint("LEFT", 8, 0)
 			labelText:SetText(TyGearColorize(v["label"]))
-			local width = 220
+			local width = v["dropdownWidth"] or 220
 			local dropDown
 			local function labelForValue(value)
 				for _, entry in ipairs(v["options"]) do
@@ -5363,24 +5732,34 @@ local function optionsSetup(optionsMenu)
 			optionsPage:AddRow(frame[i])
 			_G["TyGearToggle"..v["option"]] = function(force)
 				local system
-				if force == true then
+				local lowered = type(force) == "string" and string.lower(force) or nil
+				if force == true or lowered == "pawn" then
 					system = TyGearStatWeightSystemPawn
-				elseif force == false then
-					system = TyGearStatWeightSystemMythicSim
-				elseif type(force) == "string" and string.lower(force) == "pawn" then
-					system = TyGearStatWeightSystemPawn
-				elseif type(force) == "string" and (string.lower(force) == "mythicsim" or string.lower(force) == "mythic") then
+				elseif lowered == "personal" or lowered == "personalstatweights" or lowered == "custom" then
+					system = TyGearStatWeightSystemPersonal
+				elseif force == false or lowered == "mythicsim" or lowered == "mythic" then
 					system = TyGearStatWeightSystemMythicSim
 				else
-					system = (TyGearGetStatWeightSystem() == TyGearStatWeightSystemPawn)
-						and TyGearStatWeightSystemMythicSim
-						or TyGearStatWeightSystemPawn
+					local current = TyGearGetStatWeightSystem()
+					if current == TyGearStatWeightSystemMythicSim then
+						system = TyGearStatWeightSystemPawn
+					elseif current == TyGearStatWeightSystemPawn then
+						system = TyGearStatWeightSystemPersonal
+					else
+						system = TyGearStatWeightSystemMythicSim
+					end
 				end
 				TyGearSetStatWeightSystem(system)
 				setDropdownText(dropDown, labelForValue(TyGearDB.StatWeightSystem))
-				TyGearPrint("TyGear: "..(system == TyGearStatWeightSystemPawn
-					and L["Using Pawn for evaluating gear upgrades is now enabled."]
-					or L["Using MythicSim for evaluating gear upgrades is now enabled."]), 0)
+				local message
+				if system == TyGearStatWeightSystemPawn then
+					message = L["Using Pawn for evaluating gear upgrades is now enabled."]
+				elseif system == TyGearStatWeightSystemPersonal then
+					message = L["Using Personal Stat Weights for evaluating gear upgrades is now enabled."]
+				else
+					message = L["Using MythicSim for evaluating gear upgrades is now enabled."]
+				end
+				TyGearPrint("TyGear: "..message, 0)
 			end
 			-- Keep the old slash name working: "/tg pawn on|off"
 			_G["TyGearToggleUsePawn"] = function(force)
@@ -5394,7 +5773,7 @@ local function optionsSetup(optionsMenu)
 						if param1 == w then
 							command = v["option"]
 							shouldPrintHelp = false
-							if param2 == "mythicsim" or param2 == "mythic" or param2 == "pawn" then
+							if param2 == "mythicsim" or param2 == "mythic" or param2 == "pawn" or param2 == "personal" or param2 == "personalstatweights" then
 								force = param2
 								break
 							end
@@ -5755,6 +6134,291 @@ local function optionsSetup(optionsMenu)
 	optionsPage:Finish()
 end
 
+--Personal Stat Weights tab: one block of stat boxes per spec of the logged-in class, import/export at the bottom
+local function buildPersonalStatWeightsPage(listMenu)
+	local classToken = UnitClassBase and UnitClassBase("player")
+	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", 8, -8)
+	title:SetText(L["Personal Stat Weights"])
+
+	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+	note:SetWidth(480)
+	note:SetJustifyH("LEFT")
+	note:SetText(L["Fill in an EP weight for every stat on each spec of your class. A spec starts from its MythicSim or built-in weights the first time it is used. 0 means that stat adds nothing to the score. On WoW Forever, Hit and Spell Hit share the higher weight, and Crit and Spell Crit do the same. None is the general profile TyGear uses unless Override specialization is on.\n\nWhen Stat weight system is Personal Stat Weights, item tooltips show TyGear: Personal score:"])
+	listMenu.personalNote = note
+
+	local status = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	status:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -10)
+	status:SetWidth(480)
+	status:SetJustifyH("LEFT")
+	listMenu.personalStatus = status
+
+	local function statusText()
+		if not classToken then
+			return L["Log in on a character to edit personal stat weights."]
+		end
+		local localized = (TyGearClassList and TyGearClassList[classToken]) or classToken
+		local _, evalClass, evalSpec = TyGearGetClassAndSpec()
+		local evalLocalized = (TyGearClassList and TyGearClassList[evalClass]) or evalClass or ""
+		if TyGearGetStatWeightSystem() ~= TyGearStatWeightSystemPersonal then
+			return string.format(L["These weights are used when Stat weight system is set to Personal Stat Weights. TyGear is currently using %s."], TyGearGetStatWeightSystem())
+		end
+		if evalClass ~= classToken then
+			return string.format(L["Override specialization is using %s. Edit those weights on that class. This tab is your %s."], (evalSpec or "").." "..evalLocalized, localized)
+		end
+		return string.format(L["TyGear is scoring %s with these weights. Tooltips show TyGear: Personal score:"], evalSpec or "None")
+	end
+
+	local function specHeaderText(specName)
+		local label = TyGearSpecColoredText(classToken, specName)
+		local _, evalClass, evalSpec = TyGearGetClassAndSpec()
+		if evalClass == classToken and evalSpec == specName then
+			label = label.." "..L["(active)"]
+		end
+		return label
+	end
+
+	TyGearPersonalWeightEditors = {
+		classToken = classToken,
+		status = status,
+		statusText = statusText,
+		specHeader = specHeaderText,
+		specs = {},
+	}
+
+	local function forwardWheel(widget)
+		if not widget or not widget.EnableMouseWheel then return end
+		widget:EnableMouseWheel(true)
+		widget:SetScript("OnMouseWheel", function(_, delta)
+			local scroll = listMenu:GetParent()
+			if not scroll then return end
+			if ScrollFrameTemplate_OnMouseWheel then
+				ScrollFrameTemplate_OnMouseWheel(scroll, delta)
+				return
+			end
+			local range = scroll.GetVerticalScrollRange and scroll:GetVerticalScrollRange() or 0
+			local nextScroll = (scroll:GetVerticalScroll() or 0) - (delta * 40)
+			if nextScroll < 0 then nextScroll = 0 end
+			if nextScroll > range then nextScroll = range end
+			scroll:SetVerticalScroll(nextScroll)
+		end)
+	end
+
+	local anchor = status
+	local fields = TyGearPersonalStatFieldsForUI()
+	local columns = 2
+	local columnWidth = 236
+	local rowHeight = 22
+	local fieldRows = math.max(math.ceil(#fields / columns), 1)
+	local serial = 0
+
+	if not classToken then
+		status:SetText(statusText())
+	else
+		local localized = (TyGearClassList and TyGearClassList[classToken]) or classToken
+		local classLine = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+		classLine:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 0, -8)
+		classLine:SetText(TyGearClassColoredText(classToken, localized))
+		anchor = classLine
+		status:SetText(statusText())
+
+		for _, specName in ipairs(TyGearGetPersonalSpecNames(classToken)) do
+			local block = CreateFrame("Frame", nil, listMenu, "BackdropTemplate")
+			block:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -12)
+			block:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+			block:SetHeight(36 + fieldRows * rowHeight)
+			block:SetBackdrop({
+				bgFile = "Interface/ChatFrame/ChatFrameBackground",
+				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+				tile = true, tileSize = 16, edgeSize = 12,
+				insets = { left = 3, right = 3, top = 3, bottom = 3 },
+			})
+			block:SetBackdropColor(0.08, 0.08, 0.08, 0.45)
+			block:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+			forwardWheel(block)
+
+			local header = block:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+			header:SetPoint("TOPLEFT", 10, -8)
+			header:SetText(specHeaderText(specName))
+			local edits = {}
+			local starting = TyGearPeekPersonalSpecWeights(classToken, specName)
+			for index, field in ipairs(fields) do
+				serial = serial + 1
+				local column = (index - 1) % columns
+				local rowIndex = math.floor((index - 1) / columns)
+				local cell = CreateFrame("Frame", nil, block)
+				cell:SetSize(columnWidth - 8, rowHeight)
+				cell:SetPoint("TOPLEFT", block, "TOPLEFT", 8 + column * columnWidth, -(28 + rowIndex * rowHeight))
+				local label = cell:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+				label:SetPoint("LEFT", 0, 0)
+				label:SetWidth(148)
+				label:SetJustifyH("LEFT")
+				label:SetWordWrap(false)
+				label:SetText(TyGearPersonalStatLabel(field))
+				local edit = CreateFrame("EditBox", "TyGearPersonalWeight"..serial, cell, "InputBoxTemplate")
+				edit:SetSize(68, 18)
+				edit:SetPoint("LEFT", label, "RIGHT", 4, 0)
+				edit:SetAutoFocus(false)
+				edit:SetMaxLetters(16)
+				edit:SetText(TyGearFormatPersonalStatWeight(starting and starting[field.key]))
+				edit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+				edit:SetScript("OnEscapePressed", function(self)
+					local row = TyGearPeekPersonalSpecWeights(classToken, specName)
+					self.tyGearSuppress = true
+					self:SetText(TyGearFormatPersonalStatWeight(row and row[field.key]))
+					self:ClearFocus()
+					self.tyGearSuppress = nil
+				end)
+				edit:SetScript("OnEditFocusLost", function(self)
+					if self.tyGearSuppress then return end
+					local value = TyGearNormalizePersonalStatWeight(self:GetText())
+					if value == nil then
+						local row = TyGearPeekPersonalSpecWeights(classToken, specName)
+						self:SetText(TyGearFormatPersonalStatWeight(row and row[field.key]))
+						return
+					end
+					TyGearSetPersonalStatWeight(classToken, specName, field.key, value)
+					self:SetText(TyGearFormatPersonalStatWeight(value))
+				end)
+				edit:SetScript("OnEnter", function(self)
+					GameTooltip:SetOwner(self, "ANCHOR_NONE")
+					GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+					GameTooltip:AddLine(TyGearSpecColoredText(classToken, specName).." "..TyGearPersonalStatLabel(field), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+					GameTooltip:AddLine(string.format(L["Weight per point of %s. 0 means this stat does not add to the score."], TyGearPersonalStatLabel(field)), HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+					GameTooltip:Show()
+				end)
+				edit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+				forwardWheel(edit)
+				forwardWheel(cell)
+				edits[field.key] = edit
+			end
+			TyGearPersonalWeightEditors.specs[specName] = { header = header, edits = edits }
+			anchor = block
+		end
+	end
+
+	local importHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	importHeader:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -18)
+	importHeader:SetText(L["Import and export"])
+
+	local importNote = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	importNote:SetPoint("TOPLEFT", importHeader, "BOTTOMLEFT", 0, -6)
+	importNote:SetWidth(480)
+	importNote:SetJustifyH("LEFT")
+	importNote:SetText(L["Export fills the box so you can copy every spec of this class. Import reads the box and updates the specs it lists. The Class line has to match this character."])
+	listMenu.personalImportNote = importNote
+
+	local importBox = CreateFrame("EditBox", "TyGearPersonalStatWeightsImportEditBox", listMenu, "InputBoxTemplate")
+	importBox:SetPoint("TOPLEFT", importNote, "BOTTOMLEFT", 4, -8)
+	importBox:SetSize(460, 120)
+	importBox:SetAutoFocus(false)
+	importBox:SetMultiLine(true)
+	importBox:SetMaxLetters(20000)
+	importBox:SetFontObject(ChatFontNormal or GameFontHighlightSmall)
+	importBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	importBox:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_NONE")
+		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+		GameTooltip:AddLine(L["Import and export"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Export fills the box so you can copy every spec of this class. Import reads the box and updates the specs it lists. The Class line has to match this character."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:Show()
+	end)
+	importBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	listMenu.personalImportBox = importBox
+
+	local exportButton = CreateFrame("Button", "TyGearPersonalStatWeightsExportButton", listMenu, "UIPanelButtonTemplate")
+	exportButton:SetSize(120, 24)
+	exportButton:SetPoint("TOPLEFT", importBox, "BOTTOMLEFT", -4, -8)
+	exportButton:SetText(L["Export"])
+	exportButton:SetScript("OnClick", function()
+		if not classToken then return end
+		local text = TyGearExportPersonalStatWeights(classToken)
+		importBox:SetText(text or "")
+		importBox:SetFocus()
+		importBox:HighlightText()
+		TyGearPrint("TyGear: "..L["Exported personal stat weights. Copy the text in the box."], 0)
+		if TyGearRefreshPersonalStatWeightEditors then TyGearRefreshPersonalStatWeightEditors() end
+	end)
+	exportButton:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_NONE")
+		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+		GameTooltip:AddLine(L["Export"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Fill the box with this class's personal stat weights so you can copy them."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:Show()
+	end)
+	exportButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+	local importButton = CreateFrame("Button", "TyGearPersonalStatWeightsImportButton", listMenu, "UIPanelButtonTemplate")
+	importButton:SetSize(120, 24)
+	importButton:SetPoint("LEFT", exportButton, "RIGHT", 8, 0)
+	importButton:SetText(L["Import"])
+	importButton:SetScript("OnClick", function()
+		if not classToken then return end
+		local ok, message = TyGearImportPersonalStatWeights(importBox:GetText(), classToken)
+		TyGearPrint("TyGear: "..(message or ""), 0)
+		if ok and TyGearRefreshPersonalStatWeightEditors then
+			TyGearRefreshPersonalStatWeightEditors()
+		end
+	end)
+	importButton:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_NONE")
+		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+		GameTooltip:AddLine(L["Import"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Read the box and save those weights for this class."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:Show()
+	end)
+	importButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	listMenu.personalBottom = importButton
+
+	local function layoutPersonalPage()
+		local top = listMenu:GetTop()
+		local bottom = importButton:GetBottom()
+		local height
+		if top and bottom and top > bottom then
+			height = (top - bottom) + 24
+		else
+			local specCount = classToken and #TyGearGetPersonalSpecNames(classToken) or 0
+			height = 420 + specCount * (48 + fieldRows * rowHeight)
+		end
+		listMenu:SetHeight(height)
+		local scroll = listMenu:GetParent()
+		if scroll and scroll.UpdateScrollChildRect then
+			scroll:UpdateScrollChildRect()
+		end
+	end
+	listMenu.layoutPersonalPage = layoutPersonalPage
+	listMenu:HookScript("OnShow", function()
+		if TyGearRefreshPersonalStatWeightEditors then TyGearRefreshPersonalStatWeightEditors() end
+		layoutPersonalPage()
+	end)
+	status:SetText(statusText())
+	layoutPersonalPage()
+end
+
+function TyGearRefreshPersonalStatWeightEditors()
+	local editors = TyGearPersonalWeightEditors
+	if not editors then return end
+	if editors.status and editors.statusText then
+		editors.status:SetText(editors.statusText())
+	end
+	local classToken = editors.classToken
+	if not classToken or not editors.specs then return end
+	for specName, specEditors in pairs(editors.specs) do
+		if specEditors.header and editors.specHeader then
+			specEditors.header:SetText(editors.specHeader(specName))
+		end
+		local row = TyGearPeekPersonalSpecWeights(classToken, specName)
+		if specEditors.edits and row then
+			for statKey, edit in pairs(specEditors.edits) do
+				if edit and not edit:HasFocus() then
+					edit:SetText(TyGearFormatPersonalStatWeight(row[statKey]))
+				end
+			end
+		end
+	end
+end
+
 local optionsMenu = CreateFrame("Frame", "TyGearOptionsMenu")
 optionsMenu:SetWidth(1) -- must be set to at least 1 or the menu is invisible in the scroll frame, but will expand to show everything
 optionsMenu:SetHeight(1) -- must be set to at least 1 or the menu is invisible in the scroll frame, but will expand to show everything
@@ -5769,6 +6433,8 @@ local ignoredGearListMenu
 local ignoredGearListMenuParent
 local needListMenu
 local needListMenuParent
+local personalWeightsMenu
+local personalWeightsMenuParent
 if IS_WOW_FOREVER then
 	ignoredGearListMenu = CreateFrame("Frame", "TyGearIgnoredGearListMenu")
 	ignoredGearListMenu:SetWidth(1)
@@ -5795,6 +6461,19 @@ if IS_WOW_FOREVER then
 		needListMenuParent.parent = optionsMenuParent.name
 		InterfaceOptions_AddCategory(needListMenuParent)
 	end
+end
+
+personalWeightsMenu = CreateFrame("Frame", "TyGearPersonalStatWeightsMenu")
+personalWeightsMenu:SetWidth(1)
+personalWeightsMenu:SetHeight(1)
+personalWeightsMenuParent = CreateFrame("ScrollFrame", "TyGearPersonalStatWeightsMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
+personalWeightsMenuParent.name = L["Personal Stat Weights"]
+personalWeightsMenuParent:SetScrollChild(personalWeightsMenu)
+if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
+	Settings.RegisterCanvasLayoutSubcategory(optionsCategory, personalWeightsMenuParent, personalWeightsMenuParent.name)
+else
+	personalWeightsMenuParent.parent = optionsMenuParent.name
+	InterfaceOptions_AddCategory(personalWeightsMenuParent)
 end
 
 if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
@@ -6155,12 +6834,14 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliCommands"] = { "weights", "statsystem", "statweights", "pawn", "usepawn" },
 				["cliTrue"] = { "pawn", "enable", "on", "start" },
 				["cliFalse"] = { "mythicsim", "mythic", "disable", "off", "stop" },
+				["dropdownWidth"] = 250,
 				["options"] = {
 					{ ["label"] = L["MythicSim"], ["value"] = TyGearStatWeightSystemMythicSim },
 					{ ["label"] = L["Pawn"], ["value"] = TyGearStatWeightSystemPawn },
+					{ ["label"] = L["Personal Stat Weights"], ["value"] = TyGearStatWeightSystemPersonal },
 				},
 				["label"] = L["Stat weight system"],
-				["description"] = L["Choose which stat weight system TyGear uses to score gear.\n\nMythicSim (default): EP weights from mythicsim.com for WoW Forever specs. Healers and specs MythicSim does not publish still use TyGear's built-in profiles, then fall back to Pawn when those are missing and Pawn is installed.\n\nPawn: use a Pawn scale when Pawn is installed. TyGear looks for a scale named \"[class]: [spec]\" (example \"Paladin: Retribution\"); with \"Override specialization\" enabled, that class and spec are used instead. Visible Pawn scales are preferred."]..(TyGearIsPawnReady() and "" or "\n\n"..RED_FONT_COLOR_CODE..L["Pawn is not running, so choosing Pawn will do nothing until Pawn is installed and ready."]..FONT_COLOR_CODE_CLOSE),
+				["description"] = L["Choose which stat weight system TyGear uses to score gear.\n\nMythicSim (default): EP weights from mythicsim.com for WoW Forever specs. Healers and specs MythicSim does not publish still use TyGear's built-in profiles, then fall back to Pawn when those are missing and Pawn is installed.\n\nPawn: use a Pawn scale when Pawn is installed. TyGear looks for a scale named \"[class]: [spec]\" (example \"Paladin: Retribution\"); with \"Override specialization\" enabled, that class and spec are used instead. Visible Pawn scales are preferred.\n\nPersonal Stat Weights: the numbers you enter on the Personal Stat Weights tab, for each spec of your class. Tooltips call that score \"TyGear: Personal score:\"."]..(TyGearIsPawnReady() and "" or "\n\n"..RED_FONT_COLOR_CODE..L["Pawn is not running, so choosing Pawn will do nothing until Pawn is installed and ready."]..FONT_COLOR_CODE_CLOSE),
 				["dropdownPostHook"] = function()
 					TyGearSetStatWeightSystem(TyGearDB.StatWeightSystem)
 				end
@@ -6265,6 +6946,34 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			end
 			needListMenuParent:HookScript("OnSizeChanged", layoutNeedList)
 			layoutNeedList()
+		end
+		if personalWeightsMenu and not personalWeightsMenu.built then
+			personalWeightsMenu.built = true
+			buildPersonalStatWeightsPage(personalWeightsMenu)
+			local function layoutPersonalWeights()
+				local width = math.max((personalWeightsMenuParent:GetWidth() or 0) - 30, 1)
+				personalWeightsMenu:SetWidth(width + 8)
+				if personalWeightsMenu.personalNote then
+					personalWeightsMenu.personalNote:SetWidth(math.max(width - 16, 100))
+				end
+				if personalWeightsMenu.personalStatus then
+					personalWeightsMenu.personalStatus:SetWidth(math.max(width - 16, 100))
+				end
+				if personalWeightsMenu.personalImportNote then
+					personalWeightsMenu.personalImportNote:SetWidth(math.max(width - 16, 100))
+				end
+				if personalWeightsMenu.personalImportBox then
+					personalWeightsMenu.personalImportBox:SetWidth(math.max(width - 36, 120))
+				end
+				if personalWeightsMenu.layoutPersonalPage then
+					personalWeightsMenu.layoutPersonalPage()
+				end
+				if personalWeightsMenuParent.UpdateScrollChildRect then
+					personalWeightsMenuParent:UpdateScrollChildRect()
+				end
+			end
+			personalWeightsMenuParent:HookScript("OnSizeChanged", layoutPersonalWeights)
+			layoutPersonalWeights()
 		end
 		if IS_WOW_FOREVER then
 			if ignoredGearListMenuParent and not ignoredGearListMenuParent.ignoreSectionHooked then
@@ -6416,7 +7125,7 @@ end
 
 function TyGearPrintHelp()
 	TyGearPrint("TyGear: "..((param1 == "help") and "" or "Unrecognized command.  ").."Recognized commands (also /tygear):", 0)
-	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", the Ignored List tab for ignore settings and the keep list, and the Need List tab for forced NEED rolls") or ""), 0)
+	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", the Ignored List tab for ignore settings and the keep list, and the Need List tab for forced NEED rolls") or "")..", and the Personal Stat Weights tab", 0)
 	TyGearPrint("TyGear:    '/tg help': command line help", 0)
 	TyGearPrint("TyGear:    '/tg scan': scan all bags for gear upgrades", 0)
 	TyGearPrint("TyGear:    '/tg spec': get name of current talent specialization", 0)
@@ -6429,7 +7138,7 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg compare [enable/on/start]/[disable/off/stop]': toggle always comparing gear", 0)
 	TyGearPrint("TyGear:    '/tg override [enable/on/start]/[disable/off/stop]': toggle specialization override", 0)
 	TyGearPrint("TyGear:    '/tg overridespec [class]: [spec]': set override spec to \"[class]: [spec]\"",0)
-	TyGearPrint("TyGear:    '/tg weights [mythicsim/pawn]': choose MythicSim (default) or Pawn for stat weights", 0)
+	TyGearPrint("TyGear:    '/tg weights [mythicsim/pawn/personal]': choose MythicSim (default), Pawn, or Personal Stat Weights", 0)
 	TyGearPrint("TyGear:    '/tg pawn [enable/on/start]/[disable/off/stop]': same as weights; on selects Pawn, off selects MythicSim", 0)
 	TyGearPrint("TyGear:    '/tg pawnscale [Pawn scale name]': set Pawn scale override to the specifed Pawn scale", 0)
 	TyGearPrint("TyGear:    '/tg sell [enable/on/start]/[disable/off/stop]': toggle automatic selling of grey items", 0)
@@ -10321,7 +11030,7 @@ function TyGearTooltipHook(tooltip, tooltipData)
 		lowestScoringEquippedItemScore = math.floor((lowestScoringEquippedItemScore or 0) * 1000) / 1000
 		local displayScore = usePairScore and scoreWithBestSet or score
 		local displayEquipped = usePairScore and equippedSetScore or lowestScoringEquippedItemScore
-		local scoreLinePrefix = "TyGear: "..TyGearGetWeightSourceLabel()
+		local scoreLinePrefix = TyGearGetTooltipScorePrefix()
 		if shouldShowComparisonLine or shouldShowBestSet then
 			local equippedLabel = "equipped"
 			if pairedAgainstTwoHand then
