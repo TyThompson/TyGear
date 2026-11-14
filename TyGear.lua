@@ -1032,8 +1032,224 @@ local function TyGearReadTalentTab(index)
 	end
 end
 
+-- Classic talent tabs, left to right. WoW Forever draws these as trait tabs, in this order.
+local TyGearForeverTalentTabOrder = {
+	DRUID = { "Balance", "Feral Combat", "Restoration" },
+	HUNTER = { "Beast Mastery", "Marksmanship", "Survival" },
+	MAGE = { "Arcane", "Fire", "Frost" },
+	PALADIN = { "Holy", "Protection", "Retribution" },
+	PRIEST = { "Discipline", "Holy", "Shadow" },
+	ROGUE = { "Assassination", "Combat", "Subtlety" },
+	SHAMAN = { "Elemental", "Enhancement", "Restoration" },
+	WARLOCK = { "Affliction", "Demonology", "Destruction" },
+	WARRIOR = { "Arms", "Fury", "Protection" },
+}
+
+local function TyGearPlainNumber(value)
+	if type(issecretvalue) == "function" and issecretvalue(value) then
+		return nil
+	end
+	return tonumber(value)
+end
+
+local function TyGearTraitNodePoints(info)
+	if type(info) ~= "table" then return 0 end
+	local purchased = TyGearPlainNumber(info.ranksPurchased)
+	if purchased and purchased > 0 then
+		return purchased
+	end
+	if type(info.activeEntry) == "table" then
+		local rank = TyGearPlainNumber(info.activeEntry.rank)
+		if rank and rank > 0 then
+			return rank
+		end
+	end
+	return 0
+end
+
+local function TyGearSpecNamedInText(className, text)
+	if type(text) ~= "string" or text == "" or not className or not TyGearGetWeightSpecNames then
+		return nil
+	end
+	local lower = string.lower(text)
+	local best
+	for specName in pairs(TyGearGetWeightSpecNames(className)) do
+		if specName ~= "None" and string.find(lower, string.lower(specName), 1, true) then
+			if not best or #specName > #best then
+				best = specName
+			end
+		end
+	end
+	return best
+end
+
+local function TyGearClusterTraitNodes(nodes)
+	local items = {}
+	for _, info in ipairs(nodes) do
+		local x = TyGearPlainNumber(info.posX)
+		if x then
+			table.insert(items, { x = x, points = TyGearTraitNodePoints(info), info = info })
+		end
+	end
+	table.sort(items, function(a, b) return a.x < b.x end)
+	if #items == 0 then return {} end
+	local unique = {}
+	local seen
+	for _, item in ipairs(items) do
+		local key = math.floor(item.x + 0.5)
+		if key ~= seen then
+			table.insert(unique, key)
+			seen = key
+		end
+	end
+	local gaps = {}
+	for i = 1, #unique - 1 do
+		table.insert(gaps, { index = i, gap = unique[i + 1] - unique[i] })
+	end
+	table.sort(gaps, function(a, b) return a.gap > b.gap end)
+	local splitAfter = {}
+	if #unique >= 6 and #gaps >= 2 then
+		local small = {}
+		for i = 3, #gaps do
+			table.insert(small, gaps[i].gap)
+		end
+		table.sort(small)
+		local median = small[math.ceil(#small / 2)] or 0
+		local threshold = median * 1.5
+		for n = 1, 2 do
+			if gaps[n].gap > threshold then
+				splitAfter[gaps[n].index] = true
+			end
+		end
+	end
+	local clusters = {}
+	local current
+	local uniqueIndex = 0
+	seen = nil
+	for _, item in ipairs(items) do
+		local key = math.floor(item.x + 0.5)
+		if key ~= seen then
+			if seen ~= nil then
+				uniqueIndex = uniqueIndex + 1
+				if splitAfter[uniqueIndex] then
+					current = nil
+				end
+			end
+			seen = key
+		end
+		if not current then
+			current = { minX = item.x, points = 0, nodes = {} }
+			table.insert(clusters, current)
+		end
+		current.points = current.points + item.points
+		table.insert(current.nodes, item.info)
+	end
+	return clusters
+end
+
+local function TyGearTraitTabName(className, cluster, index, tabOrder)
+	if cluster.subTreeName and cluster.subTreeName ~= "" then
+		return cluster.subTreeName
+	end
+	local traits = C_Traits
+	if traits and traits.GetConditionInfo and cluster.configID then
+		for _, info in ipairs(cluster.nodes) do
+			if type(info.conditionIDs) == "table" then
+				for _, condID in ipairs(info.conditionIDs) do
+					local ok, cond = pcall(traits.GetConditionInfo, cluster.configID, condID)
+					if ok and type(cond) == "table" then
+						local named = TyGearSpecNamedInText(className, cond.tooltipFormat)
+						if named then return named end
+					end
+				end
+			end
+		end
+	end
+	return tabOrder and tabOrder[index] or nil
+end
+
+-- WoW Forever spends talent points on trait nodes, grouped into the three classic tabs.
+function TyGearHighestTraitTalentTabName()
+	local classTalents = C_ClassTalents
+	local traits = C_Traits
+	if not (classTalents and classTalents.GetActiveConfigID and traits and traits.GetConfigInfo and traits.GetTreeNodes and traits.GetNodeInfo) then
+		return nil
+	end
+	local configID = classTalents.GetActiveConfigID()
+	if not configID then return nil end
+	local ok, config = pcall(traits.GetConfigInfo, configID)
+	if not ok or type(config) ~= "table" or type(config.treeIDs) ~= "table" then
+		return nil
+	end
+	local className = UnitClassBase and UnitClassBase("player")
+	local tabOrder = className and TyGearForeverTalentTabOrder[className]
+	local tabs = {}
+	for _, treeID in ipairs(config.treeIDs) do
+		local nodesOK, nodeIDs = pcall(traits.GetTreeNodes, treeID)
+		if not nodesOK or type(nodeIDs) ~= "table" then
+			nodesOK, nodeIDs = pcall(traits.GetTreeNodes, configID, treeID)
+		end
+		local nodes = {}
+		if nodesOK and type(nodeIDs) == "table" then
+			for _, nodeID in ipairs(nodeIDs) do
+				local nodeOK, info = pcall(traits.GetNodeInfo, configID, nodeID)
+				if nodeOK and type(info) == "table" and (info.ID == nil or info.ID ~= 0) then
+					table.insert(nodes, info)
+				end
+			end
+		end
+		local groups
+		local subtreeSeen = {}
+		local subtreeOrder = {}
+		for _, info in ipairs(nodes) do
+			if info.subTreeID then
+				local id = info.subTreeID
+				local group = subtreeSeen[id]
+				if not group then
+					group = { points = 0, nodes = {}, subTreeID = id, configID = configID, minX = TyGearPlainNumber(info.posX) or 0 }
+					subtreeSeen[id] = group
+					table.insert(subtreeOrder, group)
+					if traits.GetSubTreeInfo then
+						local subOK, sub = pcall(traits.GetSubTreeInfo, configID, id)
+						if subOK and type(sub) == "table" and type(sub.name) == "string" then
+							group.subTreeName = sub.name
+						end
+					end
+				end
+				group.points = group.points + TyGearTraitNodePoints(info)
+				table.insert(group.nodes, info)
+			end
+		end
+		if #subtreeOrder > 0 then
+			table.sort(subtreeOrder, function(a, b) return a.minX < b.minX end)
+			groups = subtreeOrder
+		else
+			groups = TyGearClusterTraitNodes(nodes)
+			for _, group in ipairs(groups) do
+				group.configID = configID
+			end
+		end
+		for _, group in ipairs(groups) do
+			table.insert(tabs, group)
+		end
+	end
+	local bestName, bestPoints
+	local useTabOrder = tabOrder and #tabs == #tabOrder
+	for index, tab in ipairs(tabs) do
+		local name = TyGearTraitTabName(className, tab, index, useTabOrder and tabOrder or nil)
+		if name and tab.points and (bestPoints == nil or tab.points > bestPoints) then
+			bestPoints = tab.points
+			bestName = name
+		end
+	end
+	if not bestPoints or bestPoints <= 0 or not bestName then
+		return nil
+	end
+	return bestName
+end
+
 -- The talent tree with the most points. Equal totals keep the earlier tree. Nil when every tree has 0.
-function TyGearHighestTalentTabName()
+function TyGearHighestClassicTalentTabName()
 	if not _G.GetNumTalentTabs or not _G.GetTalentTabInfo then return nil end
 	local numTalentTabs = _G.GetNumTalentTabs()
 	if type(numTalentTabs) ~= "number" or numTalentTabs < 1 then return nil end
@@ -1052,11 +1268,23 @@ function TyGearHighestTalentTabName()
 	return bestName
 end
 
+function TyGearHighestTalentTabName()
+	return TyGearHighestClassicTalentTabName() or TyGearHighestTraitTalentTabName()
+end
+
 -- Match a talent-tab name to a weight-table spec. Unknown names are returned as-is.
 function TyGearMatchWeightSpecName(className, talentName)
 	if type(talentName) ~= "string" or talentName == "" then return nil end
 	local wanted = string.lower(talentName)
 	if className and TyGearGetWeightSpecNames then
+		-- Forever's feral tree is Feral Combat. The shorter Feral row is a later rename.
+		if IS_WOW_FOREVER and wanted == "feral" then
+			for specName in pairs(TyGearGetWeightSpecNames(className)) do
+				if specName == "Feral Combat" then
+					return specName
+				end
+			end
+		end
 		for specName in pairs(TyGearGetWeightSpecNames(className)) do
 			if string.lower(specName) == wanted then
 				return specName
@@ -7410,6 +7638,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_SPECIALIZATION_CHANGED")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CHARACTER_POINTS_CHANGED")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"PLAYER_TALENT_UPDATE")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"TRAIT_CONFIG_UPDATED")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"TRAIT_NODE_CHANGED")
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"TRAIT_TREE_CURRENCY_INFO_UPDATED")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CONFIRM_DISENCHANT_ROLL")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"ADDON_LOADED")                 --late-loaded Baganator/Bagnon junk plugins
 
@@ -7604,7 +7835,10 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 
 	if (event == "PLAYER_SPECIALIZATION_CHANGED" and arg1 == "player")
 	or event == "CHARACTER_POINTS_CHANGED"
-	or event == "PLAYER_TALENT_UPDATE" then
+	or event == "PLAYER_TALENT_UPDATE"
+	or event == "TRAIT_CONFIG_UPDATED"
+	or event == "TRAIT_NODE_CHANGED"
+	or event == "TRAIT_TREE_CURRENCY_INFO_UPDATED" then
 		TyGearOnDetectedSpecChanged()
 	elseif event == "PLAYER_EQUIPMENT_CHANGED" then
 		-- Only refresh the changed equipped slot; avoid a full bag tooltip rescan per equip event
