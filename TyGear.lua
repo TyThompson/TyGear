@@ -8162,6 +8162,7 @@ end
 function TyGearGetContainerItemInfo(bagIndex, bagSlot)
 	--Forever/Mainline: GetContainerItemInfo returns a ContainerItemInfo table (same as C_Container).
 	--Classic Era multi-return is texture, count, locked, quality, readable, lootable, link.
+	--Returns count, locked, link, quality, itemID. Quality/itemID help junk marks when GetItemInfo is still empty.
 	local info
 	if C_Container and C_Container.GetContainerItemInfo then
 		info = C_Container.GetContainerItemInfo(bagIndex, bagSlot)
@@ -8170,11 +8171,11 @@ function TyGearGetContainerItemInfo(bagIndex, bagSlot)
 		if type(a) == "table" then
 			info = a
 		elseif g then
-			return b, c, g
+			return b, c, g, d, nil
 		end
 	end
 	if info then
-		return info.stackCount, info.isLocked, info.hyperlink
+		return info.stackCount, info.isLocked, info.hyperlink, info.quality, info.itemID
 	end
 end
 
@@ -8740,26 +8741,70 @@ function TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc, 
 	return canEquip == false
 end
 
+--read quality/class/equip/sell price for a bag slot; prefer live container data when GetItemInfo is empty or secret
+local function TyGearGetBagItemVendorInfo(bag, slot, link, containerQuality, containerItemID)
+	local itemID = containerItemID or (link and tonumber(string.match(link, "item:(%d+)")))
+	local _, _, quality, _, _, _, _, _, equipLoc, _, sellPrice, classID, subclassID = GetItemInfo(link or itemID)
+
+	local function isUsable(value)
+		return value ~= nil and not (issecretvalue and issecretvalue(value))
+	end
+
+	if not isUsable(quality) then
+		quality = containerQuality
+	end
+	if not isUsable(quality) and Item and Item.CreateFromBagAndSlot then
+		local item = Item:CreateFromBagAndSlot(bag, slot)
+		if item and item.IsItemEmpty and (not item:IsItemEmpty()) and item.GetItemQuality then
+			local itemQuality = item:GetItemQuality()
+			if isUsable(itemQuality) then
+				quality = itemQuality
+			end
+		end
+	end
+
+	if (not isUsable(classID)) or (not isUsable(subclassID)) or (not isUsable(equipLoc)) or equipLoc == "" then
+		local _, _, _, instantEquipLoc, _, instantClassID, instantSubclassID = GetItemInfoInstant(itemID or link)
+		if not isUsable(classID) then classID = instantClassID end
+		if not isUsable(subclassID) then subclassID = instantSubclassID end
+		if (not isUsable(equipLoc)) or equipLoc == "" then equipLoc = instantEquipLoc end
+	end
+
+	if (not isUsable(sellPrice)) or sellPrice <= 0 then
+		local _, _, _, _, _, _, _, _, _, _, idSellPrice = GetItemInfo(itemID)
+		if isUsable(idSellPrice) and idSellPrice > 0 then
+			sellPrice = idSellPrice
+		end
+	end
+
+	return itemID, quality, sellPrice, classID, subclassID, equipLoc
+end
+
 --returns the sale value, link, and quality of the item in a bag slot if it should be sold to a vendor, or nil to keep it
 --context defaults to the active greySelling session; junk marking passes its own context
+--covers greys and, when those options are on, white weapons/armor TyGear would sell
 function TyGearGetItemSaleValue(bag, slot, context)
 	context = context or greySelling
 	if not context then return end
-	local count, locked, link = TyGearGetContainerItemInfo(bag, slot)
+	local count, locked, link, containerQuality, containerItemID = TyGearGetContainerItemInfo(bag, slot)
 	if not link then return end
+	count = count or 1
 	if locked and (not context.ignoreLocked) then return end
+	local itemID, quality, sellPrice, classID, subclassID, equipLoc = TyGearGetBagItemVendorInfo(bag, slot, link, containerQuality, containerItemID)
 	--battle pets have battlepet: links and can't be sold
-	local itemID = tonumber(string.match(link, "item:(%d+)"))
 	if not itemID then return end
 	--ignore list items, including the keep list, are not sold
 	if TyGearIsLeftOut(itemID) then return end
-	local _, _, quality, _, _, _, _, _, equipLoc, _, sellPrice, classID, subclassID = GetItemInfo(link)
-	if (not quality) or (not sellPrice) or (sellPrice <= 0) then return end
+	if (not quality) or (issecretvalue and issecretvalue(quality)) then return end
+	if (not sellPrice) or (issecretvalue and issecretvalue(sellPrice)) or sellPrice <= 0 then return end
+
+	local poorQuality = (Enum.ItemQuality and Enum.ItemQuality.Poor) or 0
+	local commonQuality = (Enum.ItemQuality and Enum.ItemQuality.Common) or 1
 
 	--keep list is all-inclusive for greys and common (white) item IDs
 	if context.keptItemIDs[itemID] then return end
 
-	if quality == 0 then
+	if quality == poorQuality then
 		--a white-gear pass must not sell greys unless that option is on
 		if TyGearDB.AutoSellGreys ~= true then return end
 		if TyGearUnsellableGreyItemIDs[itemID]
@@ -8776,7 +8821,8 @@ function TyGearGetItemSaleValue(bag, slot, context)
 			end
 			if not isBound then return end
 		end
-	elseif quality == 1 then
+	elseif quality == commonQuality then
+		--AutoSellUnsuitableWhites / AutoSellAllWhiteGear: same rules for vendor selling and junk marks
 		if not TyGearShouldSellWhiteGear(itemID, link, classID, subclassID, equipLoc, context) then
 			return
 		end
