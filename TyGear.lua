@@ -1817,11 +1817,11 @@ end
 function TyGearSetVendorKeepListItem(itemID, shouldKeep)
 	itemID = tonumber(itemID)
 	if not itemID then return end
-	if not TyGearDB then TyGearDB = {} end
-	--default profession weapon tools cannot be removed from the keep list
-	if (not shouldKeep) and TyGearCraftingToolItemIDSet and TyGearCraftingToolItemIDSet[itemID] then
-		shouldKeep = true
+	--default profession weapon tools are hard-kept and stay out of the editable keep-list text
+	if TyGearCraftingToolItemIDSet and TyGearCraftingToolItemIDSet[itemID] then
+		return
 	end
+	if not TyGearDB then TyGearDB = {} end
 	local ordered, seen = {}, {}
 	for _, listedID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
 		if listedID ~= itemID and not seen[listedID] then
@@ -5211,7 +5211,7 @@ local function buildIgnoreSection(optionsPage)
 
 	--keep list and its options live on the ignore list; items here are not sold or evaluated
 	addSubheader(L["Keep List"])
-	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. The list starts with crafting gear such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
+	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
 	addNote(keepListDescription)
 
 	local unboundCheck = newCheckbox(
@@ -5268,7 +5268,8 @@ local function buildIgnoreSection(optionsPage)
 		local parsed = TyGearParseItemIDList(text or "")
 		local seen, newOnes, rest = {}, {}, {}
 		for _, itemID in ipairs(parsed) do
-			if not seen[itemID] then
+			--hard-kept profession tools stay out of the editable text box
+			if not seen[itemID] and not (TyGearCraftingToolItemIDSet and TyGearCraftingToolItemIDSet[itemID]) then
 				seen[itemID] = true
 				if previous[itemID] then
 					table.insert(rest, itemID)
@@ -5283,13 +5284,6 @@ local function buildIgnoreSection(optionsPage)
 		end
 		for _, itemID in ipairs(rest) do
 			table.insert(ordered, itemID)
-		end
-		--clearing the box must not drop Skinning Knife, fishing poles, and other default profession tools
-		for _, itemID in ipairs(TyGearCraftingToolItemIDs or {}) do
-			if not seen[itemID] then
-				seen[itemID] = true
-				table.insert(ordered, itemID)
-			end
 		end
 		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 		showKeepListText()
@@ -5802,7 +5796,7 @@ buildKeepListSection = function(listMenu, anchorBelow)
 	note:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -6)
 	note:SetWidth(480)
 	note:SetJustifyH("LEFT")
-	note:SetText(L["Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated. White selling only covers weapons and armor, so non-gear whites do not need to be listed. The list starts with crafting gear that exists on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, and Arclight Spanner. Every fishing pole is kept even if its item ID is removed from this list."])
+	note:SetText(L["Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated. White selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, and Arclight Spanner, are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here."])
 	listMenu.keepListNote = note
 
 	local unboundCheck = newCheckbox(
@@ -5860,7 +5854,8 @@ buildKeepListSection = function(listMenu, anchorBelow)
 		local parsed = TyGearParseItemIDList(text or "")
 		local seen, newOnes, rest = {}, {}, {}
 		for _, itemID in ipairs(parsed) do
-			if not seen[itemID] then
+			--hard-kept profession tools stay out of the editable text box
+			if not seen[itemID] and not (TyGearCraftingToolItemIDSet and TyGearCraftingToolItemIDSet[itemID]) then
 				seen[itemID] = true
 				if previous[itemID] then
 					table.insert(rest, itemID)
@@ -5875,13 +5870,6 @@ buildKeepListSection = function(listMenu, anchorBelow)
 		end
 		for _, itemID in ipairs(rest) do
 			table.insert(ordered, itemID)
-		end
-		--clearing the box must not drop Skinning Knife, fishing poles, and other default profession tools
-		for _, itemID in ipairs(TyGearCraftingToolItemIDs or {}) do
-			if not seen[itemID] then
-				seen[itemID] = true
-				table.insert(ordered, itemID)
-			end
 		end
 		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 		showKeepListText()
@@ -7435,10 +7423,10 @@ end
 
 if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 
---white profession weapons kept by the default keep list for selling greys and white gear.
---These stay kept even if VendorKeepList is cleared: Skinning Knife, Mining Pick, fishing poles, etc.
+--white profession weapons hard-kept when selling greys and white gear (not stored in the editable keep-list box).
+--Skinning Knife, Mining Pick, fishing poles, etc. stay kept even if VendorKeepList is empty.
 --Non-gear whites are omitted: white selling only evaluates weapons and armor.
---Defined up here because the saved-variable defaults below include this list, and fishing poles of any item ID are also kept later by weapon subclass.
+--Fishing poles of any item ID are also kept later by weapon subclass.
 --Post-vanilla tools are omitted on WoW Forever, which does not have those professions or items.
 local TyGearCraftingToolItemIDsClassic = {
 	2901, --Mining Pick
@@ -7508,7 +7496,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			AlwaysCompareGear = GetCVarBool("alwaysCompareItems"),
 			AlwaysShowScoreComparisons = false,
 			AutoSellGreys = false,
-			VendorKeepList = table.concat(TyGearCraftingToolItemIDs, ", "),
+			--profession weapon tools are hard-kept; the editable box only holds user-added IDs
+			VendorKeepList = "",
 			NeedList = "",
 			KeepKeeperTahultPetItems = true,
 			KeepUnboundGreyGear = false,
@@ -7533,7 +7522,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		TyGearMigrateVendorKeepList()
 		TyGearPruneForeverVendorKeepList()
 		TyGearPruneRemovedDefaultKeepListItems()
-		TyGearEnsureDefaultVendorKeepListItems()
+		TyGearStripDefaultVendorKeepListItems()
 		TyGearInitializeCharacterSettings()
 		TyGearFixLockedGearSlots()
 		TyGearMigrateLockGearSlots()
@@ -7739,7 +7728,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["shouldUse"] = false, --the keep list lives on the ignore list
 				["editBox"] = true,
 				["label"] = L["Keep List"],
-				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. The list starts with crafting gear such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade.  Every fishing pole is kept even if its item ID is removed from this list.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."],
+				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."],
 				["editBoxPostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
@@ -8490,11 +8479,9 @@ function TyGearMigrateVendorKeepList()
 			end
 		end
 	end
-	--preserve a customized whites ignore list; otherwise start from the crafting-tool defaults
+	--preserve a customized whites ignore list; profession tools are hard-kept and need not be seeded
 	if TyGearDB.SellWhitesIgnoreList ~= nil then
 		addList(TyGearDB.SellWhitesIgnoreList)
-	else
-		addList(table.concat(TyGearCraftingToolItemIDs, ", "))
 	end
 	addList(TyGearDB.SellGreysExclusions)
 	TyGearDB.VendorKeepList = table.concat(ordered, ", ")
@@ -8542,27 +8529,22 @@ function TyGearPruneRemovedDefaultKeepListItems()
 	end
 end
 
---put Skinning Knife, fishing poles, and other default profession weapons back if the keep list was cleared
-function TyGearEnsureDefaultVendorKeepListItems()
-	if not TyGearDB or not TyGearCraftingToolItemIDs then
+--drop hard-kept profession tools from the editable keep-list text; they stay protected by ID set / subclass
+function TyGearStripDefaultVendorKeepListItems()
+	if not TyGearDB or TyGearDB.VendorKeepList == nil then
 		return
 	end
-	local ordered, seen = {}, {}
+	if not TyGearCraftingToolItemIDSet then return end
+	local ordered = {}
+	local removed = false
 	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
-		if not seen[itemID] then
-			seen[itemID] = true
+		if TyGearCraftingToolItemIDSet[itemID] then
+			removed = true
+		else
 			table.insert(ordered, itemID)
 		end
 	end
-	local added = false
-	for _, itemID in ipairs(TyGearCraftingToolItemIDs) do
-		if not seen[itemID] then
-			seen[itemID] = true
-			table.insert(ordered, itemID)
-			added = true
-		end
-	end
-	if added or TyGearDB.VendorKeepList == nil then
+	if removed then
 		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 	end
 end
