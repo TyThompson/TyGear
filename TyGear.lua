@@ -3504,8 +3504,56 @@ end
 
 TyGearStatWeightSystemMythicSim = "MythicSim"
 TyGearStatWeightSystemPawn = "Pawn"
+TyGearStatWeightSystemForeverLevelingBIS = "ForeverLevelingBIS"
 TyGearStatWeightSystemPersonal = "Personal"
 TyGearPersonalStatWeightsExportHeader = "TyGear Personal Stat Weights v1"
+TyGearFLBOnChangedRegistered = false
+
+-- Forever Leveling BiS API → TyGear weight-table keys. Missing FLB keys stay at E.
+-- Weapon DPS/speed from GetWeights become TyGearCurrentWeighting.weapon; TyGear still scores items itself.
+TyGearFLBStatKeyMap = {
+	str = "Strength",
+	agi = "Agility",
+	sta = "Stamina",
+	int = "Intellect",
+	spi = "Spirit",
+	exprtng = "Expertise",
+	splpen = "SpellPenetration",
+	defrtng = "Defense",
+	block = "Block",
+	manargn = "Mp5",
+	critPct = "Crit",
+	hitPct = "Hit",
+	dodgePct = "Dodge",
+	parryPct = "Parry",
+}
+
+TyGearFLBSpecKeyByClass = {
+	WARRIOR = { Arms = "arms", Fury = "fury", Protection = "protection" },
+	PALADIN = { Holy = "holy", Protection = "protection", Retribution = "retribution" },
+	HUNTER = { ["Beast Mastery"] = "beastmastery", Marksmanship = "marksmanship", Survival = "survival" },
+	ROGUE = { Assassination = "assassination", Combat = "combat", Subtlety = "subtlety" },
+	PRIEST = { Discipline = "discipline", Holy = "holy", Shadow = "shadow" },
+	SHAMAN = { Elemental = "elemental", Enhancement = "enhancement", Restoration = "restoration" },
+	MAGE = { Arcane = "arcane", Fire = "fire", Frost = "frost" },
+	WARLOCK = { Affliction = "affliction", Demonology = "demonology", Destruction = "destruction" },
+	DRUID = {
+		Balance = "balance",
+		Feral = "feral",
+		["Feral Combat"] = "feral",
+		["Feral (Bear)"] = "bear",
+		Guardian = "bear",
+		Restoration = "restoration",
+	},
+}
+
+TyGearFLBWeaponsBySetup = {
+	twohand = "2h",
+	dualwield = "dual wield",
+	shield = "weapon and shield",
+	held = "any",
+	onehand = "any",
+}
 
 -- Editable EP weights. forever = false stays out of the Forever tab (those stats are not on gear there).
 -- code is the short token used by the TG2 import/export string. localeKey reuses the lowercase tooltip word.
@@ -3552,6 +3600,12 @@ function TyGearIsPawnReady()
 	return (PawnIsReady ~= nil) and PawnIsReady()
 end
 
+-- Forever Leveling BiS API v2+ exposes GetWeights. TyGear only reads weights; scoring stays internal.
+function TyGearIsForeverLevelingBISReady()
+	local api = ForeverLevelingBiS_API
+	return api ~= nil and (api.version or 1) >= 2 and type(api.GetWeights) == "function"
+end
+
 -- Gray label used when a dropdown choice exists but cannot be selected (e.g. Pawn not loaded).
 function TyGearFadeDisabledOptionLabel(label)
 	if type(label) ~= "string" then return label end
@@ -3564,20 +3618,25 @@ function TyGearFadeDisabledOptionLabel(label)
 	return "|cff808080"..label.."|r"
 end
 
--- Stat weight system dropdown entries. Pawn stays visible when unloaded, but faded and not selectable.
+-- Stat weight system dropdown entries. Optional engines stay visible when unloaded, but faded and not selectable.
 function TyGearGetStatWeightSystemDropdownOptions()
 	local pawnReady = TyGearIsPawnReady()
 	local pawnLabel = pawnReady and L["Pawn"] or TyGearFadeDisabledOptionLabel(L["Pawn (not loaded)"])
+	local flbReady = TyGearIsForeverLevelingBISReady()
+	local flbLabel = flbReady and L["Forever Leveling BiS"] or TyGearFadeDisabledOptionLabel(L["Forever Leveling BiS (not loaded)"])
 	return {
 		{ ["label"] = L["MythicSim"], ["value"] = TyGearStatWeightSystemMythicSim },
 		{ ["label"] = pawnLabel, ["value"] = TyGearStatWeightSystemPawn, ["disabled"] = not pawnReady },
+		{ ["label"] = flbLabel, ["value"] = TyGearStatWeightSystemForeverLevelingBIS, ["disabled"] = not flbReady },
 		{ ["label"] = L["Personal Stat Weights"], ["value"] = TyGearStatWeightSystemPersonal },
 	}
 end
 
 function TyGearGetStatWeightSystem()
 	local system = TyGearDB and TyGearDB.StatWeightSystem
-	if system == TyGearStatWeightSystemPawn or system == TyGearStatWeightSystemPersonal then
+	if system == TyGearStatWeightSystemPawn
+	or system == TyGearStatWeightSystemForeverLevelingBIS
+	or system == TyGearStatWeightSystemPersonal then
 		return system
 	end
 	return TyGearStatWeightSystemMythicSim
@@ -3591,6 +3650,13 @@ function TyGearSetStatWeightSystem(system)
 		end
 		TyGearDB.StatWeightSystem = TyGearStatWeightSystemPawn
 		TyGearDB.UsePawn = true
+	elseif system == TyGearStatWeightSystemForeverLevelingBIS then
+		if not TyGearIsForeverLevelingBISReady() then
+			return false
+		end
+		TyGearDB.StatWeightSystem = TyGearStatWeightSystemForeverLevelingBIS
+		TyGearDB.UsePawn = false
+		TyGearEnsureForeverLevelingBISOnChanged()
 	elseif system == TyGearStatWeightSystemPersonal then
 		TyGearDB.StatWeightSystem = TyGearStatWeightSystemPersonal
 		TyGearDB.UsePawn = false
@@ -3623,11 +3689,12 @@ function TyGearRefreshPawnOptionsVisibility()
 end
 
 -- Older installs only had UsePawn. Prefer MythicSim unless the player had already enabled Pawn.
--- If Pawn was saved as the system but is not loaded, fall back to MythicSim.
+-- If an optional engine was saved but is not loaded, fall back to MythicSim.
 function TyGearMigrateStatWeightSystem()
 	if not TyGearDB then return end
 	if TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemMythicSim
 	and TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemPawn
+	and TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemForeverLevelingBIS
 	and TyGearDB.StatWeightSystem ~= TyGearStatWeightSystemPersonal then
 		if TyGearDB.UsePawn and TyGearIsPawnReady() then
 			TyGearDB.StatWeightSystem = TyGearStatWeightSystemPawn
@@ -3638,7 +3705,141 @@ function TyGearMigrateStatWeightSystem()
 	if TyGearDB.StatWeightSystem == TyGearStatWeightSystemPawn and not TyGearIsPawnReady() then
 		TyGearDB.StatWeightSystem = TyGearStatWeightSystemMythicSim
 	end
+	if TyGearDB.StatWeightSystem == TyGearStatWeightSystemForeverLevelingBIS and not TyGearIsForeverLevelingBISReady() then
+		TyGearDB.StatWeightSystem = TyGearStatWeightSystemMythicSim
+	end
 	TyGearDB.UsePawn = (TyGearDB.StatWeightSystem == TyGearStatWeightSystemPawn)
+end
+
+function TyGearMapSpecToForeverLevelingBIS(class, spec)
+	if not class or not spec or spec == "None" then return nil end
+	local byClass = TyGearFLBSpecKeyByClass[class]
+	return byClass and byClass[spec] or nil
+end
+
+-- Map Forever Leveling BiS GetWeights() into a TyGear weight table. Does not call ScoreItem/GetGain/IsUpgrade.
+function TyGearConvertForeverLevelingBISWeights(weights, setup, flbSpec)
+	if type(weights) ~= "table" then return nil end
+	local function num(value)
+		return tonumber(value) or 0
+	end
+	local out = {
+		Strength = E, Agility = E, Stamina = E, Intellect = E, Spirit = E,
+		Armor = E, Dodge = E, Parry = E, Block = E, Defense = E,
+		SpellPower = E, SpellPenetration = E, Haste = E, Mp5 = E,
+		AttackPower = E, ArmorPenetration = E, Crit = E, SpellCrit = E, Hit = E, SpellHit = E,
+		Expertise = E, Versatility = E, Multistrike = E, Mastery = E, ExperienceGained = E,
+		RedSockets = E, YellowSockets = E, BlueSockets = E, MetaSockets = E,
+		HealingProc = E, DamageProc = E, DamageSpellProc = E, MeleeProc = E, RangedProc = E,
+		DPS = E, Damage = E,
+	}
+	for flbKey, tyGearKey in pairs(TyGearFLBStatKeyMap) do
+		local value = num(weights[flbKey])
+		if value ~= 0 then
+			out[tyGearKey] = value
+		end
+	end
+	local armor = num(weights.armor) + num(weights.armorbonus)
+	if armor ~= 0 then
+		out.Armor = armor
+	end
+	if num(weights.block) == 0 and num(weights.blockPct) ~= 0 then
+		out.Block = num(weights.blockPct)
+	end
+	out.AttackPower = math.max(num(weights.atkpwr), num(weights.rgdatkpwr), num(weights.feratkpwr))
+	if out.AttackPower == 0 then out.AttackPower = E end
+	out.SpellPower = math.max(
+		num(weights.splpwr), num(weights.spldmg), num(weights.splheal),
+		num(weights.arcsplpwr), num(weights.firsplpwr), num(weights.frosplpwr),
+		num(weights.holsplpwr), num(weights.natsplpwr), num(weights.shasplpwr)
+	)
+	if out.SpellPower == 0 then out.SpellPower = E end
+
+	out.weapons = (setup and TyGearFLBWeaponsBySetup[setup]) or "any"
+	local dps = num(weights.dps)
+	local ohDps = num(weights.ohDps)
+	local rangedDps = num(weights.rangedDps)
+	-- FLB speed weights are per 0.1s slower than the reference; TyGear multiplies by (speed - norm) in seconds.
+	local speedBonus = num(weights.speed) * 10
+	local speedRef = tonumber(weights.speedRef)
+	local rangedSpeedRef = tonumber(weights.rangedSpeedRef)
+
+	if flbSpec == "feral" or flbSpec == "bear" then
+		out.weapon = {
+			feral = true,
+			mh_dps = (dps > E) and dps or 0,
+			oh_dps = 0,
+		}
+	elseif rangedDps > E and dps <= E then
+		out.weapons = "ranged"
+		out.weapon = {
+			ranged = true,
+			mh_dps = rangedDps,
+			oh_dps = 0,
+			norm_speed = rangedSpeedRef or 2.8,
+			speed_bonus = num(weights.rangedSpeed) * 10,
+		}
+	elseif dps > E or ohDps > E or speedBonus > E then
+		local pref = out.weapons
+		out.weapon = {
+			mh_dps = dps,
+			oh_dps = ohDps,
+			norm_speed = speedRef or ((pref == "2h") and 3.3 or 2.4),
+			speed_bonus = speedBonus,
+		}
+	else
+		out.weapon = { mh_dps = 0, oh_dps = 0 }
+	end
+	return out
+end
+
+function TyGearGetForeverLevelingBISWeighting(class, spec)
+	if not TyGearIsForeverLevelingBISReady() then
+		return nil, nil
+	end
+	local api = ForeverLevelingBiS_API
+	local flbSpec = TyGearMapSpecToForeverLevelingBIS(class, spec)
+	local setup
+	local mainSpec, mainSetup, classFile
+	if type(api.GetSpec) == "function" then
+		mainSpec, mainSetup, classFile = api.GetSpec()
+	end
+	local weights
+	if (not flbSpec) or spec == "None" then
+		-- No TyGear talent tree yet: use the main spec/setup the player picked in Forever Leveling BiS.
+		weights = api.GetWeights()
+		flbSpec = mainSpec
+		setup = mainSetup
+	else
+		if classFile == class and mainSpec then
+			if mainSpec == flbSpec or (flbSpec == "survival" and mainSpec == "survivalmelee") then
+				flbSpec = mainSpec
+				setup = mainSetup
+			end
+		end
+		weights = api.GetWeights(class, flbSpec, nil, setup)
+	end
+	local converted = TyGearConvertForeverLevelingBISWeights(weights, setup, flbSpec)
+	if not converted then
+		return nil, nil
+	end
+	return converted, TyGearStatWeightSystemForeverLevelingBIS
+end
+
+-- Refresh TyGear weights when Forever Leveling BiS changes its model, profile, or gear context.
+function TyGearEnsureForeverLevelingBISOnChanged()
+	if TyGearFLBOnChangedRegistered then return end
+	local api = ForeverLevelingBiS_API
+	if not (api and type(api.OnChanged) == "function") then return end
+	TyGearFLBOnChangedRegistered = true
+	api.OnChanged(function()
+		if TyGearGetStatWeightSystem() ~= TyGearStatWeightSystemForeverLevelingBIS then
+			return
+		end
+		TyGearWeightingCacheKey = nil
+		if TyGearSetStatWeights then TyGearSetStatWeights() end
+		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
+	end)
 end
 
 function TyGearPersonalStatFieldsForUI()
@@ -4181,6 +4382,9 @@ function TyGearUsingPawn()
 	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemPersonal then
 		return false
 	end
+	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemForeverLevelingBIS then
+		return false
+	end
 	if not TyGearIsPawnReady() then
 		return false
 	end
@@ -4205,6 +4409,10 @@ function TyGearGetWeightSourceLabel()
 	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemPersonal
 	or TyGearCurrentWeightSource == TyGearStatWeightSystemPersonal then
 		return "Personal"
+	end
+	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemForeverLevelingBIS
+	or TyGearCurrentWeightSource == TyGearStatWeightSystemForeverLevelingBIS then
+		return "Forever Leveling BiS"
 	end
 	if TyGearCurrentWeightSource == TyGearStatWeightSystemMythicSim then
 		return "MythicSim"
@@ -4353,6 +4561,8 @@ function TyGearSetStatWeights()
 	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemPersonal then
 		baseWeighting = TyGearGetPersonalWeighting(class, spec)
 		weightSource = baseWeighting and TyGearStatWeightSystemPersonal or nil
+	elseif TyGearGetStatWeightSystem() == TyGearStatWeightSystemForeverLevelingBIS then
+		baseWeighting, weightSource = TyGearGetForeverLevelingBISWeighting(class, spec)
 	else
 		baseWeighting, weightSource = TyGearGetInternalWeighting(class, spec)
 	end
@@ -4384,6 +4594,7 @@ function TyGearSetStatWeights()
 	-- Personal weights keep the numbers the player typed, including zero.
 	-- MythicSim (and some built-ins) omit Armor. Keep a tiny floor so better armor
 	-- still upgrades otherwise-equal low-level pieces without competing with real EPs.
+	-- Forever Leveling BiS already publishes Armor when it matters; still floor unused primaries.
 	if TyGearCurrentWeightSource ~= TyGearStatWeightSystemPersonal then
 		if (TyGearCurrentWeighting.Armor or 0) <= E then
 			TyGearCurrentWeighting.Armor = 0.001
@@ -6361,22 +6572,42 @@ local function optionsSetup(optionsMenu)
 						return
 					end
 					system = TyGearStatWeightSystemPawn
+				elseif lowered == "foreverlevelingbis" or lowered == "foreverleveling" or lowered == "foreverbis" or lowered == "flb" then
+					if not TyGearIsForeverLevelingBISReady() then
+						TyGearPrint("TyGear: "..L["Forever Leveling BiS is not installed."], 0)
+						return
+					end
+					system = TyGearStatWeightSystemForeverLevelingBIS
 				elseif lowered == "personal" or lowered == "personalstatweights" or lowered == "custom" then
 					system = TyGearStatWeightSystemPersonal
 				elseif force == false or lowered == "mythicsim" or lowered == "mythic" then
 					system = TyGearStatWeightSystemMythicSim
 				else
+					-- Cycle: MythicSim → Pawn (if ready) → Forever Leveling BiS (if ready) → Personal → MythicSim
 					local current = TyGearGetStatWeightSystem()
-					if current == TyGearStatWeightSystemMythicSim then
-						system = TyGearIsPawnReady() and TyGearStatWeightSystemPawn or TyGearStatWeightSystemPersonal
-					elseif current == TyGearStatWeightSystemPawn then
-						system = TyGearStatWeightSystemPersonal
-					else
-						system = TyGearStatWeightSystemMythicSim
+					local order = { TyGearStatWeightSystemMythicSim }
+					if TyGearIsPawnReady() then
+						table.insert(order, TyGearStatWeightSystemPawn)
 					end
+					if TyGearIsForeverLevelingBISReady() then
+						table.insert(order, TyGearStatWeightSystemForeverLevelingBIS)
+					end
+					table.insert(order, TyGearStatWeightSystemPersonal)
+					local nextSystem = order[1]
+					for i, candidate in ipairs(order) do
+						if candidate == current then
+							nextSystem = order[(i % #order) + 1]
+							break
+						end
+					end
+					system = nextSystem
 				end
 				if system == TyGearStatWeightSystemPawn and not TyGearIsPawnReady() then
 					TyGearPrint("TyGear: "..L["Pawn is not installed."], 0)
+					return
+				end
+				if system == TyGearStatWeightSystemForeverLevelingBIS and not TyGearIsForeverLevelingBISReady() then
+					TyGearPrint("TyGear: "..L["Forever Leveling BiS is not installed."], 0)
 					return
 				end
 				if not TyGearSetStatWeightSystem(system) then
@@ -6386,6 +6617,8 @@ local function optionsSetup(optionsMenu)
 				local message
 				if system == TyGearStatWeightSystemPawn then
 					message = L["Using Pawn for evaluating gear upgrades is now enabled."]
+				elseif system == TyGearStatWeightSystemForeverLevelingBIS then
+					message = L["Using Forever Leveling BiS for evaluating gear upgrades is now enabled."]
 				elseif system == TyGearStatWeightSystemPersonal then
 					message = L["Using Personal Stat Weights for evaluating gear upgrades is now enabled."]
 				else
@@ -6405,7 +6638,9 @@ local function optionsSetup(optionsMenu)
 						if param1 == w then
 							command = v["option"]
 							shouldPrintHelp = false
-							if param2 == "mythicsim" or param2 == "mythic" or param2 == "pawn" or param2 == "personal" or param2 == "personalstatweights" then
+							if param2 == "mythicsim" or param2 == "mythic" or param2 == "pawn"
+							or param2 == "foreverlevelingbis" or param2 == "foreverleveling" or param2 == "foreverbis" or param2 == "flb"
+							or param2 == "personal" or param2 == "personalstatweights" then
 								force = param2
 								break
 							end
@@ -6836,7 +7071,11 @@ local function buildPersonalStatWeightsPage(listMenu)
 		local _, evalClass, evalSpec = TyGearGetClassAndSpec()
 		local evalLocalized = (TyGearClassList and TyGearClassList[evalClass]) or evalClass or ""
 		if TyGearGetStatWeightSystem() ~= TyGearStatWeightSystemPersonal then
-			return string.format(L["These weights are used when Stat weight system is set to Personal Stat Weights. TyGear is currently using %s."], TyGearGetStatWeightSystem())
+			local current = TyGearGetStatWeightSystem()
+			if current == TyGearStatWeightSystemForeverLevelingBIS then
+				current = L["Forever Leveling BiS"]
+			end
+			return string.format(L["These weights are used when Stat weight system is set to Personal Stat Weights. TyGear is currently using %s."], current)
 		end
 		if evalClass ~= classToken then
 			return string.format(L["Override specialization is using %s. Edit those weights on that class. This tab is your %s."], (evalSpec or "").." "..evalLocalized, localized)
@@ -7251,6 +7490,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 
 		TyGearInitializeDB(TyGearDBDefaults)
 		TyGearMigrateStatWeightSystem()
+		TyGearEnsureForeverLevelingBISOnChanged()
 		if UnitClassBase then
 			TyGearEnsurePersonalClassWeights(UnitClassBase("player"))
 		end
@@ -7520,14 +7760,14 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["tab"] = L["Evaluation"],
 				["section"] = L["Stat weights"],
 				["dropdown"] = true,
-				["cliCommands"] = { "weights", "statsystem", "statweights", "pawn", "usepawn" },
+				["cliCommands"] = { "weights", "statsystem", "statweights", "pawn", "usepawn", "flb", "foreverbis", "foreverlevelingbis" },
 				["cliTrue"] = { "pawn", "enable", "on", "start" },
 				["cliFalse"] = { "mythicsim", "mythic", "disable", "off", "stop" },
 				["dropdownWidth"] = 250,
-				-- Function so the Pawn row refreshes faded/disabled state if the menu is rebuilt.
+				-- Function so optional engines refresh faded/disabled state if the menu is rebuilt.
 				["options"] = TyGearGetStatWeightSystemDropdownOptions,
 				["label"] = L["Stat weight system"],
-				["description"] = L["Choose which stat weight system TyGear uses to score gear.\n\nMythicSim (default): EP weights from mythicsim.com for WoW Forever specs. Healers and specs MythicSim does not publish still use TyGear's built-in profiles, then fall back to Pawn when those are missing and Pawn is installed.\n\nPawn: use a Pawn scale when Pawn is installed. TyGear looks for a scale named \"[class]: [spec]\" (example \"Paladin: Retribution\"); with \"Override specialization\" enabled, that class and spec are used instead. Visible Pawn scales are preferred. When Pawn is not loaded, that choice appears faded and cannot be selected, and Override Pawn scale stays hidden.\n\nPersonal Stat Weights: the numbers you enter on the Personal Stat Weights tab, for each spec of your class. Tooltips call that score \"TyGear: Personal score:\"."],
+				["description"] = L["Choose which stat weight system TyGear uses to score gear.\n\nMythicSim (default): EP weights from mythicsim.com for WoW Forever specs. Healers and specs MythicSim does not publish still use TyGear's built-in profiles, then fall back to Pawn when those are missing and Pawn is installed.\n\nPawn: use a Pawn scale when Pawn is installed. TyGear looks for a scale named \"[class]: [spec]\" (example \"Paladin: Retribution\"); with \"Override specialization\" enabled, that class and spec are used instead. Visible Pawn scales are preferred. When Pawn is not loaded, that choice appears faded and cannot be selected, and Override Pawn scale stays hidden.\n\nForever Leveling BiS: use stat weights from the Forever Leveling BiS addon API (GetWeights only). TyGear still scores and equips with its own logic. When Forever Leveling BiS is not loaded, that choice appears faded and cannot be selected.\n\nPersonal Stat Weights: the numbers you enter on the Personal Stat Weights tab, for each spec of your class. Tooltips call that score \"TyGear: Personal score:\"."],
 				["dropdownPostHook"] = function()
 					TyGearSetStatWeightSystem(TyGearDB.StatWeightSystem)
 				end

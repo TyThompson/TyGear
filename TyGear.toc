@@ -5,7 +5,7 @@
 ## Notes: Automatically chooses loot and equips gear for WoW Forever. Fork of AutoGear by Synthetikaryote and BujuArena.
 ## Author: Ty (fork of AutoGear by Synthetikaryote and BujuArena)
 ## Version: @project-version@
-## OptionalDeps: Pawn, AtlasLoot, AtlasLootClassic, Baganator, Bagnon
+## OptionalDeps: Pawn, ForeverLevelingBiS, AtlasLoot, AtlasLootClassic, Baganator, Bagnon
 
 TaintLess.xml
 localization.core.lua
