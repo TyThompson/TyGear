@@ -10352,6 +10352,25 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	info.rarityColor = info.item:GetItemQualityColor()
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
 	info.isGear = info.invType > 0
+	-- Ammo, shirts, and tabards have an inventory type but are not scored or equipped as gear.
+	-- (Ammo especially: matching it to weapon type is unreliable, and tooltips would crash comparing to a nil equipped score.)
+	if info.isGear and Enum and Enum.InventoryType then
+		local inv = Enum.InventoryType
+		if info.invType == inv.IndexAmmoType
+		or info.invType == inv.IndexBodyType
+		or info.invType == inv.IndexTabardType then
+			info.isGear = nil
+		end
+	elseif info.isGear and (info.equipLoc == "INVTYPE_AMMO"
+		or info.equipLoc == "INVTYPE_BODY"
+		or info.equipLoc == "INVTYPE_TABARD") then
+		info.isGear = nil
+	end
+	-- Projectile ammo is class 6 even when inventory enums are incomplete.
+	if info.isGear and Enum and Enum.ItemClass and Enum.ItemClass.Projectile
+	and info.classID == Enum.ItemClass.Projectile then
+		info.isGear = nil
+	end
 
 	-- Detect reagent and profession bags from classID / subclassID / equipLoc (not names or item ids).
 	-- Dedicated reagent bags and Forever profession/soul bags belong in the reagent bag slot;
@@ -12018,7 +12037,8 @@ function TyGearTooltipHook(tooltip, tooltipData)
 		local shouldShowComparisonLine = (not isAComparisonTooltip and (not isAnyComparisonTooltipVisible or TyGearDB.AlwaysShowScoreComparisons)) and not equipped
 		local usePairScore = shouldShowBestSet
 		local compareScore = usePairScore and scoreWithBestSet or score
-		local compareAgainst = usePairScore and equippedSetScore or lowestScoringEquippedItemScore
+		-- Empty/invalid slots leave the equipped score nil; treat as 0 so color compare never crashes.
+		local compareAgainst = (usePairScore and equippedSetScore or lowestScoringEquippedItemScore) or 0
 		if (compareScore > compareAgainst) and not info.ignored and not TyGearAllValidGearSlotsProtected(info) then
 			scoreColor = GREEN_FONT_COLOR
 		elseif (compareScore < compareAgainst) and not info.ignored then
