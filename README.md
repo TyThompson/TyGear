@@ -1,6 +1,6 @@
 # TyGear
 
-TyGear automatically rolls on and equips loot for **WoW Forever**. It rolls **need** on upgrades and **greed** otherwise, using class stat weights from [MythicSim](https://mythicsim.com/wow-forever/stat-priority) by default (Pawn or your own Personal Stat Weights optional).
+TyGear automatically rolls on and equips loot for **WoW Forever**. It rolls **need** on upgrades and **greed** otherwise, using class stat weights from [MythicSim](https://mythicsim.com/wow-forever/stat-priority) by default (Pawn, [Forever Leveling BiS](https://github.com/thunder426/ForeverLevelingBiS-API), or your own Personal Stat Weights optional).
 
 Based on [AutoGear](https://github.com/BujuArena/AutoGear) by Synthetikaryote and BujuArena ([CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)).
 
@@ -9,7 +9,7 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 ## Getting started
 
 1. Type `/tg` to open options.
-2. Under **Evaluation → Stat weights**, pick **MythicSim** (default), **Pawn**, or **Personal Stat Weights**. MythicSim uses imported EP weights from mythicsim.com; if a specialization has no MythicSim row, TyGear falls back to Pawn when it is installed. Pawn is an optional dependency: when it is not loaded, that choice appears faded as **Pawn (not loaded)** and cannot be selected, and Override Pawn scale stays hidden. Personal Stat Weights starts from the MythicSim numbers for every spec of your class (built-in profiles where MythicSim has no row). The import/export box at the bottom of that tab uses a short `TG2` string of only the weights you changed. Tooltips label that score **TyGear: Personal score:**.
+2. Under **Evaluation → Stat weights**, pick **MythicSim** (default), **Pawn**, **Forever Leveling BiS**, or **Personal Stat Weights**. MythicSim uses imported EP weights from mythicsim.com; if a specialization has no MythicSim row, TyGear falls back to Pawn when it is installed. Pawn and Forever Leveling BiS are optional dependencies: when either is not loaded, that choice appears faded as **(not loaded)** and cannot be selected. Override Pawn scale stays hidden unless Pawn is selected and loaded. Forever Leveling BiS supplies weights only through its API; TyGear still scores and equips gear itself. Personal Stat Weights starts from the MythicSim numbers for every spec of your class (built-in profiles where MythicSim has no row). The import/export box at the bottom of that tab uses a short `TG2` string of only the weights you changed. Tooltips label that score **TyGear: Personal score:**.
 3. Under **Evaluation**, TyGear shows the active specialization: the talent tree with the most points. With no points spent, it uses the general profile (None). **Override specialization** is directly under that. **Automatically equip gear** is under **Loot**. The override is saved per character.
 4. Use `/tg toggle` anytime you want to turn automatic gearing off (for example before a loot roll you want to control yourself).
 
