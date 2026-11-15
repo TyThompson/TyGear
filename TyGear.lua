@@ -1757,7 +1757,12 @@ local vendorKeepListCache
 
 function TyGearIsOnVendorKeepList(itemID)
 	itemID = tonumber(itemID)
-	if not itemID or not TyGearDB then return false end
+	if not itemID then return false end
+	--profession weapon tools (Skinning Knife, Mining Pick, fishing poles, …) stay kept even if the saved list was cleared
+	if TyGearCraftingToolItemIDSet and TyGearCraftingToolItemIDSet[itemID] then
+		return true
+	end
+	if not TyGearDB then return false end
 	local text = TyGearDB.VendorKeepList or ""
 	if vendorKeepListCacheKey ~= text then
 		vendorKeepListCacheKey = text
@@ -1813,6 +1818,10 @@ function TyGearSetVendorKeepListItem(itemID, shouldKeep)
 	itemID = tonumber(itemID)
 	if not itemID then return end
 	if not TyGearDB then TyGearDB = {} end
+	--default profession weapon tools cannot be removed from the keep list
+	if (not shouldKeep) and TyGearCraftingToolItemIDSet and TyGearCraftingToolItemIDSet[itemID] then
+		shouldKeep = true
+	end
 	local ordered, seen = {}, {}
 	for _, listedID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
 		if listedID ~= itemID and not seen[listedID] then
@@ -5275,6 +5284,13 @@ local function buildIgnoreSection(optionsPage)
 		for _, itemID in ipairs(rest) do
 			table.insert(ordered, itemID)
 		end
+		--clearing the box must not drop Skinning Knife, fishing poles, and other default profession tools
+		for _, itemID in ipairs(TyGearCraftingToolItemIDs or {}) do
+			if not seen[itemID] then
+				seen[itemID] = true
+				table.insert(ordered, itemID)
+			end
+		end
 		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 		showKeepListText()
 		if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
@@ -5860,6 +5876,13 @@ buildKeepListSection = function(listMenu, anchorBelow)
 		for _, itemID in ipairs(rest) do
 			table.insert(ordered, itemID)
 		end
+		--clearing the box must not drop Skinning Knife, fishing poles, and other default profession tools
+		for _, itemID in ipairs(TyGearCraftingToolItemIDs or {}) do
+			if not seen[itemID] then
+				seen[itemID] = true
+				table.insert(ordered, itemID)
+			end
+		end
 		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
 		showKeepListText()
 		if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
@@ -5990,6 +6013,15 @@ buildKeepListSection = function(listMenu, anchorBelow)
 				else
 					table.insert(user, entry)
 				end
+			end
+		end
+		--always list out-of-the-box profession tools, even when the saved keep list was cleared
+		for _, itemID in ipairs(TyGearCraftingToolItemIDs or {}) do
+			if not seen[itemID] then
+				seen[itemID] = true
+				local icon = GetItemInfoInstant and select(5, GetItemInfoInstant(itemID))
+				local name = GetItemInfo and GetItemInfo(itemID)
+				table.insert(builtin, { id = itemID, icon = icon, name = name or ("item "..itemID), builtIn = true })
 			end
 		end
 		table.sort(builtin, function(a, b)
@@ -7403,7 +7435,8 @@ end
 
 if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 
---white crafting gear kept by the default keep list for selling greys and white gear.
+--white profession weapons kept by the default keep list for selling greys and white gear.
+--These stay kept even if VendorKeepList is cleared: Skinning Knife, Mining Pick, fishing poles, etc.
 --Non-gear whites are omitted: white selling only evaluates weapons and armor.
 --Defined up here because the saved-variable defaults below include this list, and fishing poles of any item ID are also kept later by weapon subclass.
 --Post-vanilla tools are omitted on WoW Forever, which does not have those professions or items.
@@ -7441,12 +7474,15 @@ for _, itemID in ipairs(TyGearCraftingToolItemIDsPostClassic) do
 	TyGearCraftingToolItemIDsMissingOnForever[itemID] = true
 end
 TyGearCraftingToolItemIDs = {}
+TyGearCraftingToolItemIDSet = {}
 for _, itemID in ipairs(TyGearCraftingToolItemIDsClassic) do
 	table.insert(TyGearCraftingToolItemIDs, itemID)
+	TyGearCraftingToolItemIDSet[itemID] = true
 end
 if not IS_WOW_FOREVER then
 	for _, itemID in ipairs(TyGearCraftingToolItemIDsPostClassic) do
 		table.insert(TyGearCraftingToolItemIDs, itemID)
+		TyGearCraftingToolItemIDSet[itemID] = true
 	end
 end
 
@@ -7497,6 +7533,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		TyGearMigrateVendorKeepList()
 		TyGearPruneForeverVendorKeepList()
 		TyGearPruneRemovedDefaultKeepListItems()
+		TyGearEnsureDefaultVendorKeepListItems()
 		TyGearInitializeCharacterSettings()
 		TyGearFixLockedGearSlots()
 		TyGearMigrateLockGearSlots()
@@ -8505,6 +8542,31 @@ function TyGearPruneRemovedDefaultKeepListItems()
 	end
 end
 
+--put Skinning Knife, fishing poles, and other default profession weapons back if the keep list was cleared
+function TyGearEnsureDefaultVendorKeepListItems()
+	if not TyGearDB or not TyGearCraftingToolItemIDs then
+		return
+	end
+	local ordered, seen = {}, {}
+	for _, itemID in ipairs(TyGearParseItemIDList(TyGearDB.VendorKeepList or "")) do
+		if not seen[itemID] then
+			seen[itemID] = true
+			table.insert(ordered, itemID)
+		end
+	end
+	local added = false
+	for _, itemID in ipairs(TyGearCraftingToolItemIDs) do
+		if not seen[itemID] then
+			seen[itemID] = true
+			table.insert(ordered, itemID)
+			added = true
+		end
+	end
+	if added or TyGearDB.VendorKeepList == nil then
+		TyGearDB.VendorKeepList = table.concat(ordered, ", ")
+	end
+end
+
 --greys which have a sell price but which vendors refuse to buy
 TyGearUnsellableGreyItemIDs = {
 	[200590] = true, --Carefully Rolled Message
@@ -8585,6 +8647,10 @@ function TyGearBuildVendorSellContext(includeMerchantCosts, refreshUpgrades)
 			context.keptItemIDs[itemID] = true
 		end
 	end
+	--profession weapon tools stay unsold even when VendorKeepList was cleared
+	for _, itemID in ipairs(TyGearCraftingToolItemIDs or {}) do
+		context.keptItemIDs[itemID] = true
+	end
 	if includeMerchantCosts and GetMerchantNumItems and GetMerchantItemCostInfo and GetMerchantItemCostItem then
 		for merchantIndex = 1, GetMerchantNumItems() do
 			for costIndex = 1, (GetMerchantItemCostInfo(merchantIndex) or 0) do
@@ -8620,6 +8686,10 @@ end
 function TyGearIsKeptVendorItem(itemID, classID, subclassID, context)
 	context = context or greySelling
 	if context and context.keptItemIDs[itemID] then return true end
+	--Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, fishing poles on the default list, …
+	if itemID and TyGearCraftingToolItemIDSet and TyGearCraftingToolItemIDSet[itemID] then
+		return true
+	end
 	local fishingPoleSubclass = Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Fishingpole
 	if fishingPoleSubclass and (classID == Enum.ItemClass.Weapon) and (subclassID == fishingPoleSubclass) then
 		return true
