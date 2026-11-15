@@ -7573,7 +7573,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Automatically equip gear"],
-				["description"] = L["Automatically equip gear upgrades, depending on internal stat weights.  These stat weights are currently only configurable by editing the values in the TyGearDefaultWeights table in TyGear.lua.  If this is disabled, TyGear will still scan for gear when receiving new items and viewing loot rolls, but will never equip an item automatically."],
+				["description"] = L["Automatically equip gear upgrades, depending on internal stat weights.  These stat weights are currently only configurable by editing the values in the TyGearDefaultWeights table in TyGear.lua.  If this is disabled, TyGear will still scan for gear when receiving new items and viewing loot rolls, but will never equip an item automatically.\n\nBag items TyGear considers upgrades are marked in Baganator when TyGear is chosen as the upgrade source there."],
 				["toggleDescriptionTrue"] = L["Automatic gearing is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatic gearing is now disabled.  You can still manually scan bags for upgrades with the options menu button or \"/tg scan\"."],
 				["togglePostHook"] = function() TyGearUpdateBestItems() end
@@ -8002,7 +8002,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"TRAIT_NODE_CHANGED")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"TRAIT_TREE_CURRENCY_INFO_UPDATED")
 		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"CONFIRM_DISENCHANT_ROLL")
-		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"ADDON_LOADED")                 --late-loaded Baganator/Bagnon junk plugins
+		pcall(TyGearFrame.RegisterEvent,TyGearFrame,"ADDON_LOADED")                 --late-loaded Baganator/Bagnon junk and upgrade plugins
 
 		TyGearSetupVendorJunkIntegrations()
 
@@ -8203,8 +8203,9 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 	elseif event == "PLAYER_EQUIPMENT_CHANGED" then
 		-- Only refresh the changed equipped slot; avoid a full bag tooltip rescan per equip event
 		TyGearHandleEquipmentChanged(arg1)
-		--re-evaluate junk marks: worn upgrades can free bag whites that were treated as upgrades
+		--re-evaluate junk/upgrade marks: worn upgrades can free bag whites that were treated as upgrades
 		TyGearQueueVendorJunkRefresh()
+		TyGearQueueUpgradeRefresh()
 		if TyGearRefreshIgnoreSection then
 			local ignoreShown = (TyGearOptionsMenuScrollFrame and TyGearOptionsMenuScrollFrame:IsShown())
 				or (TyGearIgnoredGearListMenuScrollFrame and TyGearIgnoredGearListMenuScrollFrame:IsShown())
@@ -8222,12 +8223,14 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 			end
 		end
 	elseif event == "BAG_UPDATE" then
-		--only registered while auto-sell is enabled; refreshes junk marks, not a full gear scan
+		--registered while auto-sell or Baganator upgrade marks are active; not a full gear scan
 		TyGearQueueVendorJunkRefresh()
+		TyGearQueueUpgradeRefresh()
 	elseif event == "MERCHANT_CLOSED" or event == "PLAYER_LEVEL_UP" then
 		if event == "MERCHANT_CLOSED" then
 			TyGearStopSellingGreys()
 			TyGearQueueVendorJunkRefresh()
+			TyGearQueueUpgradeRefresh()
 		end
 		-- Scan after the merchant closes (not during selling, so bag slots stay stable) and after leveling up.
 		TyGearQueueScan()
@@ -8273,6 +8276,7 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 				if (linkInvType == Enum.InventoryType.IndexNonEquipType) then
 					TyGearPrint("TyGear: Skipping scan because looted item "..link.." is not equippable gear.", 3)
 					TyGearQueueVendorJunkRefresh()
+					TyGearQueueUpgradeRefresh()
 					return
 				--make sure a fishing pole isn't replaced while fishing
 				elseif (TyGearIsInvTypeWeapon(linkInvType) and TyGearIsMainHandAFishingPole()) then
@@ -8299,6 +8303,7 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 		end
 	elseif event == "MERCHANT_SHOW" then
 		TyGearQueueVendorJunkRefresh()
+		TyGearQueueUpgradeRefresh()
 		if (TyGearDB.AutoSellGreys == true)
 		or (TyGearDB.AutoSellUnsuitableWhites == true)
 		or (TyGearDB.AutoSellAllWhiteGear == true) then
@@ -8935,6 +8940,11 @@ local vendorJunkSlots = {}
 local vendorJunkListeners = {}
 local vendorJunkBagEventRegistered
 local vendorJunkIntegrationsReady
+--Baganator upgrade plugin: item links better than equipped gear
+local upgradeLinks = {}
+local upgradeListeners = {}
+local upgradeBagEventWanted
+local baganatorUpgradeRegistered
 
 function TyGearIsVendorJunk(bag, slot)
 	return vendorJunkSlots[bag..":"..slot] == true
@@ -8954,7 +8964,8 @@ end
 
 function TyGearSyncVendorJunkBagEvent()
 	if not TyGearFrame then return end
-	local wantEvent = TyGearVendorSellOptionsEnabled() and true or false
+	--upgrades also need BAG_UPDATE; keep it while either junk selling or upgrade marks are active
+	local wantEvent = (TyGearVendorSellOptionsEnabled() or upgradeBagEventWanted) and true or false
 	if wantEvent and not vendorJunkBagEventRegistered then
 		pcall(TyGearFrame.RegisterEvent, TyGearFrame, "BAG_UPDATE")
 		vendorJunkBagEventRegistered = true
@@ -9141,19 +9152,182 @@ function TyGearSetupVendorJunkIntegrations()
 		--bag addons may load later; retry those registrations
 		pcall(TyGearRegisterBaganatorJunkPlugin)
 		pcall(TyGearRegisterBagnonJunkMarks)
+		pcall(TyGearRegisterBaganatorUpgradePlugin)
 		TyGearQueueVendorJunkRefresh()
+		TyGearQueueUpgradeRefresh()
 		return
 	end
 	vendorJunkIntegrationsReady = true
 	local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
 	if isAddOnLoaded("Baganator") then
 		pcall(TyGearRegisterBaganatorJunkPlugin)
+		pcall(TyGearRegisterBaganatorUpgradePlugin)
 	end
 	if isAddOnLoaded("Bagnon") then
 		pcall(TyGearRegisterBagnonJunkMarks)
 	end
 	pcall(TyGearRegisterBlizzardBagJunkMarks)
 	TyGearQueueVendorJunkRefresh()
+	TyGearQueueUpgradeRefresh()
+end
+
+--whether info would score better than the weakest valid equipped slot TyGear manages
+function TyGearWouldUpgradeEquipped(info)
+	if (not info) or info.empty or (not info.isGear) or TyGearIsLeftOut(info) then
+		return false
+	end
+	if info.classCannotUseWeapon then return false end
+	if not (info.usable or info.Within5levels) then return false end
+	if TyGearIsReagentBag(info) then
+		TyGearAssignReagentBagSlots(info)
+	end
+	if (not info.validGearSlots) or TyGearAllValidGearSlotsProtected(info) then
+		return false
+	end
+	if (not TyGearEquippedItems) or (not next(TyGearEquippedItems)) then
+		if TyGearUpdateEquippedItems then TyGearUpdateEquippedItems() end
+	end
+	if not TyGearEquippedItems then return false end
+
+	local lowestSlot
+	local lowestScore
+	for _, gearSlot in pairs(info.validGearSlots) do
+		if not TyGearIsGearSlotProtected(gearSlot) then
+			local equipped = TyGearEquippedItems[gearSlot]
+			local score = 0
+			if equipped and equipped.info and (not equipped.info.empty) then
+				score = equipped.score or 0
+			end
+			if (not lowestSlot) or (score < lowestScore) then
+				lowestSlot = gearSlot
+				lowestScore = score
+			end
+		end
+	end
+	if not lowestSlot then return false end
+
+	local equipped = TyGearEquippedItems[lowestSlot]
+	local equippedInfo = equipped and equipped.info
+	if TyGearIsReagentBag(info) then
+		local currentDedicated = TyGearIsReagentBag(equippedInfo)
+		local currentProfession = TyGearUsesReagentBagSlot(equippedInfo)
+		if currentProfession and (not currentDedicated) then
+			return true
+		end
+	elseif TyGearUsesReagentBagSlot(info) and (not TyGearIsReagentBag(info)) then
+		if TyGearIsReagentBag(equippedInfo) then
+			return false
+		end
+	end
+
+	local score = TyGearDetermineItemScore(info, lowestSlot)
+	if (not equippedInfo) or equippedInfo.empty then
+		return true
+	end
+	if info.isAmmoBag then
+		local ranged = TyGearEquippedItems[INVSLOT_RANGED]
+		local rangedInfo = ranged and ranged.info
+		if rangedInfo and rangedInfo.isRangedWeapon
+		and (not TyGearIsAmmoBagValidForRangedWeapon(info, rangedInfo)) then
+			return false
+		end
+		local equippedValid = rangedInfo and TyGearIsAmmoBagValidForRangedWeapon(equippedInfo, rangedInfo)
+		local candidateValid = (not rangedInfo) or (not rangedInfo.isRangedWeapon)
+			or TyGearIsAmmoBagValidForRangedWeapon(info, rangedInfo)
+		return candidateValid and ((score > lowestScore) or (not equippedValid))
+	end
+	return score > lowestScore
+end
+
+function TyGearIsItemLinkUpgrade(itemLink)
+	if not itemLink then return false end
+	local cached = upgradeLinks[itemLink]
+	if cached ~= nil then return cached end
+	local info = TyGearReadItemInfo(nil, nil, nil, nil, itemLink)
+	local isUpgrade = TyGearWouldUpgradeEquipped(info) and true or false
+	upgradeLinks[itemLink] = isUpgrade
+	return isUpgrade
+end
+
+function TyGearAddUpgradeListener(callback)
+	if type(callback) == "function" then
+		table.insert(upgradeListeners, callback)
+	end
+end
+
+local function TyGearNotifyUpgradeListeners()
+	for _, callback in ipairs(upgradeListeners) do
+		pcall(callback)
+	end
+end
+
+function TyGearRefreshUpgradeMarks()
+	wipe(upgradeLinks)
+	if not TyGearDB then
+		TyGearSyncVendorJunkBagEvent()
+		TyGearNotifyUpgradeListeners()
+		return
+	end
+	if (not TyGearEquippedItems) or (not next(TyGearEquippedItems)) then
+		if TyGearUpdateEquippedItems then TyGearUpdateEquippedItems() end
+	end
+	for bag = 0, TyGearGetLastBagToScan() do
+		for slot = 1, (GetContainerNumSlots(bag) or 0) do
+			local itemID = GetContainerItemID and GetContainerItemID(bag, slot)
+			if itemID then
+				local invType = C_Item.GetItemInventoryTypeByID(itemID) or 0
+				local _, _, classID, subclassID, equipLoc = TyGearItemIdentity(itemID)
+				local isReagentBag = TyGearIsDedicatedReagentBag(classID, subclassID, equipLoc)
+				local isProfessionBag = TyGearIsProfessionOrSoulBag(classID, subclassID)
+				if (invType > 0) or isReagentBag or isProfessionBag then
+					local info = TyGearReadItemInfo(nil, nil, bag, slot)
+					if info and info.link then
+						local isUpgrade = TyGearWouldUpgradeEquipped(info) and true or false
+						upgradeLinks[info.link] = isUpgrade
+					end
+				end
+			end
+		end
+	end
+	TyGearSyncVendorJunkBagEvent()
+	TyGearNotifyUpgradeListeners()
+end
+
+function TyGearQueueUpgradeRefresh()
+	if not TyGearDB then return end
+	local debounceUntil = GetTime() + 0.35
+	for _, curAction in ipairs(TyGearActionQueue) do
+		if curAction.t and (curAction.action == "upgrade") then
+			if curAction.t < debounceUntil then
+				curAction.t = debounceUntil
+			end
+			return
+		end
+	end
+	TyGearQueueAction({ action = "upgrade", t = debounceUntil })
+end
+
+function TyGearRegisterBaganatorUpgradePlugin()
+	if baganatorUpgradeRegistered then return end
+	if not (Baganator and Baganator.API and Baganator.API.RegisterUpgradePlugin) then return end
+	Baganator.API.RegisterUpgradePlugin("TyGear", "tygear", function(itemLink)
+		return TyGearIsItemLinkUpgrade(itemLink)
+	end)
+	TyGearAddUpgradeListener(function()
+		if Baganator.API.RequestItemButtonsRefresh then
+			local reason
+			if Baganator.Constants and Baganator.Constants.RefreshReason then
+				reason = {
+					Baganator.Constants.RefreshReason.ItemWidgets,
+					Baganator.Constants.RefreshReason.Searches,
+				}
+			end
+			Baganator.API.RequestItemButtonsRefresh(reason)
+		end
+	end)
+	baganatorUpgradeRegistered = true
+	upgradeBagEventWanted = true
+	TyGearSyncVendorJunkBagEvent()
 end
 
 function TyGearIsQuestItem(container, slot)
@@ -9398,6 +9572,7 @@ function TyGearUpdateBestItems(skipBagScan)
 	if not skipBagScan then
 		TyGearScanBagsForBestItems()
 	end
+	if TyGearQueueUpgradeRefresh then TyGearQueueUpgradeRefresh() end
 end
 
 function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
@@ -12374,6 +12549,7 @@ function TyGearMain()
 					queueQueueRebuild = 1
 					TyGearUpdateBestItems() -- this will set TyGearSomeItemDataIsMissing again if necessary
 					TyGearQueueVendorJunkRefresh()
+					TyGearQueueUpgradeRefresh()
 				end
 			end
 			if (not TyGearSomeItemDataIsMissing) then
@@ -12645,6 +12821,7 @@ function TyGearMain()
 							curAction.t = nil
 							queueQueueRebuild = 1
 							TyGearQueueVendorJunkRefresh()
+							TyGearQueueUpgradeRefresh()
 						end
 					end
 				elseif curAction.t and (curAction.action == "sellgreys") then
@@ -12658,6 +12835,12 @@ function TyGearMain()
 						curAction.t = nil
 						queueQueueRebuild = 1
 						TyGearRefreshVendorJunkMarks()
+					end
+				elseif curAction.t and (curAction.action == "upgrade") then
+					if (GetTime() > curAction.t) then
+						curAction.t = nil
+						queueQueueRebuild = 1
+						TyGearRefreshUpgradeMarks()
 					end
 				end
 			end
