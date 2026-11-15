@@ -3768,8 +3768,9 @@ function TyGearConvertForeverLevelingBISWeights(weights, setup, flbSpec)
 	local rangedDps = num(weights.rangedDps)
 	-- FLB speed weights are per 0.1s slower than the reference; TyGear multiplies by (speed - norm) in seconds.
 	local speedBonus = num(weights.speed) * 10
+	local rangedSpeedBonus = num(weights.rangedSpeed) * 10
 	local speedRef = tonumber(weights.speedRef)
-	local rangedSpeedRef = tonumber(weights.rangedSpeedRef)
+	local rangedSpeedRef = tonumber(weights.rangedSpeedRef) or 2.8
 
 	if flbSpec == "feral" or flbSpec == "bear" then
 		out.weapon = {
@@ -3783,8 +3784,8 @@ function TyGearConvertForeverLevelingBISWeights(weights, setup, flbSpec)
 			ranged = true,
 			mh_dps = rangedDps,
 			oh_dps = 0,
-			norm_speed = rangedSpeedRef or 2.8,
-			speed_bonus = num(weights.rangedSpeed) * 10,
+			norm_speed = rangedSpeedRef,
+			speed_bonus = rangedSpeedBonus,
 		}
 	elseif dps > E or ohDps > E or speedBonus > E then
 		local pref = out.weapons
@@ -3796,6 +3797,12 @@ function TyGearConvertForeverLevelingBISWeights(weights, setup, flbSpec)
 		}
 	else
 		out.weapon = { mh_dps = 0, oh_dps = 0 }
+	end
+	-- Keep ranged DPS/speed even when melee weights drove the primary weapon table (rogue/warrior thrown, hunter with both).
+	if out.weapon and (rangedDps > E or rangedSpeedBonus ~= 0) then
+		out.weapon.ranged_dps = rangedDps
+		out.weapon.ranged_norm_speed = rangedSpeedRef
+		out.weapon.ranged_speed_bonus = rangedSpeedBonus
 	end
 	return out
 end
@@ -4527,7 +4534,7 @@ function TyGearEnsureWeaponWeights()
 end
 
 -- Weapon swing contribution for a candidate slot. OH uses oh_dps; MH/2H use mh_dps + speed.
--- DPS + speed together never go below 0 (same floor Forever Leveling BiS ScoreItem uses).
+-- Ranged/thrown: DPS only, except Hunters who also use ranged speed. Floor at 0 (FLB ScoreItem parity).
 function TyGearGetWeaponSwingEP(info, gearSlot)
 	local weapon = TyGearCurrentWeighting and TyGearCurrentWeighting.weapon
 	if not weapon or not info or info.classID ~= Enum.ItemClass.Weapon then return 0 end
@@ -4537,13 +4544,41 @@ function TyGearGetWeaponSwingEP(info, gearSlot)
 		dps = info.Damage / info.WeaponSpeed
 	end
 	if dps <= 0 then return 0 end
+
+	local isRangedItem = info.isRangedWeapon or TyGearIsInvTypeRanged(info.invType)
+	if weapon.feral and not isRangedItem then
+		local feralWeight = weapon.mh_dps or 0
+		if feralWeight <= E then return 0 end
+		return dps * feralWeight
+	end
+
+	if isRangedItem then
+		local dpsWeight = (weapon.ranged_dps and weapon.ranged_dps > E) and weapon.ranged_dps or (weapon.mh_dps or 0)
+		if dpsWeight <= E then return 0 end
+		local ep = dps * dpsWeight
+		local _, class = TyGearGetClassAndSpec()
+		-- Only hunters care about ranged weapon speed; rogue/warrior thrown is DPS-only.
+		if class == "HUNTER" then
+			local speed = info.WeaponSpeed
+			local norm = weapon.ranged_norm_speed or weapon.norm_speed
+			local speedBonus = weapon.ranged_speed_bonus
+			if speedBonus == nil then
+				speedBonus = weapon.speed_bonus or 0
+			end
+			if speed and norm and speedBonus > E then
+				ep = ep + (speed - norm) * speedBonus
+			end
+		end
+		if ep < 0 then
+			return 0
+		end
+		return ep
+	end
+
 	local forOffHand = gearSlot == INVSLOT_OFFHAND
 	local dpsWeight = forOffHand and (weapon.oh_dps or 0) or (weapon.mh_dps or 0)
 	if dpsWeight <= E then return 0 end
 	local ep = dps * dpsWeight
-	if weapon.feral or weapon.ranged then
-		return ep
-	end
 	local speed = info.WeaponSpeed
 	local norm = weapon.norm_speed
 	local speedBonus = weapon.speed_bonus or 0
@@ -11286,11 +11321,15 @@ function TyGearDetermineItemScore(info, gearSlot)
 	if TyGearUsingPawn() then
 		local pawnItemData = PawnGetItemData(info.link)
 		if pawnItemData then
-			local score = PawnGetSingleValueFromItem(pawnItemData, TyGearGetPawnScaleName())
+			local score = PawnGetSingleValueFromItem(pawnItemData, TyGearGetPawnScaleName()) or 0
+			-- Gear is never worth a negative score.
+			if score < 0 then
+				score = 0
+			end
 			if score == 0 then
 				return storeScore(E)
 			else
-				return storeScore(score or 0)
+				return storeScore(score)
 			end
 		end
 	end
@@ -11341,6 +11380,10 @@ function TyGearDetermineItemScore(info, gearSlot)
 			+ (TyGearCurrentWeighting.Damage or 0) * (info.Damage or 0)
 	end
 
+	-- Gear is never worth a negative score (speed penalties and negative weights included).
+	if score < 0 then
+		score = 0
+	end
 	if score == 0 then
 		return storeScore(E)
 	else
