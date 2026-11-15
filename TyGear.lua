@@ -4527,6 +4527,7 @@ function TyGearEnsureWeaponWeights()
 end
 
 -- Weapon swing contribution for a candidate slot. OH uses oh_dps; MH/2H use mh_dps + speed.
+-- DPS + speed together never go below 0 (same floor Forever Leveling BiS ScoreItem uses).
 function TyGearGetWeaponSwingEP(info, gearSlot)
 	local weapon = TyGearCurrentWeighting and TyGearCurrentWeighting.weapon
 	if not weapon or not info or info.classID ~= Enum.ItemClass.Weapon then return 0 end
@@ -4549,6 +4550,9 @@ function TyGearGetWeaponSwingEP(info, gearSlot)
 	-- Slower MH/2H increases normalized yellow damage at equal DPS.
 	if (not forOffHand) and speed and norm and speedBonus > E then
 		ep = ep + (speed - norm) * speedBonus
+	end
+	if ep < 0 then
+		return 0
 	end
 	return ep
 end
