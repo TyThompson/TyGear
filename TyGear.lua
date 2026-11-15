@@ -4512,11 +4512,14 @@ function TyGearEnsureWeaponWeights()
 	end
 
 	-- Physical swingers: EP per DPS ≈ (11–13.5) * AttackPowerWeight when AP=1 → 12.5 EP/DPS.
+	-- speed is extra EP per second slower than the normalized swing, before AttackPower scaling.
+	-- Shield specs leave it at 0. Specials use the normalized 2.4s 1H speed, and white-hit
+	-- threat per second is weapon DPS, so a slow low-DPS axe must not beat a faster hammer.
 	local scale = ap
 	local defaults = {
 		["2h"] = { mh = 12.5, oh = 0, norm = 3.3, speed = 200 },
 		["2hDW"] = { mh = 12.0, oh = 6.0, norm = 3.3, speed = 150 },
-		["weapon and shield"] = { mh = 11.0, oh = 0, norm = 2.4, speed = 100 },
+		["weapon and shield"] = { mh = 11.0, oh = 0, norm = 2.4, speed = 0 },
 		["dual wield"] = { mh = 11.0, oh = 6.0, norm = 2.4, speed = 50 },
 		["dagger"] = { mh = 11.0, oh = 6.0, norm = 1.7, speed = 0 },
 		["dagger and any"] = { mh = 11.0, oh = 6.0, norm = 1.7, speed = 0 },
@@ -4582,7 +4585,8 @@ function TyGearGetWeaponSwingEP(info, gearSlot)
 	local speed = info.WeaponSpeed
 	local norm = weapon.norm_speed
 	local speedBonus = weapon.speed_bonus or 0
-	-- Slower MH/2H increases normalized yellow damage at equal DPS.
+	-- Only specs that set speed_bonus (2H Slam and similar) gain EP for a slower swing.
+	-- Normalized specials ignore speed. Shield profiles leave speed_bonus at 0.
 	if (not forOffHand) and speed and norm and speedBonus > E then
 		ep = ep + (speed - norm) * speedBonus
 	end
