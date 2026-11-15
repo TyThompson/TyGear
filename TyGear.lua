@@ -8,8 +8,6 @@
 
 -- to do:
 -- implement classic direct % crit and direct % hit
--- Needing on meteor shard as a mage
---	In general, needing on one-handers that are near-worthless.  The plan is to only roll if it passes a minimum threshold.  That threshold should be 3x the highest weight among the 5 main stats.
 -- Don't roll on loot I already have in my bag
 -- Greeded in something within 5 levels that was an upgrade.  Specifically, Gauntlets of Divinity versus equipped Algae Fists.
 
@@ -9366,13 +9364,13 @@ end
 function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 	local anythingBetter = nil
 
-	-- Loot-roll decisions only need equipped gear vs the roll item; skip bag tooltip scans
+	-- Loot-roll decisions only need equipped gear vs the roll item; skip bag tooltip scans.
+	-- Always re-read equipped scores (and drop the score cache) so a prior partial/secret
+	-- tooltip pass cannot leave a slot at ~0 and cause NEED on a clear downgrade
+	-- (e.g. legs 2.6 vs equipped legs 22).
 	if lootRollItemID and arbitraryItemInfo and noActions then
-		if (not TyGearEquippedItems) or (not next(TyGearEquippedItems)) then
-			TyGearUpdateEquippedItems()
-		elseif not TyGearCurrentWeighting then
-			TyGearSetStatWeights()
-		end
+		TyGearWipeTable(TyGearScoreCache)
+		TyGearUpdateEquippedItems()
 		TyGearResetBestItemsFromEquipped()
 	else
 		TyGearUpdateBestItems()
@@ -9530,8 +9528,11 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 		--decide whether to roll on the item or not
 		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
 			if TyGearIsManagedGearSlot(invSlot) then
+				-- Must use `and` for the MH/OH exclusion: `or` is always true because a
+				-- slot cannot be both MAINHAND and OFFHAND, which skipped TyGearIs1hWorthwhile
+				-- and let near-worthless 1H pieces NEED over an empty MH/OH left by a parked 2H.
 				if (TyGearBestItems[invSlot].rollOn and
-				(invSlot ~= INVSLOT_MAINHAND or invSlot ~= INVSLOT_OFFHAND or TyGearIs1hWorthwhile(invSlot)) and
+				((invSlot ~= INVSLOT_MAINHAND and invSlot ~= INVSLOT_OFFHAND) or TyGearIs1hWorthwhile(invSlot)) and
 				(invSlot ~= INVSLOT_TABARD or TyGearIsBest2hBetterThanBestMainAndOff())) then
 					return 1
 				end
@@ -9770,6 +9771,10 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 			local currentProfession = TyGearUsesReagentBagSlot(currentBestInfo)
 			local professionCannotReplaceDedicated = candidateProfession and not candidateDedicated and currentDedicated
 			local dedicatedBeatsProfession = candidateDedicated and currentProfession and not currentDedicated
+			-- Do not treat currentBestInfo.unusable as an automatic win. Equipped gear can be
+			-- flagged unusable from a restricted/partial tooltip while still holding a real
+			-- score; allowing any usable candidate to replace it caused NEED on downgrades
+			-- (trash legs at 2.6 over worn legs at 22). Empty slots still accept any candidate.
 			if not professionCannotReplaceDedicated and (
 				dedicatedBeatsProfession
 				or ((score > lowestScoringValidGearSlotScore) and (not info.isAmmoBag))
@@ -9777,7 +9782,6 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 					and (not info.isAmmoBag)
 					and TyGearBagShouldReplaceEqualScore(info, currentBestInfo))
 				or currentBestInfo.empty
-				or currentBestInfo.unusable
 				or (info.isAmmoBag
 					and TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
 					and ((score > lowestScoringValidGearSlotScore)
