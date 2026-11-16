@@ -642,7 +642,8 @@ function TyGearAssignReagentBagSlots(info)
 		info.usable = nil
 		return
 	end
-	if not info.ignored and not TyGearIsLeftOut(info) then
+	-- Keep-list bags may still fill an empty reagent slot; only true ignores stay unusable.
+	if not info.ignored and not TyGearIsItemIgnored(info) then
 		local reason = info.reason
 		local tooltipBlocked = type(reason) == "string" and (
 			string.find(reason, "invalid item", 1, true)
@@ -1772,16 +1773,29 @@ function TyGearIsOnVendorKeepList(itemID)
 	return vendorKeepListCache[itemID] and true or false
 end
 
---the ignore list holds the keep list: either set is left out of selling and evaluation.
---slot protection stays on TyGearIsItemIgnored so a kept crafting tool does not lock its slot
+-- Resolve an item ID from a number, string, or info table.
+local function TyGearItemIDFrom(info)
+	if type(info) == "number" or type(info) == "string" then
+		return tonumber(info)
+	elseif type(info) == "table" then
+		return tonumber(info.id)
+	end
+end
+
+-- Keep-list / hard-kept crafting tools that are not on the true ignore list.
+-- These stay unsold, but may still fill an empty gear slot (something > nothing).
+function TyGearIsVendorKeepOnly(info)
+	if TyGearIsItemIgnored(info) then return false end
+	local itemID = TyGearItemIDFrom(info)
+	return itemID and TyGearIsOnVendorKeepList(itemID) and true or false
+end
+
+-- Left out of selling. True ignore-list / unmeasurable items are also left out of all
+-- evaluation and equipping. Keep-list items are unsold but may fill empty slots.
+-- Slot protection stays on TyGearIsItemIgnored so a kept crafting tool does not lock its slot.
 function TyGearIsLeftOut(info)
 	if TyGearIsItemIgnored(info) then return true end
-	local itemID
-	if type(info) == "number" or type(info) == "string" then
-		itemID = tonumber(info)
-	elseif type(info) == "table" then
-		itemID = tonumber(info.id)
-	end
+	local itemID = TyGearItemIDFrom(info)
 	if itemID and TyGearIsOnVendorKeepList(itemID) then return true end
 end
 
@@ -5250,9 +5264,9 @@ local function buildIgnoreSection(optionsPage)
 	optionsPage:AddRow(editRow)
 	showManualIDs()
 
-	--keep list and its options live on the ignore list; items here are not sold or evaluated
+	--keep list and its options live on the ignore list; items here are not sold (empty slots may still be filled)
 	addSubheader(L["Keep List"])
-	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
+	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 	addNote(keepListDescription)
 
 	local unboundCheck = newCheckbox(
@@ -5827,7 +5841,7 @@ local function buildIgnoredGearListPage(listMenu)
 	TyGearRefreshIgnoredGearList()
 end
 
---Keep list and keep options, hosted on the ignore list. Items here are not sold or evaluated.
+--Keep list and keep options, hosted on the ignore list. Items here are not sold; they may still fill empty slots.
 buildKeepListSection = function(listMenu, anchorBelow)
 	local header = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	header:SetPoint("TOPLEFT", anchorBelow, "BOTTOMLEFT", 0, -18)
@@ -5837,7 +5851,7 @@ buildKeepListSection = function(listMenu, anchorBelow)
 	note:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -6)
 	note:SetWidth(480)
 	note:SetJustifyH("LEFT")
-	note:SetText(L["Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated. White selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, and Arclight Spanner, are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here."])
+	note:SetText(L["Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear. White selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, and Arclight Spanner, are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here."])
 	listMenu.keepListNote = note
 
 	local unboundCheck = newCheckbox(
@@ -5857,7 +5871,7 @@ buildKeepListSection = function(listMenu, anchorBelow)
 	unboundCheck:SetHitRectInsets(0, -280, 0, 0)
 	listMenu.keepUnboundCheck = unboundCheck
 
-	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."]
+	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item from being sold; it can still fill an empty gear slot. New items are added near the top of the list."]
 
 	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	addHeader:SetPoint("TOPLEFT", unboundCheck, "BOTTOMLEFT", 2, -14)
@@ -7770,7 +7784,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["shouldUse"] = false, --the keep list lives on the ignore list
 				["editBox"] = true,
 				["label"] = L["Keep List"],
-				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are part of the ignore list, so they are not sold or evaluated.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item and skips evaluation. New items are added near the top of the list."],
+				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."],
 				["editBoxPostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
@@ -8335,7 +8349,8 @@ function TyGearDecideRoll(link, lootRollID)
 		local rollItemInfo = TyGearReadItemInfo(nil, nil, nil, nil, link)
 		local reason = rollItemInfo.reason or "(no reason set)"
 		local onNeedList = TyGearIsOnNeedList(lootRollItemID or (rollItemInfo and rollItemInfo.id))
-		if TyGearIsLeftOut(rollItemInfo) then
+		-- True ignore-list items never roll. Keep-list items may still NEED when they fill an empty slot.
+		if TyGearIsItemIgnored(rollItemInfo) then
 			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is ignored, so not rolling.", 1)
 			return nil, rollItemInfo, reason
 		end
@@ -9223,8 +9238,9 @@ function TyGearSetupVendorJunkIntegrations()
 end
 
 --whether info would score better than the weakest valid equipped slot TyGear manages
+-- Keep-list items only count as upgrades when they fill an empty slot (something > nothing).
 function TyGearWouldUpgradeEquipped(info)
-	if (not info) or info.empty or (not info.isGear) or TyGearIsLeftOut(info) then
+	if (not info) or info.empty or (not info.isGear) or TyGearIsItemIgnored(info) then
 		return false
 	end
 	if info.classCannotUseWeapon then return false end
@@ -9240,6 +9256,7 @@ function TyGearWouldUpgradeEquipped(info)
 	end
 	if not TyGearEquippedItems then return false end
 
+	local keepOnly = TyGearIsVendorKeepOnly(info)
 	local lowestSlot
 	local lowestScore
 	for _, gearSlot in pairs(info.validGearSlots) do
@@ -9274,6 +9291,10 @@ function TyGearWouldUpgradeEquipped(info)
 	local score = TyGearDetermineItemScore(info, lowestSlot)
 	if (not equippedInfo) or equippedInfo.empty then
 		return true
+	end
+	-- Keep-list items stay unsold and do not replace worn gear; empty slots only.
+	if keepOnly then
+		return false
 	end
 	if info.isAmmoBag then
 		local ranged = TyGearEquippedItems[INVSLOT_RANGED]
@@ -9905,7 +9926,7 @@ function TyGearRedirectReagentBagsToReagentSlot()
 		if not candidate or not candidate.info or candidate.info.empty or candidate.info.unusable then
 			return false
 		end
-		if TyGearIsLeftOut(candidate.info) then return false end
+		if TyGearIsItemIgnored(candidate.info) then return false end
 		local isDedicated = TyGearIsReagentBag(candidate.info)
 		local isProfession = TyGearUsesReagentBagSlot(candidate.info)
 		if not isDedicated and not isProfession then return false end
@@ -9914,6 +9935,8 @@ function TyGearRedirectReagentBagsToReagentSlot()
 			return false
 		end
 		if reagentEmpty(current) then return true end
+		-- Keep-list bags fill an empty reagent slot only; they do not replace worn bags.
+		if TyGearIsVendorKeepOnly(candidate.info) then return false end
 		if not isDedicated then return false end
 		local candidateScore = candidate.score or 0
 		local currentScore = current.score or 0
@@ -9967,15 +9990,17 @@ function TyGearRedirectReagentBagsToReagentSlot()
 end
 
 --companion function to TyGearConsiderAllItems
+-- Keep-list items are skipped for replacing worn gear, but still fill empty slots.
 function TyGearConsiderItem(info, bag, slot, rollOn)
 	if info.empty
-	or TyGearIsLeftOut(info)
+	or TyGearIsItemIgnored(info)
 	or (info.guid and TyGearBestItemsAlreadyAdded[info.guid])
 	or (info.isAmmoBag
 	and	TyGearBestItems[INVSLOT_RANGED].info.isRangedWeapon)
 	and (not TyGearIsAmmoBagValidForRangedWeapon(info, TyGearBestItems[INVSLOT_RANGED].info)) then
 		return
 	end
+	local keepOnly = TyGearIsVendorKeepOnly(info)
 	-- Dedicated reagent bags only use the reagent slot.
 	if TyGearIsReagentBag(info) then
 		TyGearAssignReagentBagSlots(info)
@@ -10039,19 +10064,22 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 			-- Do not treat currentBestInfo.unusable as an automatic win. Equipped gear can be
 			-- flagged unusable from a restricted/partial tooltip while still holding a real
 			-- score; allowing any usable candidate to replace it caused NEED on downgrades
-			-- (trash legs at 2.6 over worn legs at 22). Empty slots still accept any candidate.
+			-- (trash legs at 2.6 over worn legs at 22). Empty slots still accept any candidate,
+			-- including keep-list items (something equipped > nothing).
 			if not professionCannotReplaceDedicated and (
-				dedicatedBeatsProfession
-				or ((score > lowestScoringValidGearSlotScore) and (not info.isAmmoBag))
-				or ((score == lowestScoringValidGearSlotScore)
-					and (not info.isAmmoBag)
-					and TyGearBagShouldReplaceEqualScore(info, currentBestInfo))
-				or currentBestInfo.empty
-				or (info.isAmmoBag
-					and TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
-					and ((score > lowestScoringValidGearSlotScore)
-					or (not TyGearIsAmmoBagValidForBestKnownRangedWeapon(currentBestInfo)))
-				)
+				currentBestInfo.empty
+				or ((not keepOnly) and (
+					dedicatedBeatsProfession
+					or ((score > lowestScoringValidGearSlotScore) and (not info.isAmmoBag))
+					or ((score == lowestScoringValidGearSlotScore)
+						and (not info.isAmmoBag)
+						and TyGearBagShouldReplaceEqualScore(info, currentBestInfo))
+					or (info.isAmmoBag
+						and TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
+						and ((score > lowestScoringValidGearSlotScore)
+						or (not TyGearIsAmmoBagValidForBestKnownRangedWeapon(currentBestInfo)))
+					)
+				))
 			) then
 				-- TyGearPrint(info.link.." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
 				if info.guid then TyGearBestItemsAlreadyAdded[info.guid] = 1 end
@@ -10803,7 +10831,7 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 							info.numValidGearSlots = info.numValidGearSlots + 1
 						end
 					end
-					if info.numValidGearSlots > 0 and not info.ignored and not TyGearIsLeftOut(info) then
+					if info.numValidGearSlots > 0 and not info.ignored and not TyGearIsItemIgnored(info) then
 						info.unusable = nil
 						info.usable = 1
 						info.reason = nil
@@ -11037,7 +11065,7 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	if sawSecretTooltipLine and (not TyGearItemHasMeasurableStats(info)) and (not info.unusable) then
 		info.unusable = 1
 		info.reason = "(item data is restricted right now)"
-		if TyGearIsLeftOut(info) then
+		if TyGearIsItemIgnored(info) then
 			info.ignored = 1
 			info.usable = nil
 			info.reason = "("..L["ignored"]..")"
@@ -11168,7 +11196,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 		info.unmeasurableOnly = 1
 		TyGearRememberUnmeasurableGear(info)
 	end
-	if TyGearIsLeftOut(info) then
+	-- True ignore-list / unmeasurable items stay fully out of evaluation.
+	-- Keep-list items remain usable so they can fill empty slots (something > nothing).
+	if TyGearIsItemIgnored(info) then
 		info.ignored = 1
 		info.unusable = 1
 		info.usable = nil
