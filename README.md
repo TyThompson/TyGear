@@ -17,7 +17,7 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 
 - Upgrades found in combat are equipped when combat ends.
 - Bag items TyGear considers upgrades are marked in Baganator when TyGear is chosen as the upgrade source there (same idea as choosing TyGear as the junk source for vendor-sell items).
-- Gear TyGear cannot score, slot and item ignore controls, and the keep list live on the **Ignored List** tab. Items on the ignore list, including the keep list, are not sold or evaluated.
+- Gear TyGear cannot score, slot and item ignore controls, and the keep list live on the **Ignored List** tab. Ignore-list items are not sold or evaluated. Keep-list items are not sold; they can still fill an empty gear slot, but are not treated as upgrades over gear you already wear.
 - Items you always want to **NEED** (for example a crafting green in a dungeon) go on the **Need List** tab; add them near the top of that tab or with a key binding.
 - **Keep unbound grey gear** is on the Ignored List tab with the keep list. That list starts with Forever crafting tools; add more near the top of that tab. Every fishing pole is kept when selling even if its item ID is removed.
 - Weapons your class can never learn are skipped. Untrained weapons still show a score with "(won't equip)".
