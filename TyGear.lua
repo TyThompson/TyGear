@@ -7478,6 +7478,7 @@ local TyGearCraftingToolItemIDsClassic = {
 	6367, --Big Iron Fishing Pole
 	7005, --Skinning Knife
 	12225, --Blump Family Fishing Pole
+	247789, --Novice's Practice Wand
 }
 --removed from the default keep list (fishing poles still kept by weapon subclass; non-gear whites are never sold as white gear)
 local TyGearRemovedDefaultKeepListItemIDs = {
