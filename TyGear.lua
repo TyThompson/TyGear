@@ -9763,6 +9763,8 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 	--create all future equip actions required (only if not rolling currently)
 	if (not lootRollItemID and not noActions) then
 		TyGearRedirectReagentBagsToReagentSlot()
+		-- One scan should unequip the less preferred equal bag (non-soulbound before soulbound).
+		TyGearRetargetBagUpgradesAwayFromPreferredBags()
 		local bagEquipDelay = 0
 		for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
 			if TyGearIsManagedGearSlot(invSlot) then
@@ -9999,6 +10001,83 @@ function TyGearBagShouldReplaceEqualScore(candidate, current)
 	return false
 end
 
+-- True when bagInfo should be the one unequipped if it ties keptInfo on slot count.
+-- keptInfo is the bag we would rather leave equipped (soulbound, soul bag, dedicated reagent).
+function TyGearPreferToDisplaceBag(bagInfo, keptInfo)
+	if not bagInfo or not keptInfo or bagInfo.empty or keptInfo.empty then return false end
+	if bagInfo.classID ~= Enum.ItemClass.Container or keptInfo.classID ~= Enum.ItemClass.Container then
+		return false
+	end
+	return TyGearBagShouldReplaceEqualScore(keptInfo, bagInfo)
+end
+
+local function TyGearInfoFitsGearSlot(info, gearSlot)
+	if not info or not gearSlot or not info.validGearSlots then return false end
+	for _, slot in pairs(info.validGearSlots) do
+		if slot == gearSlot then return true end
+	end
+end
+
+-- A larger bag aimed at a soulbound bag leaves that soulbound in inventory, and the
+-- matching non-soulbound bag stays equipped until the next scan. Point the upgrade
+-- at the bag we would rather unequip before any equip action is queued.
+function TyGearRetargetBagUpgradesAwayFromPreferredBags()
+	if not TyGearBestItems or not TyGearEquippedItems or not TyGearEquippableBagSlots then return end
+	local slots = {}
+	local seen = {}
+	local function addSlot(slot)
+		if slot and not seen[slot] then
+			seen[slot] = true
+			table.insert(slots, slot)
+		end
+	end
+	for _, slot in ipairs(TyGearEquippableBagSlots) do
+		addSlot(slot)
+	end
+	addSlot(TyGearReagentBagSlot)
+	for _, slotA in ipairs(slots) do
+		local bestA = TyGearBestItems[slotA]
+		local equippedA = TyGearEquippedItems[slotA]
+		local equippedInfoA = equippedA and equippedA.info
+		if bestA and (not bestA.equipped) and equippedInfoA and (not equippedInfoA.empty)
+		and (not TyGearIsGearSlotProtected(slotA)) then
+			for _, slotB in ipairs(slots) do
+				if slotA ~= slotB and (not TyGearIsGearSlotProtected(slotB)) and (not TyGearIsGearSlotLocked(slotB)) then
+					local bestB = TyGearBestItems[slotB]
+					local equippedB = TyGearEquippedItems[slotB]
+					local equippedInfoB = equippedB and equippedB.info
+					if bestB and bestB.equipped and equippedInfoB and (not equippedInfoB.empty)
+					and (equippedA.score or 0) == (equippedB.score or 0)
+					and TyGearInfoFitsGearSlot(bestA.info, slotB)
+					and TyGearPreferToDisplaceBag(equippedInfoB, equippedInfoA) then
+						local upgradeScore = bestA.score or 0
+						local destScore = equippedB.score or 0
+						local upgradeWins = (upgradeScore > destScore)
+							or ((upgradeScore == destScore) and TyGearBagShouldReplaceEqualScore(bestA.info, equippedInfoB))
+						if upgradeWins then
+							TyGearBestItems[slotB] = {
+								info = bestA.info,
+								score = bestA.score,
+								equipped = nil,
+								bag = bestA.bag,
+								slot = bestA.slot,
+								fromEquippedSlot = bestA.fromEquippedSlot,
+								rollOn = bestA.rollOn,
+							}
+							TyGearBestItems[slotA] = {
+								info = equippedInfoA,
+								score = equippedA.score,
+								equipped = 1,
+							}
+							break
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
 -- Dedicated reagent bags belong in the reagent slot. Profession/soul bags may fill it when empty.
 -- Move a candidate there when it was considered for a normal bag slot (or is already worn in one).
 function TyGearRedirectReagentBagsToReagentSlot()
@@ -10130,13 +10209,27 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 						end
 					end
 				end
+				local slotBest = TyGearBestItems[gearSlot]
+				local slotScore = slotBest.score or 0
+				-- Same slot count: unequip the non-soulbound bag and leave the soulbound one worn.
+				local tiedBagToDisplace = false
+				if info.classID == Enum.ItemClass.Container
+				and (not slotBest.info.empty)
+				and slotScore == lowestScoringValidGearSlotScore
+				and gearSlot ~= lowestScoringValidGearSlot then
+					local kept = TyGearBestItems[lowestScoringValidGearSlot]
+					local keptInfo = kept and kept.info
+					if keptInfo then
+						tiedBagToDisplace = TyGearPreferToDisplaceBag(slotBest.info, keptInfo)
+					end
+				end
 				if not skipThisSlot and
-				((not TyGearBestItems[gearSlot]) or
-				(TyGearBestItems[gearSlot].info.empty or
-				(not TyGearBestItems[gearSlot].score) or
-				(TyGearBestItems[gearSlot].score < lowestScoringValidGearSlotScore))) then
+				((not slotBest.score) or
+				slotBest.info.empty or
+				(slotScore < lowestScoringValidGearSlotScore) or
+				tiedBagToDisplace) then
 					lowestScoringValidGearSlot = gearSlot
-					lowestScoringValidGearSlotScore = TyGearBestItems[gearSlot] and TyGearBestItems[gearSlot].score or 0
+					lowestScoringValidGearSlotScore = slotScore
 				end
 				end
 			end
@@ -12220,12 +12313,23 @@ function TyGearGetTooltipScoreComparisonInfo(info, equipped)
 						end
 					end
 				end
-				if (not skipThisSlot) and
-				(TyGearEquippedItems[gearSlot].info.empty or
-				(TyGearEquippedItems[gearSlot].score <= lowestScoringValidGearSlotScore)) then
-					lowestScoringValidGearInfo = TyGearEquippedItems[gearSlot].info
+				local equippedHere = TyGearEquippedItems[gearSlot]
+				local equippedInfo = equippedHere and equippedHere.info
+				local equippedScore = equippedHere and equippedHere.score
+				local takeThisSlot = false
+				if equippedInfo and (equippedInfo.empty or (not equippedScore) or (equippedScore < lowestScoringValidGearSlotScore)) then
+					takeThisSlot = true
+				elseif equippedInfo and equippedScore == lowestScoringValidGearSlotScore then
+					if info.classID == Enum.ItemClass.Container then
+						takeThisSlot = TyGearPreferToDisplaceBag(equippedInfo, lowestScoringValidGearInfo)
+					else
+						takeThisSlot = true
+					end
+				end
+				if (not skipThisSlot) and takeThisSlot then
+					lowestScoringValidGearInfo = equippedInfo
 					lowestScoringValidGearSlot = gearSlot
-					lowestScoringValidGearSlotScore = TyGearEquippedItems[gearSlot].score
+					lowestScoringValidGearSlotScore = equippedScore
 				end
 				end
 			end
