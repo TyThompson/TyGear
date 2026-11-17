@@ -901,17 +901,25 @@ function TyGearPrint(text, verbosity)
 	print(TyGearColorize(text))
 end
 
+--Classic level-up ding. Forever ships this file; the epic-loot sound kit does not play there.
+local TyGearUpgradeChimeFile = "Sound\\Interface\\LevelUp.ogg"
+local TyGearUpgradeChimeFileName = "LevelUp.ogg"
+
+function TyGearGetUpgradeChimeFileName()
+	return TyGearUpgradeChimeFileName
+end
+
 --Pleasant confirmation chime when TyGear finishes equipping an upgrade (e.g. after winning a party loot roll).
---Prefer the epic-loot toast when the client has it; fall back to the classic quest-complete ding.
 function TyGearPlayUpgradeEquippedChime(force)
 	if not force and TyGearDB and TyGearDB.PlayUpgradeChime == false then return end
-	local soundKit = (SOUNDKIT and (
-		SOUNDKIT.UI_EPICLOOT_TOAST
-		or SOUNDKIT.UI_RAID_LOOT_TOAST_LESSER_ITEM_WON
-		or SOUNDKIT.IG_QUEST_LIST_COMPLETE
-	)) or 878
-	--A test click should play again even if the last chime is still going.
-	pcall(PlaySound, soundKit, "SFX", not force)
+	if PlaySoundFile then
+		--nil means this client played it without returning a flag. false means the file did not play.
+		local ok, played = pcall(PlaySoundFile, TyGearUpgradeChimeFile, "Master")
+		if ok and played ~= false then return end
+	end
+	if SOUNDKIT and SOUNDKIT.IG_QUEST_LIST_COMPLETE then
+		pcall(PlaySound, SOUNDKIT.IG_QUEST_LIST_COMPLETE)
+	end
 end
 
 --initialize table for storing saved variables
@@ -6844,18 +6852,27 @@ local function optionsSetup(optionsMenu)
 		frame[i]:SetChecked(TyGearSettingsTable(v["option"])[v["option"]]) --set initial checked state based on db
 
 		if v["playSound"] then
-			local playButton = CreateFrame("Button", "TyGear"..v["option"].."PlayButton", frame[i], "UIPanelButtonTemplate")
-			playButton:SetHeight(22)
-			playButton:SetText(L["Play"])
-			local playFont = playButton.GetFontString and playButton:GetFontString()
-			local playTextWidth = playFont and playFont:GetStringWidth() or 0
-			if not playTextWidth or playTextWidth < 8 then
-				playTextWidth = #L["Play"] * 8
-			end
-			playButton:SetWidth(math.max(54, playTextWidth + 24))
-			playButton:SetPoint("LEFT", frame[i].label, "RIGHT", 12, 0)
-			playButton:SetFrameLevel((frame[i]:GetFrameLevel() or 1) + 2)
-			--Stop the checkbox click area at the label so Play is not also a toggle.
+			local playButton = CreateFrame("Button", "TyGear"..v["option"].."PlayButton", frame[i])
+			playButton:SetSize(22, 22)
+			playButton:SetPoint("LEFT", frame[i].label, "RIGHT", 10, 0)
+			playButton:SetFrameLevel((frame[i]:GetFrameLevel() or 1) + 5)
+			playButton:RegisterForClicks("LeftButtonUp")
+			playButton:EnableMouse(true)
+			local playIcon = playButton:CreateTexture(nil, "ARTWORK")
+			playIcon:SetSize(16, 16)
+			playIcon:SetPoint("CENTER")
+			playIcon:SetTexture("Interface\\AddOns\\TyGear\\Media\\PlayTriangle")
+			local playGold, playBright = { 1, 0.82, 0 }, { 1, 0.95, 0.65 }
+			playIcon:SetVertexColor(playGold[1], playGold[2], playGold[3])
+			local playGlow = playButton:CreateTexture(nil, "HIGHLIGHT")
+			playGlow:SetTexture("Interface\\Buttons\\UI-Common-MouseHilight")
+			playGlow:SetBlendMode("ADD")
+			playGlow:SetSize(28, 28)
+			playGlow:SetPoint("CENTER")
+			local fileName = frame[i]:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+			fileName:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
+			fileName:SetText(TyGearGetUpgradeChimeFileName())
+			--Stop the checkbox click area at the label so the triangle is not also a toggle.
 			local labelWidth = frame[i].label:GetStringWidth() or 0
 			if labelWidth < 8 then
 				labelWidth = #(v["label"] or "") * 6
@@ -6864,14 +6881,25 @@ local function optionsSetup(optionsMenu)
 			playButton:SetScript("OnClick", function()
 				TyGearPlayUpgradeEquippedChime(true)
 			end)
+			playButton:SetScript("OnMouseDown", function()
+				playIcon:SetPoint("CENTER", 1, -1)
+			end)
+			playButton:SetScript("OnMouseUp", function()
+				playIcon:SetPoint("CENTER")
+			end)
 			playButton:SetScript("OnEnter", function(self)
+				playIcon:SetVertexColor(playBright[1], playBright[2], playBright[3])
 				GameTooltip:SetOwner(self, "ANCHOR_NONE")
 				GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-				GameTooltip:AddLine(L["Play"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-				GameTooltip:AddLine(L["Play the upgrade sound. This works even when the option is off."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+				GameTooltip:AddLine(TyGearGetUpgradeChimeFileName(), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+				GameTooltip:AddLine(L["Play this sound. This works even when the option is off."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 				GameTooltip:Show()
 			end)
-			playButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			playButton:SetScript("OnLeave", function()
+				playIcon:SetVertexColor(playGold[1], playGold[2], playGold[3])
+				playIcon:SetPoint("CENTER")
+				GameTooltip:Hide()
+			end)
 			optionsPage:EnableWheel(playButton)
 		end
 
@@ -7662,7 +7690,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Play a sound when an upgrade is equipped"],
 				["playSound"] = true,
-				["description"] = L["Play a short sound when TyGear finishes equipping an upgrade.  The Play button next to this option plays that sound so you can hear it."],
+				["description"] = L["Play a short sound when TyGear finishes equipping an upgrade.  The triangle next to this option plays %s so you can hear it."]:format(TyGearGetUpgradeChimeFileName()),
 				["toggleDescriptionTrue"] = L["The upgrade equipped sound is now enabled."],
 				["toggleDescriptionFalse"] = L["The upgrade equipped sound is now disabled."]
 			},
