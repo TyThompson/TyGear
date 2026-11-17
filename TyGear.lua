@@ -903,14 +903,15 @@ end
 
 --Pleasant confirmation chime when TyGear finishes equipping an upgrade (e.g. after winning a party loot roll).
 --Prefer the epic-loot toast when the client has it; fall back to the classic quest-complete ding.
-function TyGearPlayUpgradeEquippedChime()
-	if TyGearDB and TyGearDB.PlayUpgradeChime == false then return end
+function TyGearPlayUpgradeEquippedChime(force)
+	if not force and TyGearDB and TyGearDB.PlayUpgradeChime == false then return end
 	local soundKit = (SOUNDKIT and (
 		SOUNDKIT.UI_EPICLOOT_TOAST
 		or SOUNDKIT.UI_RAID_LOOT_TOAST_LESSER_ITEM_WON
 		or SOUNDKIT.IG_QUEST_LIST_COMPLETE
 	)) or 878
-	pcall(PlaySound, soundKit, "SFX", true)
+	--A test click should play again even if the last chime is still going.
+	pcall(PlaySound, soundKit, "SFX", not force)
 end
 
 --initialize table for storing saved variables
@@ -6842,6 +6843,38 @@ local function optionsSetup(optionsMenu)
 		frame[i]:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
 		frame[i]:SetChecked(TyGearSettingsTable(v["option"])[v["option"]]) --set initial checked state based on db
 
+		if v["playSound"] then
+			local playButton = CreateFrame("Button", "TyGear"..v["option"].."PlayButton", frame[i], "UIPanelButtonTemplate")
+			playButton:SetHeight(22)
+			playButton:SetText(L["Play"])
+			local playFont = playButton.GetFontString and playButton:GetFontString()
+			local playTextWidth = playFont and playFont:GetStringWidth() or 0
+			if not playTextWidth or playTextWidth < 8 then
+				playTextWidth = #L["Play"] * 8
+			end
+			playButton:SetWidth(math.max(54, playTextWidth + 24))
+			playButton:SetPoint("LEFT", frame[i].label, "RIGHT", 12, 0)
+			playButton:SetFrameLevel((frame[i]:GetFrameLevel() or 1) + 2)
+			--Stop the checkbox click area at the label so Play is not also a toggle.
+			local labelWidth = frame[i].label:GetStringWidth() or 0
+			if labelWidth < 8 then
+				labelWidth = #(v["label"] or "") * 6
+			end
+			frame[i]:SetHitRectInsets(0, -(labelWidth + 4), 0, 0)
+			playButton:SetScript("OnClick", function()
+				TyGearPlayUpgradeEquippedChime(true)
+			end)
+			playButton:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_NONE")
+				GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+				GameTooltip:AddLine(L["Play"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+				GameTooltip:AddLine(L["Play the upgrade sound. This works even when the option is off."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+				GameTooltip:Show()
+			end)
+			playButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			optionsPage:EnableWheel(playButton)
+		end
+
 		--if this has a child defined and it should be used, build its child
 		if v["child"] and ((v["child"]["shouldUse"] == nil) or (v["child"]["shouldUse"] and (v["child"]["shouldUse"] ~= false))) then
 
@@ -7628,7 +7661,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Play a sound when an upgrade is equipped"],
-				["description"] = L["Play a short sound when TyGear finishes equipping an upgrade."],
+				["playSound"] = true,
+				["description"] = L["Play a short sound when TyGear finishes equipping an upgrade.  The Play button next to this option plays that sound so you can hear it."],
 				["toggleDescriptionTrue"] = L["The upgrade equipped sound is now enabled."],
 				["toggleDescriptionFalse"] = L["The upgrade equipped sound is now disabled."]
 			},

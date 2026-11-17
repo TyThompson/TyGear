@@ -26,9 +26,11 @@ if GetLocale() == "deDE" then
 
 	-- option: PlayUpgradeChime
 	T.Localization["Play a sound when an upgrade is equipped"] = "Ton abspielen, wenn eine Verbesserung angelegt wird"
-	T.Localization["Play a short sound when TyGear finishes equipping an upgrade."] = "Einen kurzen Ton abspielen, wenn TyGear eine Verbesserung fertig angelegt hat."
+	T.Localization["Play a short sound when TyGear finishes equipping an upgrade.  The Play button next to this option plays that sound so you can hear it."] = "Einen kurzen Ton abspielen, wenn TyGear eine Verbesserung fertig angelegt hat.  Die Schaltfläche Abspielen daneben spielt diesen Ton ab, damit du ihn hören kannst."
 	T.Localization["The upgrade equipped sound is now enabled."] = "Der Ton beim Anlegen einer Verbesserung ist jetzt aktiviert."
 	T.Localization["The upgrade equipped sound is now disabled."] = "Der Ton beim Anlegen einer Verbesserung ist jetzt deaktiviert."
+	T.Localization["Play"] = "Abspielen"
+	T.Localization["Play the upgrade sound. This works even when the option is off."] = "Den Ton für eine Verbesserung abspielen. Das funktioniert auch, wenn die Option aus ist."
 
 	-- option: AutoLootRoll
 	T.Localization["Automatically roll on greens and BoP blues"] = "Automatisch auf grüne und beim Aufheben gebundene blaue Gegenstände würfeln"
