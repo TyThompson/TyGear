@@ -901,9 +901,9 @@ function TyGearPrint(text, verbosity)
 	print(TyGearColorize(text))
 end
 
---Short magic click from the classic interface set. Forever has the file, and it is not the level-up, quest, or loot cue.
-local TyGearUpgradeChimeFile = "Sound\\Interface\\MagicClick.ogg"
-local TyGearUpgradeChimeFileName = "MagicClick.ogg"
+--Map ping, by file id. Forever plays this id, and it is not the level-up, quest, or loot cue.
+local TyGearUpgradeChimeFile = 567416
+local TyGearUpgradeChimeFileName = "MapPing"
 
 function TyGearGetUpgradeChimeFileName()
 	return TyGearUpgradeChimeFileName
@@ -913,12 +913,7 @@ end
 function TyGearPlayUpgradeEquippedChime(force)
 	if not force and TyGearDB and TyGearDB.PlayUpgradeChime == false then return end
 	if PlaySoundFile then
-		--nil means this client played it without returning a flag. false means the file did not play.
-		local ok, played = pcall(PlaySoundFile, TyGearUpgradeChimeFile, "Master")
-		if ok and played ~= false then return end
-	end
-	if SOUNDKIT and SOUNDKIT.IG_QUEST_LIST_COMPLETE then
-		pcall(PlaySound, SOUNDKIT.IG_QUEST_LIST_COMPLETE)
+		pcall(PlaySoundFile, TyGearUpgradeChimeFile, "Master")
 	end
 end
 
@@ -6853,26 +6848,19 @@ local function optionsSetup(optionsMenu)
 
 		if v["playSound"] then
 			local playButton = CreateFrame("Button", "TyGear"..v["option"].."PlayButton", frame[i])
-			playButton:SetSize(22, 22)
+			playButton:SetSize(26, 26)
 			playButton:SetPoint("LEFT", frame[i].label, "RIGHT", 10, 0)
 			playButton:SetFrameLevel((frame[i]:GetFrameLevel() or 1) + 5)
 			playButton:RegisterForClicks("LeftButtonUp")
 			playButton:EnableMouse(true)
-			local playIcon = playButton:CreateTexture(nil, "ARTWORK")
-			playIcon:SetSize(16, 16)
-			playIcon:SetPoint("CENTER")
-			playIcon:SetTexture("Interface\\AddOns\\TyGear\\Media\\PlayTriangle")
-			local playGold, playBright = { 1, 0.82, 0 }, { 1, 0.95, 0.65 }
-			playIcon:SetVertexColor(playGold[1], playGold[2], playGold[3])
-			local playGlow = playButton:CreateTexture(nil, "HIGHLIGHT")
-			playGlow:SetTexture("Interface\\Buttons\\UI-Common-MouseHilight")
-			playGlow:SetBlendMode("ADD")
-			playGlow:SetSize(28, 28)
-			playGlow:SetPoint("CENTER")
+			--The stopwatch uses this spellbook page arrow as its play button.
+			playButton:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
+			playButton:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down")
+			playButton:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
 			local fileName = frame[i]:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 			fileName:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
 			fileName:SetText(TyGearGetUpgradeChimeFileName())
-			--Stop the checkbox click area at the label so the triangle is not also a toggle.
+			--Stop the checkbox click area at the label so the play button is not also a toggle.
 			local labelWidth = frame[i].label:GetStringWidth() or 0
 			if labelWidth < 8 then
 				labelWidth = #(v["label"] or "") * 6
@@ -6881,14 +6869,7 @@ local function optionsSetup(optionsMenu)
 			playButton:SetScript("OnClick", function()
 				TyGearPlayUpgradeEquippedChime(true)
 			end)
-			playButton:SetScript("OnMouseDown", function()
-				playIcon:SetPoint("CENTER", 1, -1)
-			end)
-			playButton:SetScript("OnMouseUp", function()
-				playIcon:SetPoint("CENTER")
-			end)
 			playButton:SetScript("OnEnter", function(self)
-				playIcon:SetVertexColor(playBright[1], playBright[2], playBright[3])
 				GameTooltip:SetOwner(self, "ANCHOR_NONE")
 				GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
 				GameTooltip:AddLine(TyGearGetUpgradeChimeFileName(), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
@@ -6896,8 +6877,6 @@ local function optionsSetup(optionsMenu)
 				GameTooltip:Show()
 			end)
 			playButton:SetScript("OnLeave", function()
-				playIcon:SetVertexColor(playGold[1], playGold[2], playGold[3])
-				playIcon:SetPoint("CENTER")
 				GameTooltip:Hide()
 			end)
 			optionsPage:EnableWheel(playButton)
