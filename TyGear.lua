@@ -901,9 +901,9 @@ function TyGearPrint(text, verbosity)
 	print(TyGearColorize(text))
 end
 
---Classic level-up ding. Forever ships this file; the epic-loot sound kit does not play there.
-local TyGearUpgradeChimeFile = "Sound\\Interface\\LevelUp.ogg"
-local TyGearUpgradeChimeFileName = "LevelUp.ogg"
+--Short magic click from the classic interface set. Forever has the file, and it is not the level-up, quest, or loot cue.
+local TyGearUpgradeChimeFile = "Sound\\Interface\\MagicClick.ogg"
+local TyGearUpgradeChimeFileName = "MagicClick.ogg"
 
 function TyGearGetUpgradeChimeFileName()
 	return TyGearUpgradeChimeFileName
