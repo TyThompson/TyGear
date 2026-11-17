@@ -9,6 +9,7 @@ if GetLocale() == "deDE" then
 	T.Localization["Tooltips"] = "Tooltips"
 	T.Localization["Vendor"] = "Händler"
 	T.Localization["Selling"] = "Verkaufen"
+	T.Localization["Chat"] = "Chat"
 	T.Localization["Other"] = "Sonstiges"
 
 	-- options window: general texts
@@ -22,6 +23,12 @@ if GetLocale() == "deDE" then
 	T.Localization["Automatically equip gear upgrades, depending on internal stat weights.  These stat weights are currently only configurable by editing the values in the TyGearDefaultWeights table in TyGear.lua.  If this is disabled, TyGear will still scan for gear when receiving new items and viewing loot rolls, but will never equip an item automatically.\n\nBag items TyGear considers upgrades are marked in Baganator when TyGear is chosen as the upgrade source there."] = "Ausrüstungsverbesserungen anhand der internen Wertegewichtung automatisch anlegen.  Diese Gewichtung lässt sich derzeit nur über die Tabelle TyGearDefaultWeights in TyGear.lua ändern.  Ist dies deaktiviert, sucht TyGear beim Erhalt neuer Gegenstände und bei Beutewürfen weiterhin nach Ausrüstung, legt aber nie automatisch etwas an.\n\nTaschengegenstände, die TyGear als Verbesserungen einstuft, werden in Baganator markiert, wenn dort TyGear als Verbesserungsquelle gewählt ist."
 	T.Localization["Automatic gearing is now enabled."] = "Automatisches Anlegen von Ausrüstung ist jetzt aktiviert."
 	T.Localization["Automatic gearing is now disabled.  You can still manually scan bags for upgrades with the options menu button or \"/tg scan\"."] = "Automatisches Anlegen von Ausrüstung ist jetzt deaktiviert.  Du kannst deine Taschen weiterhin mit der Schaltfläche im Optionsmenü oder mit \"/tg scan\" nach Verbesserungen durchsuchen."
+
+	-- option: PlayUpgradeChime
+	T.Localization["Play a sound when an upgrade is equipped"] = "Ton abspielen, wenn eine Verbesserung angelegt wird"
+	T.Localization["Play a short sound when TyGear finishes equipping an upgrade."] = "Einen kurzen Ton abspielen, wenn TyGear eine Verbesserung fertig angelegt hat."
+	T.Localization["The upgrade equipped sound is now enabled."] = "Der Ton beim Anlegen einer Verbesserung ist jetzt aktiviert."
+	T.Localization["The upgrade equipped sound is now disabled."] = "Der Ton beim Anlegen einer Verbesserung ist jetzt deaktiviert."
 
 	-- option: AutoLootRoll
 	T.Localization["Automatically roll on greens and BoP blues"] = "Automatisch auf grüne und beim Aufheben gebundene blaue Gegenstände würfeln"
@@ -232,4 +239,12 @@ if GetLocale() == "deDE" then
 	T.Localization["This is a test mode to show debug info in tooltips, such as the real roll outcome if the item viewed dropped as a loot roll.  This is to help the developers find and fix bugs in TyGear.  You can use it to help too and report issues.\n\n%sWarning%s: laggy!"] = "Ein Testmodus, der Debug-Infos in Tooltips anzeigt, etwa wie TyGear würfeln würde, wenn der betrachtete Gegenstand als Beutewurf fiele.  Er hilft den Entwicklern, Fehler in TyGear zu finden und zu beheben.  Du kannst damit ebenfalls helfen und Probleme melden.\n\n%sWarnung%s: verursacht Ruckler!"
 	T.Localization["Debug info in tooltips is now enabled. Info such as whether TyGear would \"%sNEED%s\" or \"%sGREED%s\" on an item will be shown in item tooltips.  (%swarning%s: laggy!)"] = "Debug-Infos in Tooltips sind jetzt aktiviert.  Gegenstands-Tooltips zeigen z. B., ob TyGear \"%sBEDARF%s\" oder \"%sGIER%s\" würfeln würde.  (%sWarnung%s: verursacht Ruckler!)"
 	T.Localization["Debug info in tooltips is now disabled."] = "Debug-Infos in Tooltips sind jetzt deaktiviert."
+
+	-- option: AllowedVerbosity
+	T.Localization["Chat verbosity"] = "Chat-Ausführlichkeit"
+	T.Localization["How much TyGear prints in chat.  0 (errors) prints only problems.  1 (info) also prints equip and roll decisions.  2 (details) adds spec changes and extra detail.  3 (debug) prints everything, including a line for every setting change."] = "Wie viel TyGear im Chat ausgibt.  0 (Fehler) zeigt nur Probleme.  1 (Info) zeigt zusätzlich Anlege- und Würfelentscheidungen.  2 (Details) ergänzt Spezialisierungswechsel und weitere Einzelheiten.  3 (Debug) gibt alles aus, auch eine Zeile bei jeder Einstellungsänderung."
+	T.Localization["0: errors"] = "0: Fehler"
+	T.Localization["1: info"] = "1: Info"
+	T.Localization["2: details"] = "2: Details"
+	T.Localization["3: debug"] = "3: Debug"
 end

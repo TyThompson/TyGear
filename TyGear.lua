@@ -727,6 +727,25 @@ function TyGearGetAllowedVerbosityName(allowedverbosity)
 	return verbosityNames[allowedverbosity]
 end
 
+function TyGearGetAllowedVerbosityLabel(allowedverbosity)
+	local name = verbosityNames[allowedverbosity]
+	if name == "funky" then
+		return tostring(allowedverbosity)
+	end
+	return L[string.format("%d: %s", allowedverbosity, name)]
+end
+
+function TyGearGetAllowedVerbosityOptions()
+	local options = {}
+	for level = 0, 3 do
+		table.insert(options, {
+			["label"] = TyGearGetAllowedVerbosityLabel(level),
+			["value"] = level,
+		})
+	end
+	return options
+end
+
 local QUALITY_COLOR_HEX = {
 	[0] = "9d9d9d", -- poor
 	[1] = "ffffff", -- common
@@ -885,6 +904,7 @@ end
 --Pleasant confirmation chime when TyGear finishes equipping an upgrade (e.g. after winning a party loot roll).
 --Prefer the epic-loot toast when the client has it; fall back to the classic quest-complete ding.
 function TyGearPlayUpgradeEquippedChime()
+	if TyGearDB and TyGearDB.PlayUpgradeChime == false then return end
 	local soundKit = (SOUNDKIT and (
 		SOUNDKIT.UI_EPICLOOT_TOAST
 		or SOUNDKIT.UI_RAID_LOOT_TOAST_LESSER_ITEM_WON
@@ -6413,6 +6433,7 @@ local function optionsSetup(optionsMenu)
 		[L["Loot"]] = 2,
 		[L["Tooltips"]] = 3,
 		[L["Vendor"]] = 4,
+		[L["Chat"]] = 5,
 	}
 	table.sort(tabOrder, function(a, b)
 		local rankA, rankB = tabRank[a] or 50, tabRank[b] or 50
@@ -6638,6 +6659,8 @@ local function optionsSetup(optionsMenu)
 			end
 			frame[i] = row
 			optionsPage:AddRow(frame[i])
+			--The toggle below speaks StatWeightSystem names. Other dropdowns only use SetValue.
+			if v["option"] ~= "StatWeightSystem" then return end
 			_G["TyGearToggle"..v["option"]] = function(force)
 				local system
 				local lowered = type(force) == "string" and string.lower(force) or nil
@@ -7547,6 +7570,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			AutoConfirmBinding = true,
 			AutoConfirmBindingBlues = false,
 			AutoConfirmBindingEpics = false,
+			PlayUpgradeChime = true,
 			ScoreInTooltips = true,
 			ReasonsInTooltips = false,
 			AlwaysCompareGear = GetCVarBool("alwaysCompareItems"),
@@ -7596,6 +7620,17 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["toggleDescriptionTrue"] = L["Automatic gearing is now enabled."],
 				["toggleDescriptionFalse"] = L["Automatic gearing is now disabled.  You can still manually scan bags for upgrades with the options menu button or \"/tg scan\"."],
 				["togglePostHook"] = function() TyGearUpdateBestItems() end
+			},
+			{
+				["option"] = "PlayUpgradeChime",
+				["tab"] = L["Loot"],
+				["cliCommands"] = { "chime", "sound", "upgradechime" },
+				["cliTrue"] = { "enable", "on", "start" },
+				["cliFalse"] = { "disable", "off", "stop" },
+				["label"] = L["Play a sound when an upgrade is equipped"],
+				["description"] = L["Play a short sound when TyGear finishes equipping an upgrade."],
+				["toggleDescriptionTrue"] = L["The upgrade equipped sound is now enabled."],
+				["toggleDescriptionFalse"] = L["The upgrade equipped sound is now disabled."]
 			},
 			{
 				["option"] = "AutoLootRoll",
@@ -7903,6 +7938,18 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["description"] = L["This is a test mode to show debug info in tooltips, such as the real roll outcome if the item viewed dropped as a loot roll.  This is to help the developers find and fix bugs in TyGear.  You can use it to help too and report issues.\n\n%sWarning%s: laggy!"]:format(RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE),
 				["toggleDescriptionTrue"] = L["Debug info in tooltips is now enabled. Info such as whether TyGear would \"%sNEED%s\" or \"%sGREED%s\" on an item will be shown in item tooltips.  (%swarning%s: laggy!)"]:format(GREEN_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE, RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE, RED_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE),
 				["toggleDescriptionFalse"] = L["Debug info in tooltips is now disabled."]
+			},
+			{
+				["option"] = "AllowedVerbosity",
+				["tab"] = L["Chat"],
+				["dropdown"] = true,
+				["dropdownWidth"] = 160,
+				["options"] = TyGearGetAllowedVerbosityOptions,
+				["label"] = L["Chat verbosity"],
+				["description"] = L["How much TyGear prints in chat.  0 (errors) prints only problems.  1 (info) also prints equip and roll decisions.  2 (details) adds spec changes and extra detail.  3 (debug) prints everything, including a line for every setting change."],
+				["dropdownPostHook"] = function()
+					TyGearSetAllowedVerbosity(TyGearDB.AllowedVerbosity)
+				end
 			}
 		}
 
@@ -8143,6 +8190,7 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg scan': scan all bags for gear upgrades", 0)
 	TyGearPrint("TyGear:    '/tg spec': get name of current talent specialization", 0)
 	TyGearPrint("TyGear:    '/tg [gear/toggle]/[enable/on/start]/[disable/off/stop]': toggle automatic gearing", 0)
+	TyGearPrint("TyGear:    '/tg chime [enable/on/start]/[disable/off/stop]': toggle the sound played when an upgrade is equipped", 0)
 	TyGearPrint("TyGear:    '/tg roll [enable/on/start]/[disable/off/stop]': toggle automatic loot rolling", 0)
 	TyGearPrint("TyGear:    '/tg bind [enable/on/start]/[disable/off/stop]': toggle automatic soul-binding confirmation", 0)
 	TyGearPrint("TyGear:    '/tg neverneed [enable/on/start]/[disable/off/stop]': toggle preventing automatically rolling NEED", 0)
@@ -8174,6 +8222,10 @@ function TyGearSetAllowedVerbosity(allowedverbosity)
 		return
 	else
 		TyGearDB.AllowedVerbosity = allowedverbosity
+		local dropdown = _G["TyGearAllowedVerbosityDropdown"]
+		if dropdown then
+			setDropdownText(dropdown, TyGearGetAllowedVerbosityLabel(allowedverbosity))
+		end
 		TyGearPrint("TyGear: Allowed verbosity level is now: "..tostring(TyGearDB.AllowedVerbosity).." ("..TyGearGetAllowedVerbosityName(TyGearDB.AllowedVerbosity)..").", 0)
 	end
 end
