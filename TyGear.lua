@@ -4860,12 +4860,13 @@ local OPTIONS_SIDEBAR_WIDTH = 196
 local OPTIONS_SIDEBAR_INSET = 10
 local OPTIONS_TAB_HEIGHT = 34
 local OPTIONS_TAB_SPACING = 3
-local OPTIONS_FOOTER_HEIGHT = 72
-local OPTIONS_CONTENT_INSET = 14
-local OPTIONS_CONTAINER_TOP = -8
+local OPTIONS_CONTENT_INSET_TOP = 10
+local OPTIONS_CONTENT_INSET_SIDE = 12
+local OPTIONS_CONTENT_INSET_BOTTOM = 24
+local OPTIONS_CONTAINER_TOP = -4
 local OPTIONS_CONTAINER_LEFT_OFFSET = 4
 local OPTIONS_CONTAINER_RIGHT_MARGIN = 28 --room for the scroll bar
-local OPTIONS_CONTAINER_BOTTOM_MARGIN = 12
+local OPTIONS_CONTAINER_BOTTOM_MARGIN = 20
 local OPTIONS_PAGE_PADDING = 12
 local OPTIONS_ROW_SPACING = 4
 local OPTIONS_SECTION_SPACING = 14
@@ -4908,31 +4909,26 @@ local function createSettingsShell()
 	root.sidebarDivider = divider
 
 	local brand = sidebar:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	brand:SetPoint("TOPLEFT", sidebar, "TOPLEFT", OPTIONS_SIDEBAR_INSET + 4, -14)
-	brand:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -(OPTIONS_SIDEBAR_INSET + 8), -14)
+	brand:SetPoint("TOPLEFT", sidebar, "TOPLEFT", OPTIONS_SIDEBAR_INSET + 4, -12)
+	brand:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -(OPTIONS_SIDEBAR_INSET + 8), -12)
 	brand:SetJustifyH("LEFT")
 	brand:SetText("TyGear")
 	root.brand = brand
 
 	local credit = sidebar:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	credit:SetPoint("TOPLEFT", brand, "BOTTOMLEFT", 0, -4)
-	credit:SetPoint("TOPRIGHT", brand, "BOTTOMRIGHT", 0, -4)
+	credit:SetPoint("TOPLEFT", brand, "BOTTOMLEFT", 0, -2)
+	credit:SetPoint("TOPRIGHT", brand, "BOTTOMRIGHT", 0, -2)
 	credit:SetJustifyH("LEFT")
 	credit:SetWordWrap(true)
 	credit:SetText(L["Fork of AutoGear by Synthetikaryote and BujuArena."])
 	root.credit = credit
 
 	local tabHost = CreateFrame("Frame", "TyGearSettingsTabHost", sidebar)
-	tabHost:SetPoint("TOPLEFT", credit, "BOTTOMLEFT", -4, -14)
-	tabHost:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -(OPTIONS_SIDEBAR_INSET + 6), -14)
-	tabHost:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", OPTIONS_SIDEBAR_INSET, OPTIONS_FOOTER_HEIGHT)
+	tabHost:SetPoint("TOPLEFT", credit, "BOTTOMLEFT", -4, -12)
+	tabHost:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -(OPTIONS_SIDEBAR_INSET + 6), -12)
+	tabHost:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", OPTIONS_SIDEBAR_INSET, 12)
+	tabHost:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", -(OPTIONS_SIDEBAR_INSET + 6), 12)
 	root.tabHost = tabHost
-
-	local footerHost = CreateFrame("Frame", "TyGearSettingsFooterHost", sidebar)
-	footerHost:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", OPTIONS_SIDEBAR_INSET, 10)
-	footerHost:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", -(OPTIONS_SIDEBAR_INSET + 6), 10)
-	footerHost:SetHeight(OPTIONS_FOOTER_HEIGHT - 14)
-	root.footerHost = footerHost
 
 	local content = CreateFrame("Frame", "TyGearSettingsContent", root, "BackdropTemplate")
 	content:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 0, 0)
@@ -4974,6 +4970,26 @@ local function createSettingsShell()
 		button.label:SetPoint("RIGHT", button, "RIGHT", -10, y)
 	end
 
+	local function layoutTab(tab)
+		if not tab then return end
+		-- Hidden tabs often keep a stale 1px scroll-child width from setup time.
+		-- Prefer the live content width so list pages are not blank when first shown.
+		local scrollWidth = tab.scroll:GetWidth() or 0
+		local contentWidth = (root.content:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 20
+		if scrollWidth < 50 and contentWidth > 50 then
+			tab.child:SetWidth(contentWidth)
+		end
+		if tab.layout then
+			tab.layout()
+		elseif tab.optionsPage and tab.optionsPage.layout then
+			tab.optionsPage:layout()
+		end
+		if tab.scroll.UpdateScrollChildRect then
+			tab.scroll:UpdateScrollChildRect()
+		end
+	end
+	root.LayoutTab = layoutTab
+
 	function root:SelectTab(index)
 		if not self.tabs[index] then return end
 		self.selectedIndex = index
@@ -4983,12 +4999,12 @@ local function createSettingsShell()
 			updateTabButton(tab.button)
 			tab.panel:SetShown(selected)
 			if selected then
-				tab.panel:SetAlpha(0)
+				-- Keep fade soft, but never leave a tab stuck at alpha 0.
+				tab.panel:SetAlpha(1)
 				if UIFrameFadeIn then
-					UIFrameFadeIn(tab.panel, 0.2, 0, 1)
-				else
-					tab.panel:SetAlpha(1)
+					UIFrameFadeIn(tab.panel, 0.15, 0.35, 1)
 				end
+				layoutTab(tab)
 				if tab.onShow then tab.onShow() end
 			end
 		end
@@ -4997,8 +5013,7 @@ local function createSettingsShell()
 	function root:AddTab(name, options)
 		options = options or {}
 		local index = #self.tabs + 1
-		local host = options.footer and self.footerHost or self.tabHost
-		local button = CreateFrame("Button", "TyGearSettingsTabButton"..index, host)
+		local button = CreateFrame("Button", "TyGearSettingsTabButton"..index, self.tabHost)
 		button:SetHeight(OPTIONS_TAB_HEIGHT)
 		button:EnableMouse(true)
 		button.background = button:CreateTexture(nil, "BACKGROUND")
@@ -5038,8 +5053,8 @@ local function createSettingsShell()
 		panel:Hide()
 
 		local scroll = CreateFrame("ScrollFrame", "TyGearSettingsTabScroll"..index, panel, "UIPanelScrollFrameTemplate")
-		scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", OPTIONS_CONTENT_INSET, -OPTIONS_CONTENT_INSET)
-		scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -6, OPTIONS_CONTENT_INSET)
+		scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", OPTIONS_CONTENT_INSET_SIDE, -OPTIONS_CONTENT_INSET_TOP)
+		scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -6, OPTIONS_CONTENT_INSET_BOTTOM)
 
 		local child = CreateFrame("Frame", "TyGearSettingsTabChild"..index, scroll)
 		child:SetWidth(1)
@@ -5052,35 +5067,28 @@ local function createSettingsShell()
 			panel = panel,
 			scroll = scroll,
 			child = child,
-			footer = options.footer and true or false,
 			onShow = options.onShow,
+			layout = options.layout,
 		}
 		self.tabs[index] = tab
 		self.tabByName[name] = tab
 
-		local previous
-		for i = index - 1, 1, -1 do
-			if self.tabs[i].footer == tab.footer then
-				previous = self.tabs[i].button
-				break
-			end
-		end
+		local previous = self.tabs[index - 1] and self.tabs[index - 1].button
 		button:ClearAllPoints()
-		button:SetPoint("LEFT", host, "LEFT", 0, 0)
-		button:SetPoint("RIGHT", host, "RIGHT", 0, 0)
+		button:SetPoint("LEFT", self.tabHost, "LEFT", 0, 0)
+		button:SetPoint("RIGHT", self.tabHost, "RIGHT", 0, 0)
 		if previous then
-			if tab.footer then
-				button:SetPoint("BOTTOM", previous, "TOP", 0, OPTIONS_TAB_SPACING)
-			else
-				button:SetPoint("TOP", previous, "BOTTOM", 0, -OPTIONS_TAB_SPACING)
-			end
+			button:SetPoint("TOP", previous, "BOTTOM", 0, -OPTIONS_TAB_SPACING)
 		else
-			if tab.footer then
-				button:SetPoint("BOTTOM", host, "BOTTOM", 0, 0)
-			else
-				button:SetPoint("TOP", host, "TOP", 0, 0)
-			end
+			button:SetPoint("TOP", self.tabHost, "TOP", 0, 0)
 		end
+
+		panel:HookScript("OnShow", function()
+			layoutTab(tab)
+		end)
+		scroll:HookScript("OnSizeChanged", function()
+			layoutTab(tab)
+		end)
 
 		return tab
 	end
@@ -5089,12 +5097,14 @@ local function createSettingsShell()
 		return self.tabByName[name]
 	end
 
-	root:SetScript("OnSizeChanged", function(self)
-		-- Settings canvas drives our size; keep scroll children current.
-		for _, tab in ipairs(self.tabs) do
-			if tab.scroll.UpdateScrollChildRect then
-				tab.scroll:UpdateScrollChildRect()
-			end
+	root:HookScript("OnShow", function(self)
+		if self.selectedIndex then
+			layoutTab(self.tabs[self.selectedIndex])
+		end
+	end)
+	root:HookScript("OnSizeChanged", function(self)
+		if self.selectedIndex then
+			layoutTab(self.tabs[self.selectedIndex])
 		end
 	end)
 
@@ -5284,7 +5294,16 @@ local function newOptionsPage(optionsMenu, containerName)
 
 	function optionsPage:Finish()
 		local function layout()
-			local width = math.max((scrollFrame:GetWidth() or 0) - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
+			local width = scrollFrame:GetWidth() or 0
+			-- First open often sizes hidden scrolls to 0; fall back to the content host.
+			if width < 50 then
+				local panel = scrollFrame:GetParent()
+				local contentHost = panel and panel:GetParent()
+				if contentHost and contentHost.GetWidth then
+					width = (contentHost:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 20
+				end
+			end
+			width = math.max(width - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
 			container:SetWidth(width)
 			page:SetWidth(width)
 			optionsMenu:SetWidth(width + OPTIONS_CONTAINER_LEFT_OFFSET)
@@ -7442,7 +7461,8 @@ local function optionsSetup(settingsRoot)
 		needListMenuParent = needListTab.scroll
 	end
 
-	personalWeightsTab = settingsRoot:AddTab(L["Personal Stat Weights"], { footer = true })
+	-- Keep Personal Stat Weights with the other tabs (not pinned to the sidebar footer).
+	personalWeightsTab = settingsRoot:AddTab(L["Personal Stat Weights"])
 	personalWeightsMenu = personalWeightsTab.child
 	personalWeightsMenuParent = personalWeightsTab.scroll
 
@@ -7454,6 +7474,14 @@ local function optionsSetup(settingsRoot)
 	end
 	for _, page in pairs(pagesByTab) do
 		page:Finish()
+	end
+	-- Point each options tab at its Finish layout so SelectTab can reflow it.
+	for tabLabel, page in pairs(pagesByTab) do
+		local shellTab = settingsRoot:GetTab(tabLabel)
+		if shellTab then
+			shellTab.optionsPage = page
+			shellTab.layout = page.layout
+		end
 	end
 	if settingsRoot.SelectTab then
 		settingsRoot:SelectTab(1)
@@ -8269,11 +8297,19 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		end
 		optionsSetup(settingsRoot)
 		TyGearRefreshPawnOptionsVisibility()
+		local function listTabContentWidth(scroll)
+			local width = scroll and scroll:GetWidth() or 0
+			if width < 50 and settingsRoot and settingsRoot.content then
+				width = (settingsRoot.content:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 20
+			end
+			return math.max(width - 30, 1)
+		end
+
 		if ignoredGearListMenu and not ignoredGearListMenu.built then
 			ignoredGearListMenu.built = true
 			buildIgnoredGearListPage(ignoredGearListMenu)
 			local function layoutIgnoredGearList()
-				local width = math.max((ignoredGearListMenuParent:GetWidth() or 0) - 30, 1)
+				local width = listTabContentWidth(ignoredGearListMenuParent)
 				ignoredGearListMenu:SetWidth(width + 8)
 				if ignoredGearListMenu.ignoredGearNote then
 					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 8, 100))
@@ -8286,18 +8322,23 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				end
 				if TyGearRefreshKeepList then TyGearRefreshKeepList() end
 				if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
+				if ignoredGearListMenu.layoutIgnoredGearPage then
+					ignoredGearListMenu.layoutIgnoredGearPage()
+				end
 				if ignoredGearListMenuParent.UpdateScrollChildRect then
 					ignoredGearListMenuParent:UpdateScrollChildRect()
 				end
 			end
-			ignoredGearListMenuParent:HookScript("OnSizeChanged", layoutIgnoredGearList)
+			if ignoredGearListTab then
+				ignoredGearListTab.layout = layoutIgnoredGearList
+			end
 			layoutIgnoredGearList()
 		end
 		if needListMenu and not needListMenu.built then
 			needListMenu.built = true
 			buildNeedListPage(needListMenu)
 			local function layoutNeedList()
-				local width = math.max((needListMenuParent:GetWidth() or 0) - 30, 1)
+				local width = listTabContentWidth(needListMenuParent)
 				needListMenu:SetWidth(width + 8)
 				if needListMenu.needListNote then
 					needListMenu.needListNote:SetWidth(math.max(width - 8, 100))
@@ -8310,14 +8351,16 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 					needListMenuParent:UpdateScrollChildRect()
 				end
 			end
-			needListMenuParent:HookScript("OnSizeChanged", layoutNeedList)
+			if needListTab then
+				needListTab.layout = layoutNeedList
+			end
 			layoutNeedList()
 		end
 		if personalWeightsMenu and not personalWeightsMenu.built then
 			personalWeightsMenu.built = true
 			buildPersonalStatWeightsPage(personalWeightsMenu)
 			local function layoutPersonalWeights()
-				local width = math.max((personalWeightsMenuParent:GetWidth() or 0) - 30, 1)
+				local width = listTabContentWidth(personalWeightsMenuParent)
 				personalWeightsMenu:SetWidth(width + 8)
 				if personalWeightsMenu.personalNote then
 					personalWeightsMenu.personalNote:SetWidth(math.max(width - 16, 100))
@@ -8338,7 +8381,9 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 					personalWeightsMenuParent:UpdateScrollChildRect()
 				end
 			end
-			personalWeightsMenuParent:HookScript("OnSizeChanged", layoutPersonalWeights)
+			if personalWeightsTab then
+				personalWeightsTab.layout = layoutPersonalWeights
+			end
 			layoutPersonalWeights()
 		end
 		if not IS_WOW_FOREVER then
