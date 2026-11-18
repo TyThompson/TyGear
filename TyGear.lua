@@ -4774,10 +4774,9 @@ end
 --compact multi-column gear-slot checkbox grid (Ignore and Lock slots)
 local function createGearSlotCheckboxGrid(parent, frameName, checkNamePrefix, slotList, isChecked, setChecked, description, enableWheel)
 	local columns = 4
-	-- Keep the grid inside the Settings content column (sidebar + scrollbar eat width).
-	local cellWidth = 100
+	local cellWidth = 118
 	local cellHeight = 20
-	local padX, padY = 8, 8
+	local padX, padY = 10, 8
 	local rows = math.max(math.ceil(#slotList / columns), 1)
 	local slotGrid = CreateFrame("Frame", frameName, parent, "BackdropTemplate")
 	slotGrid:SetSize(padX * 2 + columns * cellWidth, padY * 2 + rows * cellHeight)
@@ -4857,17 +4856,17 @@ local function closeDropdownMenu(dropdown)
 end
 
 --options window layout in pixels (Waypoint-inspired shell: sidebar tabs + content panels)
-local OPTIONS_SIDEBAR_WIDTH = 210
-local OPTIONS_SIDEBAR_INSET = 8
+local OPTIONS_SIDEBAR_WIDTH = 196
+local OPTIONS_SIDEBAR_INSET = 10
 local OPTIONS_TAB_HEIGHT = 34
 local OPTIONS_TAB_SPACING = 3
 local OPTIONS_CONTENT_INSET_TOP = 10
 local OPTIONS_CONTENT_INSET_SIDE = 12
-local OPTIONS_CONTENT_INSET_BOTTOM = 28
+local OPTIONS_CONTENT_INSET_BOTTOM = 24
 local OPTIONS_CONTAINER_TOP = -4
 local OPTIONS_CONTAINER_LEFT_OFFSET = 4
-local OPTIONS_CONTAINER_RIGHT_MARGIN = 32 --room for the scroll bar
-local OPTIONS_CONTAINER_BOTTOM_MARGIN = 28
+local OPTIONS_CONTAINER_RIGHT_MARGIN = 28 --room for the scroll bar
+local OPTIONS_CONTAINER_BOTTOM_MARGIN = 20
 local OPTIONS_PAGE_PADDING = 12
 local OPTIONS_ROW_SPACING = 4
 local OPTIONS_SECTION_SPACING = 14
@@ -4911,7 +4910,7 @@ local function createSettingsShell()
 
 	local brand = sidebar:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	brand:SetPoint("TOPLEFT", sidebar, "TOPLEFT", OPTIONS_SIDEBAR_INSET + 4, -12)
-	brand:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -(OPTIONS_SIDEBAR_INSET + 6), -12)
+	brand:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -(OPTIONS_SIDEBAR_INSET + 8), -12)
 	brand:SetJustifyH("LEFT")
 	brand:SetText("TyGear")
 	root.brand = brand
@@ -4971,46 +4970,25 @@ local function createSettingsShell()
 		button.label:SetPoint("RIGHT", button, "RIGHT", -10, y)
 	end
 
-	local function contentInnerWidth()
-		return math.max((root.content:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 24, 200)
-	end
-
 	local function layoutTab(tab)
-		if not tab or tab._tyGearLayingOut then return end
-		tab._tyGearLayingOut = true
-		-- Always size from the live content host. Hidden tabs keep a stale 1px child
-		-- from login, and scroll:GetWidth() is often still 0 on the same frame as Show.
-		local width = contentInnerWidth()
-		tab.child:SetWidth(width)
-		if tab.scroll.SetScrollChild then
-			tab.scroll:SetScrollChild(tab.child)
-		end
-		if tab.ensureBuilt then
-			tab.ensureBuilt()
+		if not tab then return end
+		-- Hidden tabs often keep a stale 1px scroll-child width from setup time.
+		-- Prefer the live content width so list pages are not blank when first shown.
+		local scrollWidth = tab.scroll:GetWidth() or 0
+		local contentWidth = (root.content:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 20
+		if scrollWidth < 50 and contentWidth > 50 then
+			tab.child:SetWidth(contentWidth)
 		end
 		if tab.layout then
 			tab.layout()
 		elseif tab.optionsPage and tab.optionsPage.layout then
-			tab.optionsPage.layout()
-		end
-		if (tab.child:GetHeight() or 0) < 2 then
-			tab.child:SetHeight(math.max(root.content:GetHeight() or 400, 400))
+			tab.optionsPage:layout()
 		end
 		if tab.scroll.UpdateScrollChildRect then
 			tab.scroll:UpdateScrollChildRect()
 		end
-		tab._tyGearLayingOut = nil
 	end
 	root.LayoutTab = layoutTab
-
-	local function queueLayout(tab)
-		if not tab or not tab.panel then return end
-		-- Defer one frame so Show()/anchors have real widths before we build list pages.
-		tab.panel:SetScript("OnUpdate", function(self)
-			self:SetScript("OnUpdate", nil)
-			layoutTab(tab)
-		end)
-	end
 
 	function root:SelectTab(index)
 		if not self.tabs[index] then return end
@@ -5021,9 +4999,12 @@ local function createSettingsShell()
 			updateTabButton(tab.button)
 			tab.panel:SetShown(selected)
 			if selected then
+				-- Keep fade soft, but never leave a tab stuck at alpha 0.
 				tab.panel:SetAlpha(1)
+				if UIFrameFadeIn then
+					UIFrameFadeIn(tab.panel, 0.15, 0.35, 1)
+				end
 				layoutTab(tab)
-				queueLayout(tab)
 				if tab.onShow then tab.onShow() end
 			end
 		end
@@ -5076,7 +5057,7 @@ local function createSettingsShell()
 		scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -6, OPTIONS_CONTENT_INSET_BOTTOM)
 
 		local child = CreateFrame("Frame", "TyGearSettingsTabChild"..index, scroll)
-		child:SetWidth(contentInnerWidth())
+		child:SetWidth(1)
 		child:SetHeight(1)
 		scroll:SetScrollChild(child)
 
@@ -5088,24 +5069,22 @@ local function createSettingsShell()
 			child = child,
 			onShow = options.onShow,
 			layout = options.layout,
-			ensureBuilt = options.ensureBuilt,
 		}
 		self.tabs[index] = tab
 		self.tabByName[name] = tab
 
-		-- TOPLEFT/TOPRIGHT only: LEFT+RIGHT to the host midpoints can yank tabs vertically.
 		local previous = self.tabs[index - 1] and self.tabs[index - 1].button
 		button:ClearAllPoints()
+		button:SetPoint("LEFT", self.tabHost, "LEFT", 0, 0)
+		button:SetPoint("RIGHT", self.tabHost, "RIGHT", 0, 0)
 		if previous then
-			button:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -OPTIONS_TAB_SPACING)
-			button:SetPoint("TOPRIGHT", previous, "BOTTOMRIGHT", 0, -OPTIONS_TAB_SPACING)
+			button:SetPoint("TOP", previous, "BOTTOM", 0, -OPTIONS_TAB_SPACING)
 		else
-			button:SetPoint("TOPLEFT", self.tabHost, "TOPLEFT", 0, 0)
-			button:SetPoint("TOPRIGHT", self.tabHost, "TOPRIGHT", 0, 0)
+			button:SetPoint("TOP", self.tabHost, "TOP", 0, 0)
 		end
 
 		panel:HookScript("OnShow", function()
-			queueLayout(tab)
+			layoutTab(tab)
 		end)
 		scroll:HookScript("OnSizeChanged", function()
 			layoutTab(tab)
@@ -6089,9 +6068,7 @@ local function buildIgnoredGearListPage(listMenu)
 
 	local layoutIgnoredGearPage
 	function TyGearRefreshIgnoredGearList()
-		-- Scroll children often still report hidden on the same frame a tab is shown.
-		local visible = listMenu.tyGearForceShow or listMenu:IsShown()
-		if not visible and listContainer.builtOnce then
+		if not listMenu:IsShown() and listContainer.builtOnce then
 			listContainer.needsRefresh = true
 			return
 		end
@@ -6414,8 +6391,7 @@ buildKeepListSection = function(listMenu, anchorBelow)
 	end
 
 	function TyGearRefreshKeepList()
-		local visible = listMenu.tyGearForceShow or listMenu:IsShown()
-		if not visible and listContainer.builtOnce then
+		if not listMenu:IsShown() and listContainer.builtOnce then
 			listContainer.needsRefresh = true
 			return
 		end
@@ -6666,8 +6642,7 @@ local function buildNeedListPage(listMenu)
 	end
 
 	function TyGearRefreshNeedList()
-		local visible = listMenu.tyGearForceShow or listMenu:IsShown()
-		if not visible and listContainer.builtOnce then
+		if not listMenu:IsShown() and listContainer.builtOnce then
 			listContainer.needsRefresh = true
 			return
 		end
@@ -8322,77 +8297,71 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		end
 		optionsSetup(settingsRoot)
 		TyGearRefreshPawnOptionsVisibility()
-
-		-- Build list tabs on first show with real canvas sizes. Building at login left
-		-- them at 1px wide inside a hidden scroll child, so the panels looked empty.
-		local function listTabContentWidth()
-			return math.max((settingsRoot.content:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 40, 200)
+		local function listTabContentWidth(scroll)
+			local width = scroll and scroll:GetWidth() or 0
+			if width < 50 and settingsRoot and settingsRoot.content then
+				width = (settingsRoot.content:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 20
+			end
+			return math.max(width - 30, 1)
 		end
 
-		if ignoredGearListTab and ignoredGearListMenu then
+		if ignoredGearListMenu and not ignoredGearListMenu.built then
+			ignoredGearListMenu.built = true
+			buildIgnoredGearListPage(ignoredGearListMenu)
 			local function layoutIgnoredGearList()
-				local width = listTabContentWidth()
-				ignoredGearListMenu:SetWidth(width)
-				ignoredGearListMenu.tyGearForceShow = true
+				local width = listTabContentWidth(ignoredGearListMenuParent)
+				ignoredGearListMenu:SetWidth(width + 8)
 				if ignoredGearListMenu.ignoredGearNote then
-					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 16, 100))
+					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 8, 100))
 				end
 				if ignoredGearListMenu.keepListNote then
-					ignoredGearListMenu.keepListNote:SetWidth(math.max(width - 16, 100))
+					ignoredGearListMenu.keepListNote:SetWidth(math.max(width - 8, 100))
 				end
 				if ignoredGearListMenu.keepListAddNote then
-					ignoredGearListMenu.keepListAddNote:SetWidth(math.max(width - 16, 100))
+					ignoredGearListMenu.keepListAddNote:SetWidth(math.max(width - 8, 100))
 				end
 				if TyGearRefreshKeepList then TyGearRefreshKeepList() end
 				if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
 				if ignoredGearListMenu.layoutIgnoredGearPage then
 					ignoredGearListMenu.layoutIgnoredGearPage()
 				end
-				ignoredGearListMenu.tyGearForceShow = nil
-				if ignoredGearListMenuParent and ignoredGearListMenuParent.UpdateScrollChildRect then
+				if ignoredGearListMenuParent.UpdateScrollChildRect then
 					ignoredGearListMenuParent:UpdateScrollChildRect()
 				end
 			end
-			ignoredGearListTab.layout = layoutIgnoredGearList
-			ignoredGearListTab.ensureBuilt = function()
-				if ignoredGearListMenu.built then return end
-				ignoredGearListMenu.built = true
-				ignoredGearListMenu:SetWidth(listTabContentWidth())
-				buildIgnoredGearListPage(ignoredGearListMenu)
-				layoutIgnoredGearList()
+			if ignoredGearListTab then
+				ignoredGearListTab.layout = layoutIgnoredGearList
 			end
+			layoutIgnoredGearList()
 		end
-		if needListTab and needListMenu then
+		if needListMenu and not needListMenu.built then
+			needListMenu.built = true
+			buildNeedListPage(needListMenu)
 			local function layoutNeedList()
-				local width = listTabContentWidth()
-				needListMenu:SetWidth(width)
-				needListMenu.tyGearForceShow = true
+				local width = listTabContentWidth(needListMenuParent)
+				needListMenu:SetWidth(width + 8)
 				if needListMenu.needListNote then
-					needListMenu.needListNote:SetWidth(math.max(width - 16, 100))
+					needListMenu.needListNote:SetWidth(math.max(width - 8, 100))
 				end
 				if needListMenu.needListAddNote then
-					needListMenu.needListAddNote:SetWidth(math.max(width - 16, 100))
+					needListMenu.needListAddNote:SetWidth(math.max(width - 8, 100))
 				end
 				if TyGearRefreshNeedList then TyGearRefreshNeedList() end
-				needListMenu.tyGearForceShow = nil
-				if needListMenuParent and needListMenuParent.UpdateScrollChildRect then
+				if needListMenuParent.UpdateScrollChildRect then
 					needListMenuParent:UpdateScrollChildRect()
 				end
 			end
-			needListTab.layout = layoutNeedList
-			needListTab.ensureBuilt = function()
-				if needListMenu.built then return end
-				needListMenu.built = true
-				needListMenu:SetWidth(listTabContentWidth())
-				buildNeedListPage(needListMenu)
-				layoutNeedList()
+			if needListTab then
+				needListTab.layout = layoutNeedList
 			end
+			layoutNeedList()
 		end
-		if personalWeightsTab and personalWeightsMenu then
+		if personalWeightsMenu and not personalWeightsMenu.built then
+			personalWeightsMenu.built = true
+			buildPersonalStatWeightsPage(personalWeightsMenu)
 			local function layoutPersonalWeights()
-				local width = listTabContentWidth()
-				personalWeightsMenu:SetWidth(width)
-				personalWeightsMenu.tyGearForceShow = true
+				local width = listTabContentWidth(personalWeightsMenuParent)
+				personalWeightsMenu:SetWidth(width + 8)
 				if personalWeightsMenu.personalNote then
 					personalWeightsMenu.personalNote:SetWidth(math.max(width - 16, 100))
 				end
@@ -8408,19 +8377,14 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				if personalWeightsMenu.layoutPersonalPage then
 					personalWeightsMenu.layoutPersonalPage()
 				end
-				personalWeightsMenu.tyGearForceShow = nil
-				if personalWeightsMenuParent and personalWeightsMenuParent.UpdateScrollChildRect then
+				if personalWeightsMenuParent.UpdateScrollChildRect then
 					personalWeightsMenuParent:UpdateScrollChildRect()
 				end
 			end
-			personalWeightsTab.layout = layoutPersonalWeights
-			personalWeightsTab.ensureBuilt = function()
-				if personalWeightsMenu.built then return end
-				personalWeightsMenu.built = true
-				personalWeightsMenu:SetWidth(listTabContentWidth())
-				buildPersonalStatWeightsPage(personalWeightsMenu)
-				layoutPersonalWeights()
+			if personalWeightsTab then
+				personalWeightsTab.layout = layoutPersonalWeights
 			end
+			layoutPersonalWeights()
 		end
 		if not IS_WOW_FOREVER then
 			local ignoreTab = settingsRoot:GetTab(L["Ignore"])
