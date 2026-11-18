@@ -4700,44 +4700,6 @@ function TyGearSetStatWeights()
 	TyGearApplyWeaponsPreference()
 end
 
-local OPTIONS_PANEL_BG = { 0.07, 0.07, 0.08, 0.72 }
-local OPTIONS_PANEL_BORDER = { 0.55, 0.55, 0.55, 0.55 }
-
-local function tyGearApplyPanelBackdrop(frame, nested)
-	frame:SetBackdrop({
-		bgFile = "Interface/ChatFrame/ChatFrameBackground",
-		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-		tile = true, tileSize = 16, edgeSize = nested and 12 or 14,
-		insets = { left = 3, right = 3, top = 3, bottom = 3 },
-	})
-	if nested then
-		frame:SetBackdropColor(0.09, 0.09, 0.1, 0.55)
-		frame:SetBackdropBorderColor(0.42, 0.42, 0.42, 0.7)
-	else
-		frame:SetBackdropColor(OPTIONS_PANEL_BG[1], OPTIONS_PANEL_BG[2], OPTIONS_PANEL_BG[3], OPTIONS_PANEL_BG[4])
-		frame:SetBackdropBorderColor(OPTIONS_PANEL_BORDER[1], OPTIONS_PANEL_BORDER[2], OPTIONS_PANEL_BORDER[3], OPTIONS_PANEL_BORDER[4])
-	end
-end
-
-local function tyGearApplyRowHover(frame)
-	if not frame or frame.tyGearHoverHooked then return end
-	frame.tyGearHoverHooked = true
-	local highlight = frame:CreateTexture(nil, "BACKGROUND")
-	highlight:SetAllPoints()
-	highlight:SetColorTexture(1, 1, 1, 0.05)
-	highlight:Hide()
-	frame.tyGearHover = highlight
-	frame:HookScript("OnEnter", function(self)
-		if self.tyGearHover then self.tyGearHover:Show() end
-	end)
-	frame:HookScript("OnLeave", function(self)
-		if self.tyGearHover then self.tyGearHover:Hide() end
-	end)
-	if frame.EnableMouse and not frame:IsMouseEnabled() then
-		frame:EnableMouse(true)
-	end
-end
-
 local function newCheckbox(dbname, label, description, onClick, optionsMenu)
 	label = TyGearColorize(label)
 	description = TyGearColorize(description)
@@ -4755,33 +4717,34 @@ local function newCheckbox(dbname, label, description, onClick, optionsMenu)
 	check.label:SetText(label)
 	check.tooltipText = label
 	check:SetScript("OnEnter", function(self)
-		if self.tyGearHover then self.tyGearHover:Show() end
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
 		GameTooltip:AddLine(label,NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b,true)
 		GameTooltip:AddLine(description,HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,true)
 		GameTooltip:Show()
 	end)
-	check:SetScript("OnLeave", function(self)
-		if self.tyGearHover then self.tyGearHover:Hide() end
-		GameTooltip:Hide()
-	end)
+	check:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	check.tooltipRequirement = description
-	tyGearApplyRowHover(check)
 	return check
 end
 
 --compact multi-column gear-slot checkbox grid (Ignore and Lock slots)
 local function createGearSlotCheckboxGrid(parent, frameName, checkNamePrefix, slotList, isChecked, setChecked, description, enableWheel)
 	local columns = 4
-	-- Keep the grid inside the Settings content column (sidebar + scrollbar eat width).
-	local cellWidth = 100
+	local cellWidth = 118
 	local cellHeight = 20
-	local padX, padY = 8, 8
+	local padX, padY = 10, 8
 	local rows = math.max(math.ceil(#slotList / columns), 1)
 	local slotGrid = CreateFrame("Frame", frameName, parent, "BackdropTemplate")
 	slotGrid:SetSize(padX * 2 + columns * cellWidth, padY * 2 + rows * cellHeight)
-	tyGearApplyPanelBackdrop(slotGrid, true)
+	slotGrid:SetBackdrop({
+		bgFile = "Interface/ChatFrame/ChatFrameBackground",
+		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+		tile = true, tileSize = 16, edgeSize = 12,
+		insets = { left = 3, right = 3, top = 3, bottom = 3 },
+	})
+	slotGrid:SetBackdropColor(0.08, 0.08, 0.08, 0.45)
+	slotGrid:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
 	for index, gearSlot in ipairs(slotList) do
 		local column = (index - 1) % columns
 		local rowIndex = math.floor((index - 1) / columns)
@@ -4856,292 +4819,34 @@ local function closeDropdownMenu(dropdown)
 	end
 end
 
---options window layout in pixels (Waypoint-inspired shell: sidebar tabs + content panels)
-local OPTIONS_SIDEBAR_WIDTH = 210
-local OPTIONS_SIDEBAR_INSET = 8
-local OPTIONS_TAB_HEIGHT = 34
-local OPTIONS_TAB_SPACING = 3
-local OPTIONS_CONTENT_INSET_TOP = 10
-local OPTIONS_CONTENT_INSET_SIDE = 12
-local OPTIONS_CONTENT_INSET_BOTTOM = 28
-local OPTIONS_CONTAINER_TOP = -4
-local OPTIONS_CONTAINER_LEFT_OFFSET = 4
-local OPTIONS_CONTAINER_RIGHT_MARGIN = 32 --room for the scroll bar
-local OPTIONS_CONTAINER_BOTTOM_MARGIN = 28
+--options window layout in pixels
+local OPTIONS_CONTAINER_TOP = -46 --below the TyGear title and the AutoGear credit line
+local OPTIONS_CONTAINER_LEFT_OFFSET = 8
+local OPTIONS_CONTAINER_RIGHT_MARGIN = 30 --room for the scroll bar
+local OPTIONS_CONTAINER_BOTTOM_MARGIN = 16
 local OPTIONS_PAGE_PADDING = 12
-local OPTIONS_ROW_SPACING = 4
-local OPTIONS_SECTION_SPACING = 14
-local OPTIONS_SECTION_HEADER_HEIGHT = 22
+local OPTIONS_ROW_SPACING = 2
+local OPTIONS_SECTION_SPACING = 12
+local OPTIONS_SECTION_HEADER_HEIGHT = 20
 local OPTIONS_BUTTON_SPACING = 10
-local OPTIONS_SIDEBAR_BG = { 0.05, 0.05, 0.06, 0.92 }
-local OPTIONS_DIVIDER = { 0.56, 0.56, 0.56, 0.24 }
-local OPTIONS_TAB_IDLE_ALPHA = 0.5
-local OPTIONS_TAB_HOVER_ALPHA = 1
-local OPTIONS_TAB_PUSHED_ALPHA = 0.75
-local OPTIONS_TAB_SELECTED_ALPHA = 1
 
----Waypoint-style settings shell: left sidebar tabs, right content host.
----@return table root registered Settings canvas frame
-local function createSettingsShell()
-	local root = CreateFrame("Frame", "TyGearSettingsRoot")
-	root.name = "TyGear"
-	root.tabs = {}
-	root.tabByName = {}
-	root.selectedIndex = nil
-
-	local sidebar = CreateFrame("Frame", "TyGearSettingsSidebar", root, "BackdropTemplate")
-	sidebar:SetPoint("TOPLEFT", root, "TOPLEFT", 0, 0)
-	sidebar:SetPoint("BOTTOMLEFT", root, "BOTTOMLEFT", 0, 0)
-	sidebar:SetWidth(OPTIONS_SIDEBAR_WIDTH)
-	sidebar:SetBackdrop({
-		bgFile = "Interface/ChatFrame/ChatFrameBackground",
-		edgeFile = nil,
-		tile = true, tileSize = 16, edgeSize = 1,
-		insets = { left = 0, right = 0, top = 0, bottom = 0 },
-	})
-	sidebar:SetBackdropColor(OPTIONS_SIDEBAR_BG[1], OPTIONS_SIDEBAR_BG[2], OPTIONS_SIDEBAR_BG[3], OPTIONS_SIDEBAR_BG[4])
-	root.sidebar = sidebar
-
-	local divider = sidebar:CreateTexture(nil, "ARTWORK")
-	divider:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", 0, -6)
-	divider:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", 0, 6)
-	divider:SetWidth(2)
-	divider:SetColorTexture(OPTIONS_DIVIDER[1], OPTIONS_DIVIDER[2], OPTIONS_DIVIDER[3], OPTIONS_DIVIDER[4])
-	root.sidebarDivider = divider
-
-	local brand = sidebar:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	brand:SetPoint("TOPLEFT", sidebar, "TOPLEFT", OPTIONS_SIDEBAR_INSET + 4, -12)
-	brand:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -(OPTIONS_SIDEBAR_INSET + 6), -12)
-	brand:SetJustifyH("LEFT")
-	brand:SetText("TyGear")
-	root.brand = brand
-
-	local credit = sidebar:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	credit:SetPoint("TOPLEFT", brand, "BOTTOMLEFT", 0, -2)
-	credit:SetPoint("TOPRIGHT", brand, "BOTTOMRIGHT", 0, -2)
-	credit:SetJustifyH("LEFT")
-	credit:SetWordWrap(true)
-	credit:SetText(L["Fork of AutoGear by Synthetikaryote and BujuArena."])
-	root.credit = credit
-
-	local tabHost = CreateFrame("Frame", "TyGearSettingsTabHost", sidebar)
-	tabHost:SetPoint("TOPLEFT", credit, "BOTTOMLEFT", -4, -12)
-	tabHost:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -(OPTIONS_SIDEBAR_INSET + 6), -12)
-	tabHost:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", OPTIONS_SIDEBAR_INSET, 12)
-	tabHost:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", -(OPTIONS_SIDEBAR_INSET + 6), 12)
-	root.tabHost = tabHost
-
-	local content = CreateFrame("Frame", "TyGearSettingsContent", root, "BackdropTemplate")
-	content:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 0, 0)
-	content:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT", 0, 0)
-	content:SetBackdrop({
-		bgFile = "Interface/ChatFrame/ChatFrameBackground",
-		edgeFile = nil,
-		tile = true, tileSize = 16, edgeSize = 1,
-		insets = { left = 0, right = 0, top = 0, bottom = 0 },
-	})
-	content:SetBackdropColor(0.08, 0.08, 0.09, 0.35)
-	root.content = content
-
-	local function updateTabButton(button)
-		local selected = button.isSelected
-		local pushed = button.isPushed
-		local hover = button.isHover
-		local alpha = OPTIONS_TAB_IDLE_ALPHA
-		local y = 0
-		if selected then
-			alpha = OPTIONS_TAB_SELECTED_ALPHA
-			button.background:SetColorTexture(1, 1, 1, 0.1)
-			button.background:Show()
-		elseif pushed then
-			alpha = OPTIONS_TAB_PUSHED_ALPHA
-			y = -1
-			button.background:SetColorTexture(1, 1, 1, 0.07)
-			button.background:Show()
-		elseif hover then
-			alpha = OPTIONS_TAB_HOVER_ALPHA
-			button.background:SetColorTexture(1, 1, 1, 0.06)
-			button.background:Show()
-		else
-			button.background:Hide()
-		end
-		button.label:SetAlpha(alpha)
-		button.label:ClearAllPoints()
-		button.label:SetPoint("LEFT", button, "LEFT", 14, y)
-		button.label:SetPoint("RIGHT", button, "RIGHT", -10, y)
-	end
-
-	local function contentInnerWidth()
-		return math.max((root.content:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 24, 200)
-	end
-
-	local function layoutTab(tab)
-		if not tab or tab._tyGearLayingOut then return end
-		tab._tyGearLayingOut = true
-		-- Always size from the live content host. Hidden tabs keep a stale 1px child
-		-- from login, and scroll:GetWidth() is often still 0 on the same frame as Show.
-		local width = contentInnerWidth()
-		tab.child:SetWidth(width)
-		if tab.scroll.SetScrollChild then
-			tab.scroll:SetScrollChild(tab.child)
-		end
-		if tab.ensureBuilt then
-			tab.ensureBuilt()
-		end
-		if tab.layout then
-			tab.layout()
-		elseif tab.optionsPage and tab.optionsPage.layout then
-			tab.optionsPage.layout()
-		end
-		if (tab.child:GetHeight() or 0) < 2 then
-			tab.child:SetHeight(math.max(root.content:GetHeight() or 400, 400))
-		end
-		if tab.scroll.UpdateScrollChildRect then
-			tab.scroll:UpdateScrollChildRect()
-		end
-		tab._tyGearLayingOut = nil
-	end
-	root.LayoutTab = layoutTab
-
-	local function queueLayout(tab)
-		if not tab or not tab.panel then return end
-		-- Defer one frame so Show()/anchors have real widths before we build list pages.
-		tab.panel:SetScript("OnUpdate", function(self)
-			self:SetScript("OnUpdate", nil)
-			layoutTab(tab)
-		end)
-	end
-
-	function root:SelectTab(index)
-		if not self.tabs[index] then return end
-		self.selectedIndex = index
-		for i, tab in ipairs(self.tabs) do
-			local selected = (i == index)
-			tab.button.isSelected = selected
-			updateTabButton(tab.button)
-			tab.panel:SetShown(selected)
-			if selected then
-				tab.panel:SetAlpha(1)
-				layoutTab(tab)
-				queueLayout(tab)
-				if tab.onShow then tab.onShow() end
-			end
-		end
-	end
-
-	function root:AddTab(name, options)
-		options = options or {}
-		local index = #self.tabs + 1
-		local button = CreateFrame("Button", "TyGearSettingsTabButton"..index, self.tabHost)
-		button:SetHeight(OPTIONS_TAB_HEIGHT)
-		button:EnableMouse(true)
-		button.background = button:CreateTexture(nil, "BACKGROUND")
-		button.background:SetPoint("TOPLEFT", 4, -3)
-		button.background:SetPoint("BOTTOMRIGHT", -4, 3)
-		button.background:Hide()
-		button.label = button:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-		button.label:SetJustifyH("LEFT")
-		button.label:SetWordWrap(false)
-		button.label:SetText(name)
-		button.isSelected = false
-		button:SetScript("OnEnter", function(self)
-			self.isHover = true
-			updateTabButton(self)
-		end)
-		button:SetScript("OnLeave", function(self)
-			self.isHover = false
-			self.isPushed = false
-			updateTabButton(self)
-		end)
-		button:SetScript("OnMouseDown", function(self)
-			self.isPushed = true
-			updateTabButton(self)
-		end)
-		button:SetScript("OnMouseUp", function(self)
-			self.isPushed = false
-			updateTabButton(self)
-		end)
-		button:SetScript("OnClick", function()
-			PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-			root:SelectTab(index)
-		end)
-		updateTabButton(button)
-
-		local panel = CreateFrame("Frame", "TyGearSettingsTabPanel"..index, self.content)
-		panel:SetAllPoints(self.content)
-		panel:Hide()
-
-		local scroll = CreateFrame("ScrollFrame", "TyGearSettingsTabScroll"..index, panel, "UIPanelScrollFrameTemplate")
-		scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", OPTIONS_CONTENT_INSET_SIDE, -OPTIONS_CONTENT_INSET_TOP)
-		scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -6, OPTIONS_CONTENT_INSET_BOTTOM)
-
-		local child = CreateFrame("Frame", "TyGearSettingsTabChild"..index, scroll)
-		child:SetWidth(contentInnerWidth())
-		child:SetHeight(1)
-		scroll:SetScrollChild(child)
-
-		local tab = {
-			name = name,
-			button = button,
-			panel = panel,
-			scroll = scroll,
-			child = child,
-			onShow = options.onShow,
-			layout = options.layout,
-			ensureBuilt = options.ensureBuilt,
-		}
-		self.tabs[index] = tab
-		self.tabByName[name] = tab
-
-		-- TOPLEFT/TOPRIGHT only: LEFT+RIGHT to the host midpoints can yank tabs vertically.
-		local previous = self.tabs[index - 1] and self.tabs[index - 1].button
-		button:ClearAllPoints()
-		if previous then
-			button:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -OPTIONS_TAB_SPACING)
-			button:SetPoint("TOPRIGHT", previous, "BOTTOMRIGHT", 0, -OPTIONS_TAB_SPACING)
-		else
-			button:SetPoint("TOPLEFT", self.tabHost, "TOPLEFT", 0, 0)
-			button:SetPoint("TOPRIGHT", self.tabHost, "TOPRIGHT", 0, 0)
-		end
-
-		panel:HookScript("OnShow", function()
-			queueLayout(tab)
-		end)
-		scroll:HookScript("OnSizeChanged", function()
-			layoutTab(tab)
-		end)
-
-		return tab
-	end
-
-	function root:GetTab(name)
-		return self.tabByName[name]
-	end
-
-	root:HookScript("OnShow", function(self)
-		if self.selectedIndex then
-			layoutTab(self.tabs[self.selectedIndex])
-		end
-	end)
-	root:HookScript("OnSizeChanged", function(self)
-		if self.selectedIndex then
-			layoutTab(self.tabs[self.selectedIndex])
-		end
-	end)
-
-	return root
-end
-
----One scrolling options page inside a settings-shell tab.
+---One scrolling options page. The mouse wheel moves through every section
+---because they are all on this page.
 ---@param optionsMenu table the scroll child of the options scroll frame
----@param containerName string|nil unique frame name for the content container
 ---@return table optionsPage with BeginOption, AddRow, AddScanButton and Finish
-local function newOptionsPage(optionsMenu, containerName)
+local function newOptionsPage(optionsMenu)
 	local scrollFrame = optionsMenu:GetParent()
 	local optionsPage = {}
 
-	local container = CreateFrame("Frame", containerName or "TyGearOptionsContainer", optionsMenu, "BackdropTemplate")
-	tyGearApplyPanelBackdrop(container, false)
+	local container = CreateFrame("Frame", "TyGearOptionsContainer", optionsMenu, "BackdropTemplate")
+	container:SetBackdrop({
+		bgFile = "Interface/ChatFrame/ChatFrameBackground",
+		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+		tile = true, tileSize = 16, edgeSize = 14,
+		insets = { left = 4, right = 4, top = 4, bottom = 4 },
+	})
+	container:SetBackdropColor(0.1, 0.1, 0.1, 0.3)
+	container:SetBackdropBorderColor(0.5, 0.5, 0.5)
 	container:SetPoint("TOPLEFT", optionsMenu, "TOPLEFT", OPTIONS_CONTAINER_LEFT_OFFSET, OPTIONS_CONTAINER_TOP)
 
 	local page = CreateFrame("Frame", nil, container)
@@ -5261,26 +4966,19 @@ local function newOptionsPage(optionsMenu, containerName)
 
 	function optionsPage:AddHeader(label, isMajor)
 		local header = CreateFrame("Frame", nil, page)
-		header:SetSize(400, isMajor and 28 or OPTIONS_SECTION_HEADER_HEIGHT)
+		header:SetSize(400, isMajor and 26 or OPTIONS_SECTION_HEADER_HEIGHT)
 		local headerText = header:CreateFontString(nil, "ARTWORK", isMajor and "GameFontNormalLarge" or "GameFontNormal")
-		headerText:SetPoint("BOTTOMLEFT", 6, 2)
+		headerText:SetPoint("BOTTOMLEFT", 4, 2)
 		headerText:SetText(TyGearColorize(label))
-		if not isMajor then
-			local rule = header:CreateTexture(nil, "ARTWORK")
-			rule:SetPoint("BOTTOMLEFT", headerText, "BOTTOMRIGHT", 10, 2)
-			rule:SetPoint("RIGHT", header, "RIGHT", -8, 0)
-			rule:SetHeight(1)
-			rule:SetColorTexture(1, 1, 1, 0.08)
-		end
-		self:AddRow(header, isMajor and OPTIONS_SECTION_SPACING or 8)
+		self:AddRow(header, isMajor and OPTIONS_SECTION_SPACING or 6)
 	end
 
-	---Groups options onto this tab page. Major tab titles live in the sidebar,
-	---so only section labels are drawn inside the content panel.
+	---Groups options that share a tab onto this page and adds a header when the group changes.
 	function optionsPage:BeginOption(tabLabel, sectionLabel)
 		if tabLabel ~= page.tab then
 			page.tab = tabLabel
 			page.section = nil
+			self:AddHeader(tabLabel, true)
 		end
 		if sectionLabel and sectionLabel ~= page.section then
 			page.section = sectionLabel
@@ -5315,16 +5013,7 @@ local function newOptionsPage(optionsMenu, containerName)
 
 	function optionsPage:Finish()
 		local function layout()
-			local width = scrollFrame:GetWidth() or 0
-			-- First open often sizes hidden scrolls to 0; fall back to the content host.
-			if width < 50 then
-				local panel = scrollFrame:GetParent()
-				local contentHost = panel and panel:GetParent()
-				if contentHost and contentHost.GetWidth then
-					width = (contentHost:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 20
-				end
-			end
-			width = math.max(width - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
+			local width = math.max((scrollFrame:GetWidth() or 0) - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
 			container:SetWidth(width)
 			page:SetWidth(width)
 			optionsMenu:SetWidth(width + OPTIONS_CONTAINER_LEFT_OFFSET)
@@ -6089,9 +5778,7 @@ local function buildIgnoredGearListPage(listMenu)
 
 	local layoutIgnoredGearPage
 	function TyGearRefreshIgnoredGearList()
-		-- Scroll children often still report hidden on the same frame a tab is shown.
-		local visible = listMenu.tyGearForceShow or listMenu:IsShown()
-		if not visible and listContainer.builtOnce then
+		if not listMenu:IsShown() and listContainer.builtOnce then
 			listContainer.needsRefresh = true
 			return
 		end
@@ -6414,8 +6101,7 @@ buildKeepListSection = function(listMenu, anchorBelow)
 	end
 
 	function TyGearRefreshKeepList()
-		local visible = listMenu.tyGearForceShow or listMenu:IsShown()
-		if not visible and listContainer.builtOnce then
+		if not listMenu:IsShown() and listContainer.builtOnce then
 			listContainer.needsRefresh = true
 			return
 		end
@@ -6666,8 +6352,7 @@ local function buildNeedListPage(listMenu)
 	end
 
 	function TyGearRefreshNeedList()
-		local visible = listMenu.tyGearForceShow or listMenu:IsShown()
-		if not visible and listContainer.builtOnce then
+		if not listMenu:IsShown() and listContainer.builtOnce then
 			listContainer.needsRefresh = true
 			return
 		end
@@ -6724,9 +6409,19 @@ local function buildNeedListPage(listMenu)
 	TyGearRefreshNeedList()
 end
 
-local function optionsSetup(settingsRoot)
+local function optionsSetup(optionsMenu)
 	local i = 0
 	local frame = {}
+	frame[i] = optionsMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	frame[i]:SetPoint("TOPLEFT", 8, -8)
+	frame[i]:SetText("TyGear")
+	i = i + 1
+	frame[i] = optionsMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	frame[i]:SetPoint("TOPLEFT", 8, -28)
+	frame[i]:SetJustifyH("LEFT")
+	frame[i]:SetText(L["Fork of AutoGear by Synthetikaryote and BujuArena."])
+	local optionsPage = newOptionsPage(optionsMenu)
+	TyGearOptionsPage = optionsPage
 	--keep each former tab's options together, in the order those tabs first appear
 	local tabOrder, buckets = {}, {}
 	for _, option in ipairs(TyGearOptions) do
@@ -6757,37 +6452,8 @@ local function optionsSetup(settingsRoot)
 	end
 	TyGearOptions = orderedOptions
 
-	-- One Waypoint-style content page per sidebar tab.
-	local pagesByTab = {}
-	TyGearOptionsPages = pagesByTab
-	local function ensureOptionsTab(tabLabel)
-		local existing = pagesByTab[tabLabel]
-		if existing then return existing end
-		local shellTab = settingsRoot:GetTab(tabLabel) or settingsRoot:AddTab(tabLabel)
-		local page = newOptionsPage(shellTab.child, "TyGearOptionsContainer"..(tostring(tabLabel):gsub("%W+", "")))
-		pagesByTab[tabLabel] = page
-		shellTab.optionsPage = page
-		local title = CreateFrame("Frame", nil, page.page)
-		title:SetSize(400, 28)
-		local titleText = title:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-		titleText:SetPoint("BOTTOMLEFT", 6, 2)
-		titleText:SetText(TyGearColorize(tabLabel))
-		page:AddRow(title, 0)
-		if tabLabel == L["Evaluation"] then
-			TyGearOptionsPage = page
-			-- Scan Bags stays near the top of Evaluation, under the tab title.
-			page:AddScanButton()
-		end
-		return page
-	end
-	for _, tabLabel in ipairs(tabOrder) do
-		ensureOptionsTab(tabLabel)
-	end
-	if not TyGearOptionsPage then
-		TyGearOptionsPage = pagesByTab[tabOrder[1]]
-	end
-	-- Helpers below close over this; beginListedOption points it at the active tab page.
-	local optionsPage = TyGearOptionsPage
+	--Scan Bags sits above Evaluation so it is not buried under options and does not indent later rows
+	optionsPage:AddScanButton()
 
 	local function addOptionsNote(page, text)
 		local holder = CreateFrame("Frame", nil, page)
@@ -6884,10 +6550,8 @@ local function optionsSetup(settingsRoot)
 	end
 
 	local function beginListedOption(v)
-		local tabLabel = v["tab"] or L["Other"]
-		optionsPage = ensureOptionsTab(tabLabel)
-		local page = optionsPage:BeginOption(tabLabel, v["section"])
-		if tabLabel == L["Evaluation"] and not optionsPage.activeSpecShown then
+		local page = optionsPage:BeginOption(v["tab"] or L["Other"], v["section"])
+		if (v["tab"] or L["Other"]) == L["Evaluation"] and not optionsPage.activeSpecShown then
 			optionsPage.activeSpecShown = true
 			addActiveSpecCallout(page)
 		end
@@ -7468,49 +7132,17 @@ local function optionsSetup(settingsRoot)
 			shouldPrintHelp = false
 		end
 	end)
-	--Forever hosts Ignore on the Ignored List sidebar tab instead of Evaluation
+	--Forever hosts Ignore on the Ignored List Settings tab instead of the main page
 	if not IS_WOW_FOREVER then
-		local ignorePage = ensureOptionsTab(L["Ignore"])
-		buildIgnoreSection(ignorePage)
-	else
-		ignoredGearListTab = settingsRoot:AddTab(L["Ignored List"], {
-			onShow = function()
-				if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
-			end,
-		})
-		ignoredGearListMenu = ignoredGearListTab.child
-		ignoredGearListMenuParent = ignoredGearListTab.scroll
-
-		needListTab = settingsRoot:AddTab(L["Need List"])
-		needListMenu = needListTab.child
-		needListMenuParent = needListTab.scroll
+		buildIgnoreSection(optionsPage)
 	end
-
-	-- Keep Personal Stat Weights with the other tabs (not pinned to the sidebar footer).
-	personalWeightsTab = settingsRoot:AddTab(L["Personal Stat Weights"])
-	personalWeightsMenu = personalWeightsTab.child
-	personalWeightsMenuParent = personalWeightsTab.scroll
-
-	local evaluationTab = settingsRoot:GetTab(L["Evaluation"])
-	if evaluationTab and evaluationTab.panel and evaluationTab.panel.HookScript then
-		evaluationTab.panel:HookScript("OnShow", function()
+	local optionsScroll = optionsMenu:GetParent()
+	if optionsScroll and optionsScroll.HookScript then
+		optionsScroll:HookScript("OnShow", function()
 			if TyGearRefreshActiveSpecCallout then TyGearRefreshActiveSpecCallout() end
 		end)
 	end
-	for _, page in pairs(pagesByTab) do
-		page:Finish()
-	end
-	-- Point each options tab at its Finish layout so SelectTab can reflow it.
-	for tabLabel, page in pairs(pagesByTab) do
-		local shellTab = settingsRoot:GetTab(tabLabel)
-		if shellTab then
-			shellTab.optionsPage = page
-			shellTab.layout = page.layout
-		end
-	end
-	if settingsRoot.SelectTab then
-		settingsRoot:SelectTab(1)
-	end
+	optionsPage:Finish()
 end
 
 --Personal Stat Weights tab: one block of stat boxes per spec of the logged-in class, import/export at the bottom
@@ -7647,7 +7279,14 @@ local function buildPersonalStatWeightsPage(listMenu)
 			block:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -12)
 			block:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 			block:SetHeight(36 + fieldRows * rowHeight)
-			tyGearApplyPanelBackdrop(block, true)
+			block:SetBackdrop({
+				bgFile = "Interface/ChatFrame/ChatFrameBackground",
+				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+				tile = true, tileSize = 16, edgeSize = 12,
+				insets = { left = 3, right = 3, top = 3, bottom = 3 },
+			})
+			block:SetBackdropColor(0.08, 0.08, 0.08, 0.45)
+			block:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
 			forwardWheel(block)
 
 			local header = block:CreateFontString(nil, "ARTWORK", "GameFontNormal")
@@ -7843,24 +7482,62 @@ function TyGearRefreshPersonalStatWeightEditors()
 	end
 end
 
--- Waypoint-inspired settings shell: one Settings category with sidebar tabs.
--- Option tabs and list tabs are created in optionsSetup so sidebar order stays stable.
-local settingsRoot = createSettingsShell()
-local optionsMenuParent = settingsRoot --slash command and OnShow hooks look this up by name
--- Event bootstrap still uses a dedicated frame; content lives in the shell tabs.
 local optionsMenu = CreateFrame("Frame", "TyGearOptionsMenu")
+optionsMenu:SetWidth(1) -- must be set to at least 1 or the menu is invisible in the scroll frame, but will expand to show everything
+optionsMenu:SetHeight(1) -- must be set to at least 1 or the menu is invisible in the scroll frame, but will expand to show everything
+local optionsMenuParent = CreateFrame("ScrollFrame", "TyGearOptionsMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
+optionsMenuParent.name = "TyGear"
+optionsMenuParent:SetScrollChild(optionsMenu)
 --the Settings shim above returns the registered category; native InterfaceOptions_AddCategory returns nothing
-local optionsCategory = InterfaceOptions_AddCategory(settingsRoot)
+local optionsCategory = InterfaceOptions_AddCategory(optionsMenuParent)
 
+--Settings subtabs used on WoW Forever. The keep list lives on the Ignored gear tab.
 local ignoredGearListMenu
 local ignoredGearListMenuParent
 local needListMenu
 local needListMenuParent
 local personalWeightsMenu
 local personalWeightsMenuParent
-local ignoredGearListTab
-local needListTab
-local personalWeightsTab
+if IS_WOW_FOREVER then
+	ignoredGearListMenu = CreateFrame("Frame", "TyGearIgnoredGearListMenu")
+	ignoredGearListMenu:SetWidth(1)
+	ignoredGearListMenu:SetHeight(1)
+	ignoredGearListMenuParent = CreateFrame("ScrollFrame", "TyGearIgnoredGearListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
+	ignoredGearListMenuParent.name = L["Ignored List"]
+	ignoredGearListMenuParent:SetScrollChild(ignoredGearListMenu)
+	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
+		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, ignoredGearListMenuParent, ignoredGearListMenuParent.name)
+	else
+		ignoredGearListMenuParent.parent = optionsMenuParent.name
+		InterfaceOptions_AddCategory(ignoredGearListMenuParent)
+	end
+
+	needListMenu = CreateFrame("Frame", "TyGearNeedListMenu")
+	needListMenu:SetWidth(1)
+	needListMenu:SetHeight(1)
+	needListMenuParent = CreateFrame("ScrollFrame", "TyGearNeedListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
+	needListMenuParent.name = L["Need List"]
+	needListMenuParent:SetScrollChild(needListMenu)
+	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
+		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, needListMenuParent, needListMenuParent.name)
+	else
+		needListMenuParent.parent = optionsMenuParent.name
+		InterfaceOptions_AddCategory(needListMenuParent)
+	end
+end
+
+personalWeightsMenu = CreateFrame("Frame", "TyGearPersonalStatWeightsMenu")
+personalWeightsMenu:SetWidth(1)
+personalWeightsMenu:SetHeight(1)
+personalWeightsMenuParent = CreateFrame("ScrollFrame", "TyGearPersonalStatWeightsMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
+personalWeightsMenuParent.name = L["Personal Stat Weights"]
+personalWeightsMenuParent:SetScrollChild(personalWeightsMenu)
+if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
+	Settings.RegisterCanvasLayoutSubcategory(optionsCategory, personalWeightsMenuParent, personalWeightsMenuParent.name)
+else
+	personalWeightsMenuParent.parent = optionsMenuParent.name
+	InterfaceOptions_AddCategory(personalWeightsMenuParent)
+end
 
 if InterfaceAddOnsList_Update then InterfaceAddOnsList_Update() end
 
@@ -8320,79 +7997,58 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 		if (not TyGearDB.LockedGearSlots) or (#TyGearDB.LockedGearSlots == 0) then
 			TyGearDB.LockedGearSlots = TyGearGetDefaultLockedGearSlots()
 		end
-		optionsSetup(settingsRoot)
+		optionsSetup(optionsMenu)
 		TyGearRefreshPawnOptionsVisibility()
-
-		-- Build list tabs on first show with real canvas sizes. Building at login left
-		-- them at 1px wide inside a hidden scroll child, so the panels looked empty.
-		local function listTabContentWidth()
-			return math.max((settingsRoot.content:GetWidth() or 0) - OPTIONS_CONTENT_INSET_SIDE - 40, 200)
-		end
-
-		if ignoredGearListTab and ignoredGearListMenu then
+		if ignoredGearListMenu and not ignoredGearListMenu.built then
+			ignoredGearListMenu.built = true
+			buildIgnoredGearListPage(ignoredGearListMenu)
 			local function layoutIgnoredGearList()
-				local width = listTabContentWidth()
-				ignoredGearListMenu:SetWidth(width)
-				ignoredGearListMenu.tyGearForceShow = true
+				local width = math.max((ignoredGearListMenuParent:GetWidth() or 0) - 30, 1)
+				ignoredGearListMenu:SetWidth(width + 8)
 				if ignoredGearListMenu.ignoredGearNote then
-					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 16, 100))
+					ignoredGearListMenu.ignoredGearNote:SetWidth(math.max(width - 8, 100))
 				end
 				if ignoredGearListMenu.keepListNote then
-					ignoredGearListMenu.keepListNote:SetWidth(math.max(width - 16, 100))
+					ignoredGearListMenu.keepListNote:SetWidth(math.max(width - 8, 100))
 				end
 				if ignoredGearListMenu.keepListAddNote then
-					ignoredGearListMenu.keepListAddNote:SetWidth(math.max(width - 16, 100))
+					ignoredGearListMenu.keepListAddNote:SetWidth(math.max(width - 8, 100))
 				end
 				if TyGearRefreshKeepList then TyGearRefreshKeepList() end
 				if TyGearRefreshIgnoredGearList then TyGearRefreshIgnoredGearList() end
-				if ignoredGearListMenu.layoutIgnoredGearPage then
-					ignoredGearListMenu.layoutIgnoredGearPage()
-				end
-				ignoredGearListMenu.tyGearForceShow = nil
-				if ignoredGearListMenuParent and ignoredGearListMenuParent.UpdateScrollChildRect then
+				if ignoredGearListMenuParent.UpdateScrollChildRect then
 					ignoredGearListMenuParent:UpdateScrollChildRect()
 				end
 			end
-			ignoredGearListTab.layout = layoutIgnoredGearList
-			ignoredGearListTab.ensureBuilt = function()
-				if ignoredGearListMenu.built then return end
-				ignoredGearListMenu.built = true
-				ignoredGearListMenu:SetWidth(listTabContentWidth())
-				buildIgnoredGearListPage(ignoredGearListMenu)
-				layoutIgnoredGearList()
-			end
+			ignoredGearListMenuParent:HookScript("OnSizeChanged", layoutIgnoredGearList)
+			layoutIgnoredGearList()
 		end
-		if needListTab and needListMenu then
+		if needListMenu and not needListMenu.built then
+			needListMenu.built = true
+			buildNeedListPage(needListMenu)
 			local function layoutNeedList()
-				local width = listTabContentWidth()
-				needListMenu:SetWidth(width)
-				needListMenu.tyGearForceShow = true
+				local width = math.max((needListMenuParent:GetWidth() or 0) - 30, 1)
+				needListMenu:SetWidth(width + 8)
 				if needListMenu.needListNote then
-					needListMenu.needListNote:SetWidth(math.max(width - 16, 100))
+					needListMenu.needListNote:SetWidth(math.max(width - 8, 100))
 				end
 				if needListMenu.needListAddNote then
-					needListMenu.needListAddNote:SetWidth(math.max(width - 16, 100))
+					needListMenu.needListAddNote:SetWidth(math.max(width - 8, 100))
 				end
 				if TyGearRefreshNeedList then TyGearRefreshNeedList() end
-				needListMenu.tyGearForceShow = nil
-				if needListMenuParent and needListMenuParent.UpdateScrollChildRect then
+				if needListMenuParent.UpdateScrollChildRect then
 					needListMenuParent:UpdateScrollChildRect()
 				end
 			end
-			needListTab.layout = layoutNeedList
-			needListTab.ensureBuilt = function()
-				if needListMenu.built then return end
-				needListMenu.built = true
-				needListMenu:SetWidth(listTabContentWidth())
-				buildNeedListPage(needListMenu)
-				layoutNeedList()
-			end
+			needListMenuParent:HookScript("OnSizeChanged", layoutNeedList)
+			layoutNeedList()
 		end
-		if personalWeightsTab and personalWeightsMenu then
+		if personalWeightsMenu and not personalWeightsMenu.built then
+			personalWeightsMenu.built = true
+			buildPersonalStatWeightsPage(personalWeightsMenu)
 			local function layoutPersonalWeights()
-				local width = listTabContentWidth()
-				personalWeightsMenu:SetWidth(width)
-				personalWeightsMenu.tyGearForceShow = true
+				local width = math.max((personalWeightsMenuParent:GetWidth() or 0) - 30, 1)
+				personalWeightsMenu:SetWidth(width + 8)
 				if personalWeightsMenu.personalNote then
 					personalWeightsMenu.personalNote:SetWidth(math.max(width - 16, 100))
 				end
@@ -8408,28 +8064,25 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				if personalWeightsMenu.layoutPersonalPage then
 					personalWeightsMenu.layoutPersonalPage()
 				end
-				personalWeightsMenu.tyGearForceShow = nil
-				if personalWeightsMenuParent and personalWeightsMenuParent.UpdateScrollChildRect then
+				if personalWeightsMenuParent.UpdateScrollChildRect then
 					personalWeightsMenuParent:UpdateScrollChildRect()
 				end
 			end
-			personalWeightsTab.layout = layoutPersonalWeights
-			personalWeightsTab.ensureBuilt = function()
-				if personalWeightsMenu.built then return end
-				personalWeightsMenu.built = true
-				personalWeightsMenu:SetWidth(listTabContentWidth())
-				buildPersonalStatWeightsPage(personalWeightsMenu)
-				layoutPersonalWeights()
-			end
+			personalWeightsMenuParent:HookScript("OnSizeChanged", layoutPersonalWeights)
+			layoutPersonalWeights()
 		end
-		if not IS_WOW_FOREVER then
-			local ignoreTab = settingsRoot:GetTab(L["Ignore"])
-			if ignoreTab and ignoreTab.panel and not ignoreTab.panel.ignoreSectionHooked then
-				ignoreTab.panel.ignoreSectionHooked = true
-				ignoreTab.panel:HookScript("OnShow", function()
+		if IS_WOW_FOREVER then
+			if ignoredGearListMenuParent and not ignoredGearListMenuParent.ignoreSectionHooked then
+				ignoredGearListMenuParent.ignoreSectionHooked = true
+				ignoredGearListMenuParent:HookScript("OnShow", function()
 					if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
 				end)
 			end
+		elseif not optionsMenuParent.ignoreSectionHooked then
+			optionsMenuParent.ignoreSectionHooked = true
+			optionsMenuParent:HookScript("OnShow", function()
+				if TyGearRefreshIgnoreSection then TyGearRefreshIgnoreSection() end
+			end)
 		end
 
 		hooksecurefunc("GetQuestReward", function() TyGearQueueLocalUpdate() end)
@@ -8553,7 +8206,7 @@ SlashCmdList["TyGear"] = function(msg)
 			if not categoryID then
 				--category registered natively: find it by the name it was registered with
 				for _, category in next, SettingsPanel:GetAllCategories() do
-					if category.name == settingsRoot.name then
+					if category.name == optionsMenuParent.name then
 						assert(not categoryID, 'found multiple instances of the same category')
 						categoryID = category:GetID()
 					end
@@ -8562,9 +8215,9 @@ SlashCmdList["TyGear"] = function(msg)
 			Settings.OpenToCategory(categoryID)
 		else
 			if not InterfaceAddOnsList_Update then
-				InterfaceOptionsFrame_OpenToCategory(settingsRoot)
+				InterfaceOptionsFrame_OpenToCategory(optionsMenu)
 			end
-			InterfaceOptionsFrame_OpenToCategory(settingsRoot)
+			InterfaceOptionsFrame_OpenToCategory(optionsMenu)
 		end
 	else
 		shouldPrintHelp = true
@@ -8573,7 +8226,7 @@ end
 
 function TyGearPrintHelp()
 	TyGearPrint("TyGear: "..((param1 == "help") and "" or "Unrecognized command.  ").."Recognized commands (also /tygear):", 0)
-	TyGearPrint("TyGear:    '/tg': options menu with sidebar tabs for Evaluation, Loot, Tooltips, Vendor, Chat"..(IS_WOW_FOREVER and (", Ignored List, Need List") or (", Ignore"))..", and Personal Stat Weights", 0)
+	TyGearPrint("TyGear:    '/tg': options menu, including Ignore for equipment slots and items"..(IS_WOW_FOREVER and (", the Ignored List tab for ignore settings and the keep list, and the Need List tab for forced NEED rolls") or "")..", and the Personal Stat Weights tab", 0)
 	TyGearPrint("TyGear:    '/tg help': command line help", 0)
 	TyGearPrint("TyGear:    '/tg scan': scan all bags for gear upgrades", 0)
 	TyGearPrint("TyGear:    '/tg spec': get name of current talent specialization", 0)
