@@ -4847,6 +4847,51 @@ local function tyGearApplySectionBlockBackdrop(frame)
 	frame:SetBackdropBorderColor(0.48, 0.48, 0.48, 0.95)
 end
 
+---Light gray row highlight while the cursor is over the row or its controls.
+local function tyGearHookBlockRowHoverChild(row, frame)
+	local highlight = row and row.tyGearHoverHighlight
+	if not highlight or not frame or not frame.HookScript then return end
+	frame:HookScript("OnEnter", function()
+		highlight:Show()
+	end)
+	frame:HookScript("OnLeave", function()
+		if row:IsMouseOver() then return end
+		highlight:Hide()
+	end)
+end
+
+local function tyGearAttachBlockRowHover(row, ...)
+	local highlight = row:CreateTexture(nil, "BACKGROUND")
+	highlight:SetPoint("TOPLEFT", 1, -1)
+	highlight:SetPoint("BOTTOMRIGHT", -1, 1)
+	if highlight.SetColorTexture then
+		highlight:SetColorTexture(1, 1, 1, 0.12)
+	else
+		highlight:SetTexture("Interface/Buttons/WHITE8X8")
+		highlight:SetVertexColor(1, 1, 1, 0.12)
+	end
+	highlight:Hide()
+	row.tyGearHoverHighlight = highlight
+
+	local function showHover()
+		highlight:Show()
+	end
+	local function hideHover()
+		-- Moving onto a child control fires OnLeave on the row; keep the highlight
+		-- while the cursor is still somewhere over this row.
+		if row:IsMouseOver() then return end
+		highlight:Hide()
+	end
+
+	row:EnableMouse(true)
+	row:HookScript("OnEnter", showHover)
+	row:HookScript("OnLeave", hideHover)
+	for i = 1, select("#", ...) do
+		tyGearHookBlockRowHoverChild(row, select(i, ...))
+	end
+	return highlight
+end
+
 ---Waypoint-style setting row: title + muted description on the left, control on the right.
 local function newBlockSettingRow(parent, dbname, label, description, onClick)
 	label = TyGearColorize(label)
@@ -4883,9 +4928,10 @@ local function newBlockSettingRow(parent, dbname, label, description, onClick)
 	desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -2)
 	desc:SetPoint("RIGHT", check, "LEFT", -14, 0)
 	desc:SetJustifyH("LEFT")
-	if desc.SetMaxLines then
-		desc:SetMaxLines(3)
-	end
+	desc:SetJustifyV("TOP")
+	if desc.SetWordWrap then desc:SetWordWrap(true) end
+	-- Show the full description; MaxLines was truncating with "..." while
+	-- GetStringHeight still reserved space for the hidden lines.
 	desc:SetText(description or "")
 
 	local function measure()
@@ -4913,8 +4959,11 @@ local function newBlockSettingRow(parent, dbname, label, description, onClick)
 		GameTooltip:AddLine(description, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 		GameTooltip:Show()
 	end)
-	row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	row:EnableMouse(true)
+	row:SetScript("OnLeave", function()
+		if row:IsMouseOver() then return end
+		GameTooltip:Hide()
+	end)
+	tyGearAttachBlockRowHover(row, check)
 	-- Clicking the text toggles the checkbox, matching the dense Waypoint rows.
 	row:SetScript("OnMouseUp", function(_, button)
 		if button and button ~= "LeftButton" then return end
@@ -5271,7 +5320,7 @@ local function buildIgnoreSection(optionsPage)
 		font:SetPoint("TOPLEFT", 4, -2)
 		font:SetPoint("TOPRIGHT", holder, "TOPRIGHT", -4, -2)
 		font:SetJustifyH("LEFT")
-		if font.SetMaxLines then font:SetMaxLines(6) end
+		if font.SetWordWrap then font:SetWordWrap(true) end
 		font:SetText(TyGearColorize(text))
 		local height = font:GetStringHeight()
 		local estimate = math.ceil(math.max(#text, 1) / 80) * 14
@@ -6685,7 +6734,7 @@ local function optionsSetup(optionsMenu)
 		font:SetPoint("TOPLEFT", 4, -2)
 		font:SetPoint("TOPRIGHT", holder, "TOPRIGHT", -4, -2)
 		font:SetJustifyH("LEFT")
-		if font.SetMaxLines then font:SetMaxLines(4) end
+		if font.SetWordWrap then font:SetWordWrap(true) end
 		font:SetText(TyGearColorize(text))
 		local height = font:GetStringHeight()
 		local estimate = math.ceil(math.max(#text, 1) / 80) * 14
@@ -6812,7 +6861,8 @@ local function optionsSetup(optionsMenu)
 				descText = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 				descText:SetPoint("TOPLEFT", labelText, "BOTTOMLEFT", 0, -2)
 				descText:SetJustifyH("LEFT")
-				if descText.SetMaxLines then descText:SetMaxLines(3) end
+				descText:SetJustifyV("TOP")
+				if descText.SetWordWrap then descText:SetWordWrap(true) end
 				descText:SetText(TyGearColorize(v["description"]))
 			end
 			local width = v["dropdownWidth"] or 220
@@ -6854,6 +6904,20 @@ local function optionsSetup(optionsMenu)
 			end
 			row.tyGearMeasure = measureDropdownRow
 			measureDropdownRow()
+			row:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_NONE")
+				GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+				GameTooltip:AddLine(TyGearColorize(v["label"]), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+				if v["description"] then
+					GameTooltip:AddLine(TyGearColorize(v["description"]), HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+				end
+				GameTooltip:Show()
+			end)
+			row:SetScript("OnLeave", function()
+				if row:IsMouseOver() then return end
+				GameTooltip:Hide()
+			end)
+			tyGearAttachBlockRowHover(row, dropDown)
 			setDropdownText(dropDown, labelForValue(TyGearSettingsTable(v["option"])[v["option"]]))
 			dropDown.SetValue = function(self, value)
 				for _, entry in ipairs(dropdownOptions()) do
@@ -7121,6 +7185,8 @@ local function optionsSetup(optionsMenu)
 				GameTooltip:Hide()
 			end)
 			optionsPage:EnableWheel(playButton)
+			tyGearHookBlockRowHoverChild(frame[i], playButton)
+			if frame[i].tyGearMeasure then frame[i].tyGearMeasure() end
 		end
 
 		--if this has a child defined and it should be used, build its child
@@ -7146,6 +7212,8 @@ local function optionsSetup(optionsMenu)
 				if frame[i].description then
 					frame[i].description:SetPoint("RIGHT", frame[i].dropDown, "LEFT", -10, 0)
 				end
+				tyGearHookBlockRowHoverChild(frame[i], frame[i].dropDown)
+				if frame[i].tyGearMeasure then frame[i].tyGearMeasure() end
 				--newDropdown(v["child"]["option"], v["child"]["label"], v["child"]["description"], _G["TyGearSelectFrom"..v["child"]["option"].."Dropdown"], v["child"]["options"], optionsMenu)
 				--frame[i].dropDown:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
 				if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
