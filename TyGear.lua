@@ -5017,11 +5017,16 @@ local function newOptionsPage(optionsMenu)
 	local function placeRow(row, spacing, offsetX, afterRow)
 		row:SetParent(page)
 		row:ClearAllPoints()
+		local left = OPTIONS_PAGE_PADDING + offsetX
 		if afterRow then
 			row:SetPoint("TOP", afterRow, "BOTTOM", 0, -spacing)
-			row:SetPoint("LEFT", page, "LEFT", OPTIONS_PAGE_PADDING + offsetX, 0)
+			row:SetPoint("LEFT", page, "LEFT", left, 0)
 		else
-			row:SetPoint("TOPLEFT", page, "TOPLEFT", OPTIONS_PAGE_PADDING + offsetX, -OPTIONS_PAGE_PADDING)
+			row:SetPoint("TOPLEFT", page, "TOPLEFT", left, -OPTIONS_PAGE_PADDING)
+		end
+		-- Stretch section blocks so child rows can wrap against a real width during build.
+		if row.tyGearBlock then
+			row:SetPoint("RIGHT", page, "RIGHT", -left, 0)
 		end
 		enableWheel(row)
 	end
@@ -5098,18 +5103,20 @@ local function newOptionsPage(optionsMenu)
 		block.blockRows = {}
 		block.lastRow = nil
 		block:SetHeight(OPTIONS_BLOCK_PAD * 2)
+		-- Provisional width so description wrap/measure works before Finish layout.
+		local provisional = math.max((scrollFrame:GetWidth() or 0) - OPTIONS_CONTAINER_RIGHT_MARGIN - OPTIONS_PAGE_PADDING * 2 - OPTIONS_BLOCK_WIDTH_INSET, 420)
+		block:SetWidth(provisional)
 		page.block = block
 		self:AddRow(block, OPTIONS_SECTION_SPACING, OPTIONS_BLOCK_WIDTH_INSET)
 		return block
 	end
 
-	---Add a row inside the active Waypoint-style section block (or on the page if none).
+	---Add a row inside the active Waypoint-style section block (opens one if needed).
 	function optionsPage:AddBlockRow(row, spacing)
-		local block = page.block
-		if not block then
-			self:AddRow(row, spacing)
-			return
+		if not page.block then
+			self:OpenBlock()
 		end
+		local block = page.block
 		local storedSpacing = spacing or OPTIONS_BLOCK_ROW_GAP
 		table.insert(block.blockRows, { row = row, spacing = storedSpacing })
 		local oldHeight = block:GetHeight() or 0
@@ -5170,12 +5177,11 @@ local function newOptionsPage(optionsMenu)
 			self:AddHeader(sectionLabel, false)
 			self:OpenBlock()
 		elseif not sectionLabel then
+			-- Tab-only groups (Ignore) open blocks around their own subheaders
+			-- so we do not leave an empty panel under the major header.
 			if page.section then
 				self:CloseBlock()
 				page.section = nil
-			end
-			if not page.block then
-				self:OpenBlock()
 			end
 		end
 		return page
@@ -5261,25 +5267,29 @@ local function buildIgnoreSection(optionsPage)
 
 	local function addNote(text)
 		local holder = CreateFrame("Frame", nil, page)
-		local font = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-		font:SetPoint("TOPLEFT", 8, -2)
-		font:SetWidth(480)
+		local font = holder:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+		font:SetPoint("TOPLEFT", 4, -2)
+		font:SetPoint("TOPRIGHT", holder, "TOPRIGHT", -4, -2)
 		font:SetJustifyH("LEFT")
-		font:SetText(text)
+		if font.SetMaxLines then font:SetMaxLines(6) end
+		font:SetText(TyGearColorize(text))
 		local height = font:GetStringHeight()
 		local estimate = math.ceil(math.max(#text, 1) / 80) * 14
 		if not height or height < estimate then height = estimate end
-		holder:SetSize(500, height + 8)
-		optionsPage:AddRow(holder)
+		holder:SetHeight(height + 8)
+		optionsPage:AddBlockRow(holder)
 	end
 
+	-- Gold section title outside the panel, then a fresh block for that subsection.
 	local function addSubheader(text)
+		optionsPage:CloseBlock()
 		local header = CreateFrame("Frame", nil, page)
-		header:SetSize(400, 20)
+		header:SetSize(400, OPTIONS_SECTION_HEADER_HEIGHT)
 		local font = header:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 		font:SetPoint("BOTTOMLEFT", 4, 2)
 		font:SetText(TyGearColorize(text))
-		optionsPage:AddRow(header, 12)
+		optionsPage:AddRow(header, OPTIONS_SECTION_SPACING)
+		optionsPage:OpenBlock()
 	end
 
 	local function trackHeight(container, height)
@@ -5509,7 +5519,8 @@ local function buildIgnoreSection(optionsPage)
 	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 	addNote(keepListDescription)
 
-	local unboundCheck = newCheckbox(
+	local unboundRow = newBlockSettingRow(
+		page,
 		"KeepUnboundGreyGear",
 		L["Keep unbound grey gear"],
 		L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
@@ -5518,14 +5529,13 @@ local function buildIgnoreSection(optionsPage)
 			TyGearDB.KeepUnboundGreyGear = value and true or false
 			TyGearPrint("TyGear: "..(TyGearDB.KeepUnboundGreyGear and L["Keeping unbound grey gear is now enabled."] or L["Keeping unbound grey gear is now disabled."]), 0)
 			if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
-		end,
-		page
+		end
 	)
-	optionsPage:AddRow(unboundCheck)
-	unboundCheck:SetHitRectInsets(0, -280, 0, 0)
-	unboundCheck:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
+	unboundRow.check:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
+	optionsPage:AddBlockRow(unboundRow)
 
-	local tahultCheck = newCheckbox(
+	local tahultRow = newBlockSettingRow(
+		page,
 		"KeepKeeperTahultPetItems",
 		L["Keep greys needed for Keeper Ta'hult's pets"],
 		L["Don't sell the grey items that Keeper Ta'hult in Oribos takes as payment for the Baubleworm pets."],
@@ -5534,12 +5544,10 @@ local function buildIgnoreSection(optionsPage)
 			TyGearDB.KeepKeeperTahultPetItems = value and true or false
 			TyGearPrint("TyGear: "..(TyGearDB.KeepKeeperTahultPetItems and L["Keeping greys needed for Keeper Ta'hult's pets is now enabled."] or L["Keeping greys needed for Keeper Ta'hult's pets is now disabled."]), 0)
 			if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
-		end,
-		page
+		end
 	)
-	optionsPage:AddRow(tahultCheck)
-	tahultCheck:SetHitRectInsets(0, -280, 0, 0)
-	tahultCheck:SetChecked(TyGearDB and TyGearDB.KeepKeeperTahultPetItems)
+	tahultRow.check:SetChecked(TyGearDB and TyGearDB.KeepKeeperTahultPetItems)
+	optionsPage:AddBlockRow(tahultRow)
 
 	local keepEditRow = CreateFrame("Frame", nil, page)
 	keepEditRow:SetSize(500, 24)
