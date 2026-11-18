@@ -4832,7 +4832,7 @@ local OPTIONS_SECTION_SPACING = 12
 local OPTIONS_SECTION_HEADER_HEIGHT = 20
 local OPTIONS_BUTTON_SPACING = 10
 local OPTIONS_BLOCK_PAD = 12
-local OPTIONS_BLOCK_ROW_GAP = 10
+local OPTIONS_BLOCK_ROW_GAP = 6
 local OPTIONS_BLOCK_WIDTH_INSET = 8
 
 local function tyGearApplySectionBlockBackdrop(frame)
@@ -4892,12 +4892,47 @@ local function tyGearAttachBlockRowHover(row, ...)
 	return highlight
 end
 
----Waypoint-style setting row: title + muted description on the left, control on the right.
+---Compact "i" button; description lives in its tooltip so setting rows stay short.
+local function tyGearCreateInfoButton(parent, title, description)
+	local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+	btn:SetSize(18, 18)
+	btn:EnableMouse(true)
+	btn:SetBackdrop({
+		bgFile = "Interface/ChatFrame/ChatFrameBackground",
+		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+		tile = true, tileSize = 8, edgeSize = 8,
+		insets = { left = 2, right = 2, top = 2, bottom = 2 },
+	})
+	btn:SetBackdropColor(0.12, 0.12, 0.14, 0.95)
+	btn:SetBackdropBorderColor(0.55, 0.55, 0.55, 0.95)
+
+	local mark = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	mark:SetPoint("CENTER", 0, 0)
+	mark:SetText("i")
+	btn.mark = mark
+
+	btn:SetScript("OnEnter", function(self)
+		self:SetBackdropBorderColor(0.85, 0.75, 0.35, 1)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine(title, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		if description and description ~= "" then
+			GameTooltip:AddLine(description, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		end
+		GameTooltip:Show()
+	end)
+	btn:SetScript("OnLeave", function(self)
+		self:SetBackdropBorderColor(0.55, 0.55, 0.55, 0.95)
+		GameTooltip:Hide()
+	end)
+	return btn
+end
+
+---Waypoint-style setting row: compact title on the left, info + control on the right.
 local function newBlockSettingRow(parent, dbname, label, description, onClick)
 	label = TyGearColorize(label)
 	description = TyGearColorize(description)
 	local row = CreateFrame("Frame", nil, parent)
-	row:SetSize(500, 36)
+	row:SetSize(500, 28)
 
 	local check = CreateFrame("CheckButton", "TyGear"..dbname.."CheckButton", row, "InterfaceOptionsCheckButtonTemplate")
 	check:SetPoint("RIGHT", row, "RIGHT", -2, 0)
@@ -4917,58 +4952,57 @@ local function newBlockSettingRow(parent, dbname, label, description, onClick)
 		end
 	end)
 
+	local info
+	if description and description ~= "" then
+		info = tyGearCreateInfoButton(row, label, description)
+	end
+
 	local title = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-	title:SetPoint("TOPLEFT", 4, -2)
-	title:SetPoint("RIGHT", check, "LEFT", -14, 0)
+	title:SetPoint("LEFT", 4, 0)
 	title:SetJustifyH("LEFT")
 	title:SetWordWrap(false)
 	title:SetText(label)
 
-	local desc = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -2)
-	desc:SetPoint("RIGHT", check, "LEFT", -14, 0)
-	desc:SetJustifyH("LEFT")
-	desc:SetJustifyV("TOP")
-	if desc.SetWordWrap then desc:SetWordWrap(true) end
-	-- Show the full description; MaxLines was truncating with "..." while
-	-- GetStringHeight still reserved space for the hidden lines.
-	desc:SetText(description or "")
+	-- Keep the title clear of whatever control sits farthest left (check, dropdown, play).
+	local function setTextRightEdge(leftmostControl)
+		if not leftmostControl then leftmostControl = check end
+		if info then
+			info:ClearAllPoints()
+			info:SetPoint("RIGHT", leftmostControl, "LEFT", -6, 0)
+			title:ClearAllPoints()
+			title:SetPoint("LEFT", 4, 0)
+			title:SetPoint("RIGHT", info, "LEFT", -8, 0)
+		else
+			title:ClearAllPoints()
+			title:SetPoint("LEFT", 4, 0)
+			title:SetPoint("RIGHT", leftmostControl, "LEFT", -14, 0)
+		end
+	end
+	setTextRightEdge(check)
 
 	local function measure()
 		local titleH = title:GetStringHeight() or 14
-		local descH = (description and description ~= "") and (desc:GetStringHeight() or 12) or 0
-		local textH = titleH + ((descH > 0) and (descH + 2) or 0)
-		local height = math.max(textH + 8, 28)
-		row:SetHeight(height)
+		row:SetHeight(math.max(titleH + 10, 28))
 		check:ClearAllPoints()
 		check:SetPoint("RIGHT", row, "RIGHT", -2, 0)
 	end
 	measure()
 	row.tyGearMeasure = measure
+	row.tyGearSetTextRightEdge = setTextRightEdge
 
 	check.tooltipText = label
 	check.tooltipRequirement = description
 	check.label = title
 	row.check = check
 	row.title = title
-	row.description = desc
-	row:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_NONE")
-		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(label, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(description, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-		GameTooltip:Show()
-	end)
-	row:SetScript("OnLeave", function()
-		if row:IsMouseOver() then return end
-		GameTooltip:Hide()
-	end)
-	tyGearAttachBlockRowHover(row, check)
+	row.infoButton = info
+	tyGearAttachBlockRowHover(row, check, info)
 	-- Clicking the text toggles the checkbox, matching the dense Waypoint rows.
 	row:SetScript("OnMouseUp", function(_, button)
 		if button and button ~= "LeftButton" then return end
 		if not check:IsEnabled() then return end
 		if check.IsMouseOver and check:IsMouseOver() then return end
+		if info and info.IsMouseOver and info:IsMouseOver() then return end
 		check:Click()
 	end)
 
@@ -6852,19 +6886,14 @@ local function optionsSetup(optionsMenu)
 		if v["dropdown"] and v["options"] then
 			local page = beginListedOption(v)
 			local row = CreateFrame("Frame", nil, page)
-			row:SetSize(500, 40)
+			row:SetSize(500, 28)
+			local coloredLabel = TyGearColorize(v["label"])
+			local coloredDescription = v["description"] and TyGearColorize(v["description"]) or nil
 			local labelText = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-			labelText:SetPoint("TOPLEFT", 4, -2)
-			labelText:SetText(TyGearColorize(v["label"]))
-			local descText
-			if v["description"] then
-				descText = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-				descText:SetPoint("TOPLEFT", labelText, "BOTTOMLEFT", 0, -2)
-				descText:SetJustifyH("LEFT")
-				descText:SetJustifyV("TOP")
-				if descText.SetWordWrap then descText:SetWordWrap(true) end
-				descText:SetText(TyGearColorize(v["description"]))
-			end
+			labelText:SetPoint("LEFT", 4, 0)
+			labelText:SetJustifyH("LEFT")
+			labelText:SetWordWrap(false)
+			labelText:SetText(coloredLabel)
 			local width = v["dropdownWidth"] or 220
 			local dropDown
 			local function dropdownOptions()
@@ -6893,31 +6922,23 @@ local function optionsSetup(optionsMenu)
 				dropDown:SetPoint("RIGHT", row, "RIGHT", 16, 0)
 				UIDropDownMenu_SetWidth(dropDown, width)
 			end
-			if descText then
-				descText:SetPoint("RIGHT", dropDown, "LEFT", -12, 0)
+			local info
+			if coloredDescription and coloredDescription ~= "" then
+				info = tyGearCreateInfoButton(row, coloredLabel, coloredDescription)
+				info:SetPoint("RIGHT", dropDown, "LEFT", -6, 0)
+				labelText:SetPoint("RIGHT", info, "LEFT", -8, 0)
+			else
+				labelText:SetPoint("RIGHT", dropDown, "LEFT", -12, 0)
 			end
-			labelText:SetPoint("RIGHT", dropDown, "LEFT", -12, 0)
 			local function measureDropdownRow()
 				local titleH = labelText:GetStringHeight() or 14
-				local descH = descText and (descText:GetStringHeight() or 12) or 0
-				row:SetHeight(math.max(titleH + ((descH > 0) and (descH + 2) or 0) + 8, 28))
+				row:SetHeight(math.max(titleH + 10, 28))
 			end
 			row.tyGearMeasure = measureDropdownRow
+			row.title = labelText
+			row.infoButton = info
 			measureDropdownRow()
-			row:SetScript("OnEnter", function(self)
-				GameTooltip:SetOwner(self, "ANCHOR_NONE")
-				GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-				GameTooltip:AddLine(TyGearColorize(v["label"]), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-				if v["description"] then
-					GameTooltip:AddLine(TyGearColorize(v["description"]), HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-				end
-				GameTooltip:Show()
-			end)
-			row:SetScript("OnLeave", function()
-				if row:IsMouseOver() then return end
-				GameTooltip:Hide()
-			end)
-			tyGearAttachBlockRowHover(row, dropDown)
+			tyGearAttachBlockRowHover(row, dropDown, info)
 			setDropdownText(dropDown, labelForValue(TyGearSettingsTable(v["option"])[v["option"]]))
 			dropDown.SetValue = function(self, value)
 				for _, entry in ipairs(dropdownOptions()) do
@@ -7165,11 +7186,10 @@ local function optionsSetup(optionsMenu)
 			local fileName = frame[i]:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 			fileName:SetPoint("RIGHT", playButton, "LEFT", -4, 0)
 			fileName:SetText(TyGearGetUpgradeChimeFileName())
-			if frame[i].title then
+			if frame[i].tyGearSetTextRightEdge then
+				frame[i].tyGearSetTextRightEdge(fileName)
+			elseif frame[i].title then
 				frame[i].title:SetPoint("RIGHT", fileName, "LEFT", -10, 0)
-			end
-			if frame[i].description then
-				frame[i].description:SetPoint("RIGHT", fileName, "LEFT", -10, 0)
 			end
 			playButton:SetScript("OnClick", function()
 				TyGearPlayUpgradeEquippedChime(true)
@@ -7206,11 +7226,10 @@ local function optionsSetup(optionsMenu)
 					frame[i].dropDown:SetPoint("RIGHT", check, "LEFT", 12, 0)
 					UIDropDownMenu_SetWidth(frame[i].dropDown, width)
 				end
-				if frame[i].title then
+				if frame[i].tyGearSetTextRightEdge then
+					frame[i].tyGearSetTextRightEdge(frame[i].dropDown)
+				elseif frame[i].title then
 					frame[i].title:SetPoint("RIGHT", frame[i].dropDown, "LEFT", -10, 0)
-				end
-				if frame[i].description then
-					frame[i].description:SetPoint("RIGHT", frame[i].dropDown, "LEFT", -10, 0)
 				end
 				tyGearHookBlockRowHoverChild(frame[i], frame[i].dropDown)
 				if frame[i].tyGearMeasure then frame[i].tyGearMeasure() end
