@@ -4830,7 +4830,11 @@ end
 --options window layout in pixels
 local OPTIONS_CONTAINER_TOP = -46 --below the TyGear title and the AutoGear credit line
 local OPTIONS_CONTAINER_LEFT_OFFSET = 8
-local OPTIONS_CONTAINER_RIGHT_MARGIN = 30 --room for the scroll bar
+-- Room for the scroll bar inside the Settings canvas (not on the gold window chrome).
+local OPTIONS_CONTAINER_RIGHT_MARGIN = 36
+local OPTIONS_SCROLLBAR_WIDTH = 18
+-- Distance from the scroll frame's right edge to the scrollbar's left edge.
+local OPTIONS_SCROLLBAR_INSET = 28
 local OPTIONS_CONTAINER_BOTTOM_MARGIN = 16
 local OPTIONS_PAGE_PADDING = 12
 local OPTIONS_ROW_SPACING = 2
@@ -4840,6 +4844,25 @@ local OPTIONS_BUTTON_SPACING = 10
 local OPTIONS_BLOCK_PAD = 12
 local OPTIONS_BLOCK_ROW_GAP = 6
 local OPTIONS_BLOCK_WIDTH_INSET = 8
+
+---Keep UIPanelScrollFrameTemplate's bar in the content gutter, not on the outer Settings border.
+local function tyGearAnchorOptionsScrollBar(scrollFrame)
+	if not scrollFrame then return end
+	local scrollBar = scrollFrame.ScrollBar or _G[scrollFrame:GetName().."ScrollBar"]
+	if not scrollBar then return end
+	local function apply()
+		scrollBar:ClearAllPoints()
+		scrollBar:SetWidth(OPTIONS_SCROLLBAR_WIDTH)
+		scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", -OPTIONS_SCROLLBAR_INSET, -18)
+		scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", -OPTIONS_SCROLLBAR_INSET, 18)
+	end
+	apply()
+	if not scrollBar.tyGearAnchorHooked then
+		scrollBar.tyGearAnchorHooked = true
+		scrollFrame:HookScript("OnShow", apply)
+		scrollFrame:HookScript("OnSizeChanged", apply)
+	end
+end
 
 local function tyGearApplySectionBlockBackdrop(frame)
 	frame:SetBackdrop({
@@ -5304,6 +5327,7 @@ local function newOptionsPage(optionsMenu)
 	function optionsPage:Finish()
 		self:CloseBlock()
 		local function layout()
+			tyGearAnchorOptionsScrollBar(scrollFrame)
 			local width = math.max((scrollFrame:GetWidth() or 0) - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
 			container:SetWidth(width)
 			page:SetWidth(width)
@@ -7889,6 +7913,7 @@ optionsMenu:SetHeight(1) -- must be set to at least 1 or the menu is invisible i
 local optionsMenuParent = CreateFrame("ScrollFrame", "TyGearOptionsMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
 optionsMenuParent.name = "TyGear"
 optionsMenuParent:SetScrollChild(optionsMenu)
+tyGearAnchorOptionsScrollBar(optionsMenuParent)
 --the Settings shim above returns the registered category; native InterfaceOptions_AddCategory returns nothing
 local optionsCategory = InterfaceOptions_AddCategory(optionsMenuParent)
 
@@ -7906,6 +7931,7 @@ if IS_WOW_FOREVER then
 	ignoredGearListMenuParent = CreateFrame("ScrollFrame", "TyGearIgnoredGearListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
 	ignoredGearListMenuParent.name = L["Ignored List"]
 	ignoredGearListMenuParent:SetScrollChild(ignoredGearListMenu)
+	tyGearAnchorOptionsScrollBar(ignoredGearListMenuParent)
 	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
 		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, ignoredGearListMenuParent, ignoredGearListMenuParent.name)
 	else
@@ -7919,6 +7945,7 @@ if IS_WOW_FOREVER then
 	needListMenuParent = CreateFrame("ScrollFrame", "TyGearNeedListMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
 	needListMenuParent.name = L["Need List"]
 	needListMenuParent:SetScrollChild(needListMenu)
+	tyGearAnchorOptionsScrollBar(needListMenuParent)
 	if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
 		Settings.RegisterCanvasLayoutSubcategory(optionsCategory, needListMenuParent, needListMenuParent.name)
 	else
@@ -7933,6 +7960,7 @@ personalWeightsMenu:SetHeight(1)
 personalWeightsMenuParent = CreateFrame("ScrollFrame", "TyGearPersonalStatWeightsMenuScrollFrame", nil, "UIPanelScrollFrameTemplate")
 personalWeightsMenuParent.name = L["Personal Stat Weights"]
 personalWeightsMenuParent:SetScrollChild(personalWeightsMenu)
+tyGearAnchorOptionsScrollBar(personalWeightsMenuParent)
 if optionsCategory and Settings and Settings.RegisterCanvasLayoutSubcategory then
 	Settings.RegisterCanvasLayoutSubcategory(optionsCategory, personalWeightsMenuParent, personalWeightsMenuParent.name)
 else
