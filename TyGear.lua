@@ -4731,22 +4731,28 @@ local function newCheckbox(dbname, label, description, onClick, optionsMenu)
 end
 
 --compact multi-column gear-slot checkbox grid (Ignore and Lock slots)
-local function createGearSlotCheckboxGrid(parent, frameName, checkNamePrefix, slotList, isChecked, setChecked, description, enableWheel)
+--plain=true skips the nested backdrop when the grid already sits inside a section block
+local function createGearSlotCheckboxGrid(parent, frameName, checkNamePrefix, slotList, isChecked, setChecked, description, enableWheel, plain)
 	local columns = 4
 	local cellWidth = 118
 	local cellHeight = 20
-	local padX, padY = 10, 8
+	local padX, padY = plain and 4 or 10, plain and 2 or 8
 	local rows = math.max(math.ceil(#slotList / columns), 1)
-	local slotGrid = CreateFrame("Frame", frameName, parent, "BackdropTemplate")
+	local slotGrid
+	if plain then
+		slotGrid = CreateFrame("Frame", frameName, parent)
+	else
+		slotGrid = CreateFrame("Frame", frameName, parent, "BackdropTemplate")
+		slotGrid:SetBackdrop({
+			bgFile = "Interface/ChatFrame/ChatFrameBackground",
+			edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+			tile = true, tileSize = 16, edgeSize = 12,
+			insets = { left = 3, right = 3, top = 3, bottom = 3 },
+		})
+		slotGrid:SetBackdropColor(0.08, 0.08, 0.08, 0.45)
+		slotGrid:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+	end
 	slotGrid:SetSize(padX * 2 + columns * cellWidth, padY * 2 + rows * cellHeight)
-	slotGrid:SetBackdrop({
-		bgFile = "Interface/ChatFrame/ChatFrameBackground",
-		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-		tile = true, tileSize = 16, edgeSize = 12,
-		insets = { left = 3, right = 3, top = 3, bottom = 3 },
-	})
-	slotGrid:SetBackdropColor(0.08, 0.08, 0.08, 0.45)
-	slotGrid:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
 	for index, gearSlot in ipairs(slotList) do
 		local column = (index - 1) % columns
 		local rowIndex = math.floor((index - 1) / columns)
@@ -5709,34 +5715,99 @@ local function buildIgnoreSection(optionsPage)
 	showKeepListText()
 end
 
+--Waypoint-style section host for Forever list tabs (Ignored / Need / Personal).
+local LIST_SECTION_GAP = 14
+local LIST_BLOCK_PAD = 12
+local LIST_BLOCK_INNER_GAP = 6
+
+local function tyGearNewListSectionBuilder(listMenu, startAnchor)
+	local builder = {
+		menu = listMenu,
+		anchor = startAnchor,
+		block = nil,
+		firstSection = true,
+	}
+
+	function builder:AddSection(title, description)
+		local headerRow = CreateFrame("Frame", nil, self.menu)
+		headerRow:SetHeight(OPTIONS_SECTION_HEADER_HEIGHT)
+		local spacing = self.firstSection and 10 or LIST_SECTION_GAP
+		self.firstSection = false
+		headerRow:SetPoint("TOPLEFT", self.anchor, "BOTTOMLEFT", 0, -spacing)
+		headerRow:SetPoint("RIGHT", self.menu, "RIGHT", -8, 0)
+		local header = headerRow:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+		header:SetPoint("LEFT", 0, 0)
+		header:SetText(TyGearColorize(title))
+		if description and description ~= "" then
+			local info = tyGearCreateInfoButton(headerRow, TyGearColorize(title), TyGearColorize(description))
+			info:SetPoint("LEFT", header, "RIGHT", 6, 0)
+			headerRow.infoButton = info
+		end
+
+		local block = CreateFrame("Frame", nil, self.menu, "BackdropTemplate")
+		tyGearApplySectionBlockBackdrop(block)
+		block:SetPoint("TOPLEFT", headerRow, "BOTTOMLEFT", 0, -6)
+		block:SetPoint("RIGHT", self.menu, "RIGHT", -8, 0)
+		block:SetHeight(LIST_BLOCK_PAD * 2)
+		block.lastChild = nil
+		block.innerHeight = LIST_BLOCK_PAD
+		self.block = block
+		self.anchor = block
+		return block, headerRow
+	end
+
+	---Add a child inside the open section block. height should match the child's laid-out size.
+	function builder:Add(frame, height, spacing)
+		local block = self.block
+		height = height or frame:GetHeight() or 24
+		spacing = spacing or LIST_BLOCK_INNER_GAP
+		if not block then
+			frame:SetParent(self.menu)
+			frame:ClearAllPoints()
+			frame:SetPoint("TOPLEFT", self.anchor, "BOTTOMLEFT", 0, -(spacing or 8))
+			frame:SetPoint("RIGHT", self.menu, "RIGHT", -8, 0)
+			self.anchor = frame
+			return frame
+		end
+		frame:SetParent(block)
+		frame:ClearAllPoints()
+		local gap = block.lastChild and spacing or 0
+		if block.lastChild then
+			frame:SetPoint("TOPLEFT", block.lastChild, "BOTTOMLEFT", 0, -spacing)
+			frame:SetPoint("RIGHT", block, "RIGHT", -LIST_BLOCK_PAD, 0)
+		else
+			frame:SetPoint("TOPLEFT", block, "TOPLEFT", LIST_BLOCK_PAD, -LIST_BLOCK_PAD)
+			frame:SetPoint("RIGHT", block, "RIGHT", -LIST_BLOCK_PAD, 0)
+		end
+		block.lastChild = frame
+		block.innerHeight = block.innerHeight + gap + height
+		block:SetHeight(block.innerHeight + LIST_BLOCK_PAD)
+		self.anchor = block
+		return frame
+	end
+
+	function builder:SetBlockContentHeight(contentHeight)
+		local block = self.block
+		if not block then return end
+		block.innerHeight = LIST_BLOCK_PAD + (contentHeight or 0)
+		block:SetHeight(block.innerHeight + LIST_BLOCK_PAD)
+	end
+
+	function builder:Bottom()
+		return self.anchor
+	end
+
+	return builder
+end
+
 --Ignore controls for the Forever Ignored List Settings tab (slots, equipped, manual IDs)
 local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
-	local function addNote(anchor, text)
-		local holder = CreateFrame("Frame", nil, listMenu)
-		holder:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -6)
-		holder:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
-		local font = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-		font:SetPoint("TOPLEFT", 0, 0)
-		font:SetWidth(480)
-		font:SetJustifyH("LEFT")
-		font:SetWordWrap(true)
-		font:SetText(text)
-		local height = font:GetStringHeight() or 14
-		if height < 14 then height = 14 end
-		holder:SetHeight(height + 2)
-		return holder
-	end
+	local builder = tyGearNewListSectionBuilder(listMenu, anchorBelow)
+	local slotsHelp = L["Ignored slots are left out of rolling, scoring, and equipping."]
+	local equippedHelp = L["Check an equipped item to leave that item out of selling, rolling, scoring, and equipping."]
+	local addItemsHelp = L["Item names or IDs separated by commas. Items on this list are kept and not evaluated. Shift-click an item while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 
-	local function addSubheader(anchor, text, spacing)
-		local header = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-		header:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -(spacing or 12))
-		header:SetText(TyGearColorize(text))
-		return header
-	end
-
-	local ignoreHeader = addSubheader(anchorBelow, L["Ignore"], 14)
-
-	local slotsNote = addNote(ignoreHeader, L["Ignored slots are left out of rolling, scoring, and equipping."])
+	builder:AddSection(L["Gear slots"], slotsHelp)
 	local slotList = {}
 	for slot = INVSLOT_FIRST_EQUIPPED, INVSLOT_LAST_EQUIPPED do
 		if slot ~= INVSLOT_TABARD and slot ~= INVSLOT_BODY then
@@ -5755,21 +5826,19 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 			TyGearCharDB.IgnoredGearSlots[gearSlot] = tick
 			if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 		end,
-		L["Ignored slots are left out of rolling, scoring, and equipping."],
-		nil
+		slotsHelp,
+		nil,
+		true
 	)
-	slotGrid:ClearAllPoints()
-	slotGrid:SetPoint("TOPLEFT", slotsNote, "BOTTOMLEFT", 0, -4)
+	builder:Add(slotGrid, slotGrid:GetHeight(), 0)
 
-	local equippedHeader = addSubheader(slotGrid, L["Equipped items"], 14)
-	local equippedNote = addNote(equippedHeader, L["Check an equipped item to leave that item out of selling, rolling, scoring, and equipping."])
+	local equippedBlock = builder:AddSection(L["Equipped items"], equippedHelp)
 	local equippedContainer = CreateFrame("Frame", nil, listMenu)
-	equippedContainer:SetPoint("TOPLEFT", equippedNote, "BOTTOMLEFT", 0, -4)
-	equippedContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	equippedContainer:SetHeight(20)
 	equippedContainer.emptyText = equippedContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
 	equippedContainer.emptyText:SetPoint("TOPLEFT", 0, 0)
 	equippedContainer.emptyText:SetText(L["Nothing is equipped."])
+	builder:Add(equippedContainer, 20, 0)
 	local equippedRows = {}
 	local equippedSerial = 0
 
@@ -5813,6 +5882,20 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 			GameTooltip:Show()
 		end)
 		row.check:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		row:SetScript("OnEnter", function(self)
+			if not self.itemID then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetHyperlink("item:"..self.itemID)
+			if TyGearIsAutoUnmeasurable(self.itemID) then
+				GameTooltip:AddLine(L["TyGear cannot score this item, so it stays ignored."], 1, 0.82, 0, true)
+			end
+			GameTooltip:Show()
+		end)
+		row:SetScript("OnLeave", function()
+			if row:IsMouseOver() then return end
+			GameTooltip:Hide()
+		end)
+		tyGearAttachBlockRowHover(row, row.check)
 		return row
 	end
 
@@ -5850,10 +5933,11 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 			equippedRows[index]:Hide()
 		end
 		equippedContainer.emptyText:SetShown(shown == 0)
-		equippedContainer:SetHeight(shown == 0 and 20 or (shown * 28))
+		local height = shown == 0 and 20 or (shown * 28)
+		equippedContainer:SetHeight(height)
+		builder.block = equippedBlock
+		builder:SetBlockContentHeight(height)
 	end
-
-	local addItemsHelp = L["Item names or IDs separated by commas. Items on this list are kept and not evaluated. Shift-click an item while this box is focused to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 
 	local function manualIDText()
 		local parts = {}
@@ -5890,17 +5974,15 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 	end
 
-	local idsHeader = addSubheader(equippedContainer, L["Add items"], 14)
-	local idsNote = addNote(idsHeader, addItemsHelp)
+	builder:AddSection(L["Add items"], addItemsHelp)
 	local editRow = CreateFrame("Frame", nil, listMenu)
-	editRow:SetPoint("TOPLEFT", idsNote, "BOTTOMLEFT", 0, -2)
-	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	editRow:SetHeight(24)
 	local editBox = CreateFrame("EditBox", "TyGearIgnoredItemIDsEditBox", editRow, "InputBoxTemplate")
 	editBox:SetAutoFocus(false)
 	editBox:SetHeight(20)
 	editBox:SetPoint("LEFT", 4, 0)
 	editBox:SetPoint("RIGHT", editRow, "RIGHT", -4, 0)
+	builder:Add(editRow, 24, 0)
 	local suppressEditBoxSave = false
 	local function showManualIDs()
 		suppressEditBoxSave = true
@@ -5952,7 +6034,7 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 
 	rebuildEquipped()
 	showManualIDs()
-	return editRow
+	return builder:Bottom()
 end
 
 --the keep list is built below and hosted on this same tab
@@ -5967,25 +6049,17 @@ local function buildIgnoredGearListPage(listMenu)
 	local ignoreBottom = buildIgnoreSectionOntoListMenu(listMenu, title)
 	local keepBottom = buildKeepListSection(listMenu, ignoreBottom)
 
-	local listHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	listHeader:SetPoint("TOPLEFT", keepBottom, "BOTTOMLEFT", 0, -18)
-	listHeader:SetText(L["Ignored items"])
+	local ignoredHelp = L["Disclaimer: items TyGear cannot score (for example a 4% chance for Fear to miss) are listed below without checkboxes and stay ignored automatically. Gear that also has a scored stat stays in normal evaluation. Use Add items above for anything else you want ignored; those appear at the top with checkboxes."]
+	local listBuilder = tyGearNewListSectionBuilder(listMenu, keepBottom)
+	local ignoredBlock = listBuilder:AddSection(L["Ignored items"], ignoredHelp)
 
 	local listContainer = CreateFrame("Frame", "TyGearIgnoredGearListContainer", listMenu)
-	listContainer:SetPoint("TOPLEFT", listHeader, "BOTTOMLEFT", 0, -8)
-	listContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	listContainer:SetHeight(20)
+	listBuilder:Add(listContainer, 20, 0)
 
 	local emptyText = listContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
 	emptyText:SetPoint("TOPLEFT", 0, 0)
 	emptyText:SetText(L["No items are on the ignored list."])
-
-	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	note:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -14)
-	note:SetWidth(480)
-	note:SetJustifyH("LEFT")
-	note:SetText(L["Disclaimer: items TyGear cannot score (for example a 4% chance for Fear to miss) are listed below without checkboxes and stay ignored automatically. Gear that also has a scored stat stays in normal evaluation. Use Add items above for anything else you want ignored; those appear at the top with checkboxes."])
-	listMenu.ignoredGearNote = note
 
 	local rows = {}
 	local rowHeight = 28
@@ -6043,7 +6117,11 @@ local function buildIgnoredGearListPage(listMenu)
 			end
 			GameTooltip:Show()
 		end)
-		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		row:SetScript("OnLeave", function()
+			if row:IsMouseOver() then return end
+			GameTooltip:Hide()
+		end)
+		tyGearAttachBlockRowHover(row, row.check)
 		return row
 	end
 
@@ -6134,14 +6212,14 @@ local function buildIgnoredGearListPage(listMenu)
 		emptyText:SetShown(#entries == 0)
 		local height = #entries == 0 and 20 or (#entries * rowHeight)
 		listContainer:SetHeight(height)
-		note:ClearAllPoints()
-		note:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -14)
+		listBuilder.block = ignoredBlock
+		listBuilder:SetBlockContentHeight(height)
 		layoutIgnoredGearPage()
 	end
 
 	layoutIgnoredGearPage = function()
 		local top = listMenu:GetTop()
-		local bottom = note:GetBottom()
+		local bottom = ignoredBlock:GetBottom()
 		local height
 		if top and bottom and (top > bottom) then
 			height = (top - bottom) + 24
@@ -6174,18 +6252,14 @@ end
 
 --Keep list and keep options, hosted on the ignore list. Items here are not sold; they may still fill empty slots.
 buildKeepListSection = function(listMenu, anchorBelow)
-	local header = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	header:SetPoint("TOPLEFT", anchorBelow, "BOTTOMLEFT", 0, -18)
-	header:SetText(L["Keep List"])
+	local keepHelp = L["Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear. White selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, and Arclight Spanner, are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here."]
+	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item from being sold; it can still fill an empty gear slot. New items are added near the top of the list."]
 
-	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	note:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -6)
-	note:SetWidth(480)
-	note:SetJustifyH("LEFT")
-	note:SetText(L["Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear. White selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, and Arclight Spanner, are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here."])
-	listMenu.keepListNote = note
+	local builder = tyGearNewListSectionBuilder(listMenu, anchorBelow)
+	builder:AddSection(L["Keep List"], keepHelp)
 
-	local unboundCheck = newCheckbox(
+	local unboundRow = newBlockSettingRow(
+		listMenu,
 		"KeepUnboundGreyGear",
 		L["Keep unbound grey gear"],
 		L["Don't sell grey weapons and armor which aren't soulbound, for example to sell them on the auction house instead."],
@@ -6194,36 +6268,21 @@ buildKeepListSection = function(listMenu, anchorBelow)
 			TyGearDB.KeepUnboundGreyGear = value and true or false
 			TyGearPrint("TyGear: "..(TyGearDB.KeepUnboundGreyGear and L["Keeping unbound grey gear is now enabled."] or L["Keeping unbound grey gear is now disabled."]), 0)
 			if TyGearQueueVendorJunkRefresh then TyGearQueueVendorJunkRefresh() end
-		end,
-		listMenu
+		end
 	)
-	unboundCheck:SetPoint("TOPLEFT", note, "BOTTOMLEFT", -2, -10)
-	unboundCheck:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
-	unboundCheck:SetHitRectInsets(0, -280, 0, 0)
-	listMenu.keepUnboundCheck = unboundCheck
+	unboundRow.check:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
+	builder:Add(unboundRow, unboundRow:GetHeight() or 28, 0)
+	listMenu.keepUnboundCheck = unboundRow.check
 
-	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item from being sold; it can still fill an empty gear slot. New items are added near the top of the list."]
-
-	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	addHeader:SetPoint("TOPLEFT", unboundCheck, "BOTTOMLEFT", 2, -14)
-	addHeader:SetText(L["Add items"])
-
-	local addNote = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	addNote:SetPoint("TOPLEFT", addHeader, "BOTTOMLEFT", 0, -6)
-	addNote:SetWidth(480)
-	addNote:SetJustifyH("LEFT")
-	addNote:SetText(addItemsHelp)
-	listMenu.keepListAddNote = addNote
-
+	builder:AddSection(L["Add items"], addItemsHelp)
 	local editRow = CreateFrame("Frame", nil, listMenu)
-	editRow:SetPoint("TOPLEFT", addNote, "BOTTOMLEFT", 0, -2)
-	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	editRow:SetHeight(24)
 	local editBox = CreateFrame("EditBox", "TyGearVendorKeepListEditBox", editRow, "InputBoxTemplate")
 	editBox:SetAutoFocus(false)
 	editBox:SetHeight(20)
 	editBox:SetPoint("LEFT", 4, 0)
 	editBox:SetPoint("RIGHT", editRow, "RIGHT", -4, 0)
+	builder:Add(editRow, 24, 0)
 	local suppressEditBoxSave = false
 	local function showKeepListText()
 		suppressEditBoxSave = true
@@ -6292,14 +6351,10 @@ buildKeepListSection = function(listMenu, anchorBelow)
 	end
 	showKeepListText()
 
-	local keptHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	keptHeader:SetPoint("TOPLEFT", editRow, "BOTTOMLEFT", 0, -14)
-	keptHeader:SetText(L["Kept items"])
-
+	local keptBlock = builder:AddSection(L["Kept items"])
 	local listContainer = CreateFrame("Frame", "TyGearKeepListContainer", listMenu)
-	listContainer:SetPoint("TOPLEFT", keptHeader, "BOTTOMLEFT", 0, -8)
-	listContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	listContainer:SetHeight(20)
+	builder:Add(listContainer, 20, 0)
 
 	local emptyText = listContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
 	emptyText:SetPoint("TOPLEFT", 0, 0)
@@ -6368,7 +6423,11 @@ buildKeepListSection = function(listMenu, anchorBelow)
 			end
 			GameTooltip:Show()
 		end)
-		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		row:SetScript("OnLeave", function()
+			if row:IsMouseOver() then return end
+			GameTooltip:Hide()
+		end)
+		tyGearAttachBlockRowHover(row, row.check)
 		return row
 	end
 
@@ -6414,8 +6473,8 @@ buildKeepListSection = function(listMenu, anchorBelow)
 		end
 		listContainer.builtOnce = true
 		listContainer.needsRefresh = false
-		if unboundCheck and unboundCheck.SetChecked then
-			unboundCheck:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
+		if unboundRow and unboundRow.check and unboundRow.check.SetChecked then
+			unboundRow.check:SetChecked(TyGearDB and TyGearDB.KeepUnboundGreyGear)
 		end
 		if not editBox:HasFocus() then
 			showKeepListText()
@@ -6463,50 +6522,42 @@ buildKeepListSection = function(listMenu, anchorBelow)
 		emptyText:SetShown(#entries == 0)
 		local height = #entries == 0 and 20 or (#entries * rowHeight)
 		listContainer:SetHeight(height)
+		builder.block = keptBlock
+		builder:SetBlockContentHeight(height)
 		if listMenu.layoutIgnoredGearPage then
 			listMenu.layoutIgnoredGearPage()
 		end
 	end
 
 	TyGearRefreshKeepList()
-	return listContainer
+	return builder:Bottom()
 end
 
 --Forever Need List tab: add box near the top, then items TyGear should always NEED on
 local function buildNeedListPage(listMenu)
-	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", 8, -8)
-	title:SetText(L["Need List"])
-
-	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	note:SetPoint("TOPLEFT", 8, -28)
-	note:SetWidth(480)
-	note:SetJustifyH("LEFT")
-	note:SetText(L["Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon. Mounts and ignored items are still skipped."])
-	listMenu.needListNote = note
-
+	local needHelp = L["Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon. Mounts and ignored items are still skipped."]
 	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 
-	local addHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	addHeader:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -14)
-	addHeader:SetText(L["Add items"])
+	local titleRow = CreateFrame("Frame", nil, listMenu)
+	titleRow:SetPoint("TOPLEFT", 8, -8)
+	titleRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+	titleRow:SetHeight(22)
+	local title = titleRow:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("LEFT", 0, 0)
+	title:SetText(L["Need List"])
+	local titleInfo = tyGearCreateInfoButton(titleRow, L["Need List"], needHelp)
+	titleInfo:SetPoint("LEFT", title, "RIGHT", 8, 0)
 
-	local addNote = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	addNote:SetPoint("TOPLEFT", addHeader, "BOTTOMLEFT", 0, -6)
-	addNote:SetWidth(480)
-	addNote:SetJustifyH("LEFT")
-	addNote:SetText(addItemsHelp)
-	listMenu.needListAddNote = addNote
-
+	local builder = tyGearNewListSectionBuilder(listMenu, titleRow)
+	builder:AddSection(L["Add items"], addItemsHelp)
 	local editRow = CreateFrame("Frame", nil, listMenu)
-	editRow:SetPoint("TOPLEFT", addNote, "BOTTOMLEFT", 0, -2)
-	editRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	editRow:SetHeight(24)
 	local editBox = CreateFrame("EditBox", "TyGearNeedListEditBox", editRow, "InputBoxTemplate")
 	editBox:SetAutoFocus(false)
 	editBox:SetHeight(20)
 	editBox:SetPoint("LEFT", 4, 0)
 	editBox:SetPoint("RIGHT", editRow, "RIGHT", -4, 0)
+	builder:Add(editRow, 24, 0)
 	local suppressEditBoxSave = false
 	local function showNeedListText()
 		suppressEditBoxSave = true
@@ -6572,14 +6623,10 @@ local function buildNeedListPage(listMenu)
 	end
 	showNeedListText()
 
-	local neededHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	neededHeader:SetPoint("TOPLEFT", editRow, "BOTTOMLEFT", 0, -14)
-	neededHeader:SetText(L["Needed items"])
-
+	local neededBlock = builder:AddSection(L["Needed items"])
 	local listContainer = CreateFrame("Frame", "TyGearNeedListContainer", listMenu)
-	listContainer:SetPoint("TOPLEFT", neededHeader, "BOTTOMLEFT", 0, -8)
-	listContainer:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 	listContainer:SetHeight(20)
+	builder:Add(listContainer, 20, 0)
 
 	local emptyText = listContainer:CreateFontString(nil, "ARTWORK", "GameFontDisable")
 	emptyText:SetPoint("TOPLEFT", 0, 0)
@@ -6632,7 +6679,11 @@ local function buildNeedListPage(listMenu)
 			GameTooltip:AddLine(L["Uncheck to remove this item from the need list."], 1, 0.82, 0, true)
 			GameTooltip:Show()
 		end)
-		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		row:SetScript("OnLeave", function()
+			if row:IsMouseOver() then return end
+			GameTooltip:Hide()
+		end)
+		tyGearAttachBlockRowHover(row, row.check)
 		return row
 	end
 
@@ -6647,15 +6698,21 @@ local function buildNeedListPage(listMenu)
 		return entries
 	end
 
-	local function headerHeight()
-		local function measured(fontString, fallback)
-			local height = fontString:GetStringHeight() or fallback
-			local estimate = math.ceil(math.max(#(fontString:GetText() or ""), 1) / 80) * 14
-			if height < estimate then height = estimate end
-			return height
+	local function layoutNeedPage()
+		local top = listMenu:GetTop()
+		local bottom = neededBlock:GetBottom()
+		local height
+		if top and bottom and top > bottom then
+			height = (top - bottom) + 24
+		else
+			local count = #collectEntries()
+			height = 220 + ((count == 0) and 20 or (count * rowHeight))
 		end
-		--title + note + add header + add note + edit row + needed header + spacings
-		return 28 + measured(note, 40) + 14 + 16 + 6 + measured(addNote, 28) + 2 + 24 + 14 + 16 + 8
+		listMenu:SetHeight(height)
+		local scrollFrame = listMenu:GetParent()
+		if scrollFrame and scrollFrame.UpdateScrollChildRect then
+			scrollFrame:UpdateScrollChildRect()
+		end
 	end
 
 	function TyGearRefreshNeedList()
@@ -6701,16 +6758,16 @@ local function buildNeedListPage(listMenu)
 		emptyText:SetShown(#entries == 0)
 		local height = #entries == 0 and 20 or (#entries * rowHeight)
 		listContainer:SetHeight(height)
-		listMenu:SetHeight(headerHeight() + height + 16)
-		local scrollFrame = listMenu:GetParent()
-		if scrollFrame and scrollFrame.UpdateScrollChildRect then
-			scrollFrame:UpdateScrollChildRect()
-		end
+		builder.block = neededBlock
+		builder:SetBlockContentHeight(height)
+		layoutNeedPage()
 	end
 
 	listMenu:HookScript("OnShow", function()
 		if listContainer.needsRefresh or not listContainer.builtOnce then
 			TyGearRefreshNeedList()
+		else
+			layoutNeedPage()
 		end
 	end)
 	TyGearRefreshNeedList()
@@ -7485,29 +7542,44 @@ local function buildPersonalStatWeightsPage(listMenu)
 	if classToken then
 		TyGearEnsurePersonalClassWeights(classToken)
 	end
-	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", 8, -8)
-	title:SetText(L["Personal Stat Weights"])
+	local personalHelp = L["Every spec starts filled with its MythicSim weights. Specs MythicSim does not publish start from TyGear's built-in profile instead. Change any number to make it yours. 0 means that stat adds nothing to the score. On WoW Forever, Hit and Spell Hit share the higher weight, and Crit and Spell Crit do the same. None is the general profile, used when no talent tree has points and Override specialization is off.\n\nWhen Stat weight system is Personal Stat Weights, item tooltips show TyGear: Personal score:"]
+	local resetHelp = L["Replace every spec on this tab with its MythicSim weights. Specs MythicSim does not publish go back to TyGear's built-in profile."]
 
-	local note = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	note:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
-	note:SetWidth(480)
-	note:SetJustifyH("LEFT")
-	note:SetText(L["Every spec starts filled with its MythicSim weights. Specs MythicSim does not publish start from TyGear's built-in profile instead. Change any number to make it yours. 0 means that stat adds nothing to the score. On WoW Forever, Hit and Spell Hit share the higher weight, and Crit and Spell Crit do the same. None is the general profile, used when no talent tree has points and Override specialization is off.\n\nWhen Stat weight system is Personal Stat Weights, item tooltips show TyGear: Personal score:"])
-	listMenu.personalNote = note
+	local titleRow = CreateFrame("Frame", nil, listMenu)
+	titleRow:SetPoint("TOPLEFT", 8, -8)
+	titleRow:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
+	titleRow:SetHeight(22)
+	local title = titleRow:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("LEFT", 0, 0)
+	title:SetText(L["Personal Stat Weights"])
+	local titleInfo = tyGearCreateInfoButton(titleRow, L["Personal Stat Weights"], personalHelp)
+	titleInfo:SetPoint("LEFT", title, "RIGHT", 8, 0)
+
+	local builder = tyGearNewListSectionBuilder(listMenu, titleRow)
+	local statusBlock = builder:AddSection(L["Status"])
 
 	local status = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-	status:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -10)
-	status:SetWidth(480)
 	status:SetJustifyH("LEFT")
+	status:SetWordWrap(true)
+	local statusHolder = CreateFrame("Frame", nil, listMenu)
+	status:SetParent(statusHolder)
+	status:SetPoint("TOPLEFT", 0, 0)
+	status:SetPoint("TOPRIGHT", statusHolder, "TOPRIGHT", 0, 0)
+	statusHolder:SetHeight(32)
+	builder:Add(statusHolder, 32, 0)
 	listMenu.personalStatus = status
 
 	local resetButton
+	local hasResetRow = false
 	if classToken then
-		resetButton = CreateFrame("Button", "TyGearPersonalStatWeightsResetButton", listMenu, "UIPanelButtonTemplate")
+		local resetRow = CreateFrame("Frame", nil, listMenu)
+		resetRow:SetHeight(28)
+		resetButton = CreateFrame("Button", "TyGearPersonalStatWeightsResetButton", resetRow, "UIPanelButtonTemplate")
 		resetButton:SetSize(200, 22)
-		resetButton:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 0, -8)
+		resetButton:SetPoint("LEFT", 0, 0)
 		resetButton:SetText(L["Reset to default"])
+		local resetInfo = tyGearCreateInfoButton(resetRow, L["Reset to default"], resetHelp)
+		resetInfo:SetPoint("LEFT", resetButton, "RIGHT", 8, 0)
 		resetButton:SetScript("OnClick", function()
 			local editors = TyGearPersonalWeightEditors
 			if editors and editors.specs then
@@ -7524,15 +7596,18 @@ local function buildPersonalStatWeightsPage(listMenu)
 			TyGearResetPersonalClassWeights(classToken)
 			TyGearPrint("TyGear: "..L["Reset personal stat weights to MythicSim."], 0)
 		end)
-		resetButton:SetScript("OnEnter", function(self)
-			GameTooltip:SetOwner(self, "ANCHOR_NONE")
-			GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-			GameTooltip:AddLine(L["Reset to default"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-			GameTooltip:AddLine(L["Replace every spec on this tab with its MythicSim weights. Specs MythicSim does not publish go back to TyGear's built-in profile."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-			GameTooltip:Show()
-		end)
-		resetButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		tyGearAttachBlockRowHover(resetRow, resetButton, resetInfo)
+		builder:Add(resetRow, 28, 4)
+		hasResetRow = true
 		listMenu.personalResetButton = resetButton
+	end
+	local statusBottom = builder:Bottom()
+	local function reflowStatusBlock()
+		local statusHeight = math.max(status:GetStringHeight() or 14, 14) + 4
+		statusHolder:SetHeight(statusHeight)
+		local content = statusHeight + (hasResetRow and (28 + 4) or 0)
+		builder.block = statusBlock
+		builder:SetBlockContentHeight(content)
 	end
 
 	local function statusText()
@@ -7569,6 +7644,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 		status = status,
 		statusText = statusText,
 		specHeader = specHeaderText,
+		reflowStatus = reflowStatusBlock,
 		specs = {},
 	}
 
@@ -7590,7 +7666,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 		end)
 	end
 
-	local anchor = status
+	local anchor = statusBottom
 	local fields = TyGearPersonalStatFieldsForUI()
 	local columns = 2
 	local columnWidth = 236
@@ -7603,7 +7679,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 	else
 		local localized = (TyGearClassList and TyGearClassList[classToken]) or classToken
 		local classLine = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-		classLine:SetPoint("TOPLEFT", resetButton or status, "BOTTOMLEFT", 0, -8)
+		classLine:SetPoint("TOPLEFT", statusBottom, "BOTTOMLEFT", 0, -14)
 		classLine:SetText(TyGearClassColoredText(classToken, localized))
 		anchor = classLine
 		status:SetText(statusText())
@@ -7613,14 +7689,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 			block:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -12)
 			block:SetPoint("RIGHT", listMenu, "RIGHT", -8, 0)
 			block:SetHeight(36 + fieldRows * rowHeight)
-			block:SetBackdrop({
-				bgFile = "Interface/ChatFrame/ChatFrameBackground",
-				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-				tile = true, tileSize = 16, edgeSize = 12,
-				insets = { left = 3, right = 3, top = 3, bottom = 3 },
-			})
-			block:SetBackdropColor(0.08, 0.08, 0.08, 0.45)
-			block:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+			tyGearApplySectionBlockBackdrop(block)
 			forwardWheel(block)
 
 			local header = block:CreateFontString(nil, "ARTWORK", "GameFontNormal")
@@ -7695,21 +7764,17 @@ local function buildPersonalStatWeightsPage(listMenu)
 		end
 	end
 
-	local importHeader = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	importHeader:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -18)
-	importHeader:SetText(L["Import and export"])
-
-	local importNote = listMenu:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	importNote:SetPoint("TOPLEFT", importHeader, "BOTTOMLEFT", 0, -6)
-	importNote:SetWidth(480)
-	importNote:SetJustifyH("LEFT")
-	importNote:SetText(L["Export fills the box with a short TG2 string of only the weights you changed from MythicSim. An unchanged class exports as TG2:CLASS. Import reads that string, or an older line-by-line export, and replaces this class's weights. The class in the string has to match this character."])
-	listMenu.personalImportNote = importNote
+	local importHelp = L["Export fills the box with a short TG2 string of only the weights you changed from MythicSim. An unchanged class exports as TG2:CLASS. Import reads that string, or an older line-by-line export, and replaces this class's weights. The class in the string has to match this character."]
+	local importBuilder = tyGearNewListSectionBuilder(listMenu, anchor)
+	importBuilder:AddSection(L["Import and export"], importHelp)
 
 	-- Single-line InputBoxTemplate: multi-line height left the cursor under the short border after Enter.
-	local importBox = CreateFrame("EditBox", "TyGearPersonalStatWeightsImportEditBox", listMenu, "InputBoxTemplate")
-	importBox:SetPoint("TOPLEFT", importNote, "BOTTOMLEFT", 4, -8)
-	importBox:SetSize(460, 20)
+	local importBoxHolder = CreateFrame("Frame", nil, listMenu)
+	importBoxHolder:SetHeight(24)
+	local importBox = CreateFrame("EditBox", "TyGearPersonalStatWeightsImportEditBox", importBoxHolder, "InputBoxTemplate")
+	importBox:SetPoint("LEFT", 4, 0)
+	importBox:SetPoint("RIGHT", importBoxHolder, "RIGHT", -4, 0)
+	importBox:SetHeight(20)
 	importBox:SetAutoFocus(false)
 	importBox:SetMultiLine(false)
 	importBox:SetMaxLetters(20000)
@@ -7720,16 +7785,21 @@ local function buildPersonalStatWeightsPage(listMenu)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
 		GameTooltip:AddLine(L["Import and export"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Export fills the box with a short TG2 string of only the weights you changed from MythicSim. An unchanged class exports as TG2:CLASS. Import reads that string, or an older line-by-line export, and replaces this class's weights. The class in the string has to match this character."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:AddLine(importHelp, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 		GameTooltip:Show()
 	end)
 	importBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	importBuilder:Add(importBoxHolder, 24, 0)
 	listMenu.personalImportBox = importBox
 
-	local exportButton = CreateFrame("Button", "TyGearPersonalStatWeightsExportButton", listMenu, "UIPanelButtonTemplate")
+	local buttonRow = CreateFrame("Frame", nil, listMenu)
+	buttonRow:SetHeight(28)
+	local exportButton = CreateFrame("Button", "TyGearPersonalStatWeightsExportButton", buttonRow, "UIPanelButtonTemplate")
 	exportButton:SetSize(120, 24)
-	exportButton:SetPoint("TOPLEFT", importBox, "BOTTOMLEFT", -4, -8)
+	exportButton:SetPoint("LEFT", 0, 0)
 	exportButton:SetText(L["Export"])
+	local exportInfo = tyGearCreateInfoButton(buttonRow, L["Export"], L["Fill the box with a short string of the weights you changed. Copy that string to share or restore them."])
+	exportInfo:SetPoint("LEFT", exportButton, "RIGHT", 6, 0)
 	exportButton:SetScript("OnClick", function()
 		if not classToken then return end
 		local text = TyGearExportPersonalStatWeights(classToken)
@@ -7739,19 +7809,13 @@ local function buildPersonalStatWeightsPage(listMenu)
 		TyGearPrint("TyGear: "..L["Exported personal stat weights. The box lists only weights that differ from MythicSim."], 0)
 		if TyGearRefreshPersonalStatWeightEditors then TyGearRefreshPersonalStatWeightEditors() end
 	end)
-	exportButton:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_NONE")
-		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(L["Export"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Fill the box with a short string of the weights you changed. Copy that string to share or restore them."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-		GameTooltip:Show()
-	end)
-	exportButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-	local importButton = CreateFrame("Button", "TyGearPersonalStatWeightsImportButton", listMenu, "UIPanelButtonTemplate")
+	local importButton = CreateFrame("Button", "TyGearPersonalStatWeightsImportButton", buttonRow, "UIPanelButtonTemplate")
 	importButton:SetSize(120, 24)
-	importButton:SetPoint("LEFT", exportButton, "RIGHT", 8, 0)
+	importButton:SetPoint("LEFT", exportInfo, "RIGHT", 12, 0)
 	importButton:SetText(L["Import"])
+	local importInfo = tyGearCreateInfoButton(buttonRow, L["Import"], L["Read the box and save those weights for this class."])
+	importInfo:SetPoint("LEFT", importButton, "RIGHT", 6, 0)
 	importButton:SetScript("OnClick", function()
 		if not classToken then return end
 		local ok, message = TyGearImportPersonalStatWeights(importBox:GetText(), classToken)
@@ -7760,19 +7824,14 @@ local function buildPersonalStatWeightsPage(listMenu)
 			TyGearRefreshPersonalStatWeightEditors()
 		end
 	end)
-	importButton:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_NONE")
-		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(L["Import"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-		GameTooltip:AddLine(L["Read the box and save those weights for this class."], HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
-		GameTooltip:Show()
-	end)
-	importButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	listMenu.personalBottom = importButton
+	tyGearAttachBlockRowHover(buttonRow, exportButton, exportInfo, importButton, importInfo)
+	importBuilder:Add(buttonRow, 28, 4)
+	listMenu.personalBottom = importBuilder:Bottom()
 
 	local function layoutPersonalPage()
 		local top = listMenu:GetTop()
-		local bottom = importButton:GetBottom()
+		local bottomFrame = listMenu.personalBottom
+		local bottom = bottomFrame and bottomFrame:GetBottom()
 		local height
 		if top and bottom and top > bottom then
 			height = (top - bottom) + 24
@@ -7792,6 +7851,7 @@ local function buildPersonalStatWeightsPage(listMenu)
 		layoutPersonalPage()
 	end)
 	status:SetText(statusText())
+	reflowStatusBlock()
 	layoutPersonalPage()
 end
 
@@ -7800,6 +7860,7 @@ function TyGearRefreshPersonalStatWeightEditors()
 	if not editors then return end
 	if editors.status and editors.statusText then
 		editors.status:SetText(editors.statusText())
+		if editors.reflowStatus then editors.reflowStatus() end
 	end
 	local classToken = editors.classToken
 	if not classToken or not editors.specs then return end
@@ -8383,17 +8444,11 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			local function layoutPersonalWeights()
 				local width = math.max((personalWeightsMenuParent:GetWidth() or 0) - 30, 1)
 				personalWeightsMenu:SetWidth(width + 8)
-				if personalWeightsMenu.personalNote then
-					personalWeightsMenu.personalNote:SetWidth(math.max(width - 16, 100))
-				end
 				if personalWeightsMenu.personalStatus then
-					personalWeightsMenu.personalStatus:SetWidth(math.max(width - 16, 100))
+					personalWeightsMenu.personalStatus:SetWidth(math.max(width - 40, 100))
 				end
-				if personalWeightsMenu.personalImportNote then
-					personalWeightsMenu.personalImportNote:SetWidth(math.max(width - 16, 100))
-				end
-				if personalWeightsMenu.personalImportBox then
-					personalWeightsMenu.personalImportBox:SetWidth(math.max(width - 36, 120))
+				if TyGearPersonalWeightEditors and TyGearPersonalWeightEditors.reflowStatus then
+					TyGearPersonalWeightEditors.reflowStatus()
 				end
 				if personalWeightsMenu.layoutPersonalPage then
 					personalWeightsMenu.layoutPersonalPage()
