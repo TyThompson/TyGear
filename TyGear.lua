@@ -7230,9 +7230,15 @@ local function optionsSetup(optionsMenu)
 		optionsPage:AddBlockRow(frame[i])
 
 		if v["playSound"] then
+			-- Order: title | MapPing | play | i | checkbox (i stays with the control cluster).
 			local playButton = CreateFrame("Button", "TyGear"..v["option"].."PlayButton", frame[i])
 			playButton:SetSize(26, 26)
-			playButton:SetPoint("RIGHT", check, "LEFT", -6, 0)
+			local info = frame[i].infoButton
+			if info then
+				playButton:SetPoint("RIGHT", info, "LEFT", -6, 0)
+			else
+				playButton:SetPoint("RIGHT", check, "LEFT", -6, 0)
+			end
 			playButton:SetFrameLevel((frame[i]:GetFrameLevel() or 1) + 5)
 			playButton:RegisterForClicks("LeftButtonUp")
 			playButton:EnableMouse(true)
@@ -7243,9 +7249,9 @@ local function optionsSetup(optionsMenu)
 			local fileName = frame[i]:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 			fileName:SetPoint("RIGHT", playButton, "LEFT", -4, 0)
 			fileName:SetText(TyGearGetUpgradeChimeFileName())
-			if frame[i].tyGearSetTextRightEdge then
-				frame[i].tyGearSetTextRightEdge(fileName)
-			elseif frame[i].title then
+			if frame[i].title then
+				frame[i].title:ClearAllPoints()
+				frame[i].title:SetPoint("LEFT", 4, 0)
 				frame[i].title:SetPoint("RIGHT", fileName, "LEFT", -10, 0)
 			end
 			playButton:SetScript("OnClick", function()
