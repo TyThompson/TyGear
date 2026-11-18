@@ -3722,11 +3722,13 @@ function TyGearRefreshPawnOptionsVisibility()
 	local show = TyGearGetStatWeightSystem() == TyGearStatWeightSystemPawn and TyGearIsPawnReady()
 	local check = _G["TyGearOverridePawnScaleCheckButton"]
 	local dropDown = _G["TyGearPawnScaleDropdown"]
-	if check then
-		check:SetShown(show)
-	end
-	if dropDown then
-		dropDown:SetShown(show)
+	-- Block rows own the checkbox; hide the whole row so Relayout can collapse the gap.
+	local row = check and check:GetParent()
+	if row and row.tyGearMeasure then
+		row:SetShown(show)
+	else
+		if check then check:SetShown(show) end
+		if dropDown then dropDown:SetShown(show) end
 	end
 	if TyGearOptionsPage and TyGearOptionsPage.Relayout then
 		TyGearOptionsPage:Relayout()
@@ -4829,6 +4831,100 @@ local OPTIONS_ROW_SPACING = 2
 local OPTIONS_SECTION_SPACING = 12
 local OPTIONS_SECTION_HEADER_HEIGHT = 20
 local OPTIONS_BUTTON_SPACING = 10
+local OPTIONS_BLOCK_PAD = 12
+local OPTIONS_BLOCK_ROW_GAP = 10
+local OPTIONS_BLOCK_WIDTH_INSET = 8
+
+local function tyGearApplySectionBlockBackdrop(frame)
+	frame:SetBackdrop({
+		bgFile = "Interface/ChatFrame/ChatFrameBackground",
+		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+		tile = true, tileSize = 16, edgeSize = 12,
+		insets = { left = 3, right = 3, top = 3, bottom = 3 },
+	})
+	-- Waypoint-like dark charcoal panel
+	frame:SetBackdropColor(0.11, 0.11, 0.12, 0.92)
+	frame:SetBackdropBorderColor(0.48, 0.48, 0.48, 0.95)
+end
+
+---Waypoint-style setting row: title + muted description on the left, control on the right.
+local function newBlockSettingRow(parent, dbname, label, description, onClick)
+	label = TyGearColorize(label)
+	description = TyGearColorize(description)
+	local row = CreateFrame("Frame", nil, parent)
+	row:SetSize(500, 36)
+
+	local check = CreateFrame("CheckButton", "TyGear"..dbname.."CheckButton", row, "InterfaceOptionsCheckButtonTemplate")
+	check:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+	local templateText = _G[check:GetName().."Text"]
+	if templateText then
+		templateText:SetText("")
+		templateText:Hide()
+	end
+	check:SetHitRectInsets(0, 0, 0, 0)
+	check:SetScript("OnClick", function(self)
+		local tick = self:GetChecked()
+		onClick(self, tick and true or false)
+		if tick then
+			PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+		else
+			PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+		end
+	end)
+
+	local title = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	title:SetPoint("TOPLEFT", 4, -2)
+	title:SetPoint("RIGHT", check, "LEFT", -14, 0)
+	title:SetJustifyH("LEFT")
+	title:SetWordWrap(false)
+	title:SetText(label)
+
+	local desc = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+	desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -2)
+	desc:SetPoint("RIGHT", check, "LEFT", -14, 0)
+	desc:SetJustifyH("LEFT")
+	if desc.SetMaxLines then
+		desc:SetMaxLines(3)
+	end
+	desc:SetText(description or "")
+
+	local function measure()
+		local titleH = title:GetStringHeight() or 14
+		local descH = (description and description ~= "") and (desc:GetStringHeight() or 12) or 0
+		local textH = titleH + ((descH > 0) and (descH + 2) or 0)
+		local height = math.max(textH + 8, 28)
+		row:SetHeight(height)
+		check:ClearAllPoints()
+		check:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+	end
+	measure()
+	row.tyGearMeasure = measure
+
+	check.tooltipText = label
+	check.tooltipRequirement = description
+	check.label = title
+	row.check = check
+	row.title = title
+	row.description = desc
+	row:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_NONE")
+		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+		GameTooltip:AddLine(label, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(description, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
+		GameTooltip:Show()
+	end)
+	row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	row:EnableMouse(true)
+	-- Clicking the text toggles the checkbox, matching the dense Waypoint rows.
+	row:SetScript("OnMouseUp", function(_, button)
+		if button and button ~= "LeftButton" then return end
+		if not check:IsEnabled() then return end
+		if check.IsMouseOver and check:IsMouseOver() then return end
+		check:Click()
+	end)
+
+	return row
+end
 
 ---One scrolling options page. The mouse wheel moves through every section
 ---because they are all on this page.
@@ -4930,7 +5026,49 @@ local function newOptionsPage(optionsMenu)
 		enableWheel(row)
 	end
 
+	local function placeBlockRow(block, row, spacing, afterRow)
+		row:SetParent(block)
+		row:ClearAllPoints()
+		local left = OPTIONS_BLOCK_PAD
+		if afterRow then
+			row:SetPoint("TOP", afterRow, "BOTTOM", 0, -spacing)
+			row:SetPoint("LEFT", block, "LEFT", left, 0)
+			row:SetPoint("RIGHT", block, "RIGHT", -OPTIONS_BLOCK_PAD, 0)
+		else
+			row:SetPoint("TOPLEFT", block, "TOPLEFT", left, -OPTIONS_BLOCK_PAD)
+			row:SetPoint("TOPRIGHT", block, "TOPRIGHT", -OPTIONS_BLOCK_PAD, -OPTIONS_BLOCK_PAD)
+		end
+		enableWheel(row)
+		if row.tyGearMeasure then row.tyGearMeasure() end
+	end
+
+	local function reflowBlock(block)
+		if not block or not block.tyGearBlock then return 0 end
+		block.lastRow = nil
+		local height = OPTIONS_BLOCK_PAD
+		for _, entry in ipairs(block.blockRows) do
+			local row = entry.row
+			if row:IsShown() then
+				local gap = block.lastRow and entry.spacing or 0
+				placeBlockRow(block, row, gap, block.lastRow)
+				height = height + gap + (row:GetHeight() or 0)
+				block.lastRow = row
+			else
+				row:ClearAllPoints()
+			end
+		end
+		height = height + OPTIONS_BLOCK_PAD
+		block:SetHeight(math.max(height, OPTIONS_BLOCK_PAD * 2))
+		return block:GetHeight() or height
+	end
+
 	function optionsPage:AddRow(row, spacing, offsetX)
+		-- When a section block is open, legacy callers (Ignore builders, notes, grids)
+		-- should land inside it. The block frame itself still uses the page path below.
+		if page.block and row ~= page.block and not row.tyGearBlock then
+			self:AddBlockRow(row, spacing)
+			return
+		end
 		--offsetX is always from the page's left padding, not relative to the previous row,
 		--so a one-off indent (Scan Bags, slot grids) does not shove later rows sideways
 		offsetX = offsetX or 0
@@ -4946,12 +5084,56 @@ local function newOptionsPage(optionsMenu)
 		})
 	end
 
+	function optionsPage:CloseBlock()
+		if not page.block then return end
+		reflowBlock(page.block)
+		page.block = nil
+	end
+
+	function optionsPage:OpenBlock()
+		self:CloseBlock()
+		local block = CreateFrame("Frame", nil, page, "BackdropTemplate")
+		tyGearApplySectionBlockBackdrop(block)
+		block.tyGearBlock = true
+		block.blockRows = {}
+		block.lastRow = nil
+		block:SetHeight(OPTIONS_BLOCK_PAD * 2)
+		page.block = block
+		self:AddRow(block, OPTIONS_SECTION_SPACING, OPTIONS_BLOCK_WIDTH_INSET)
+		return block
+	end
+
+	---Add a row inside the active Waypoint-style section block (or on the page if none).
+	function optionsPage:AddBlockRow(row, spacing)
+		local block = page.block
+		if not block then
+			self:AddRow(row, spacing)
+			return
+		end
+		local storedSpacing = spacing or OPTIONS_BLOCK_ROW_GAP
+		table.insert(block.blockRows, { row = row, spacing = storedSpacing })
+		local oldHeight = block:GetHeight() or 0
+		local newHeight = reflowBlock(block)
+		page.height = page.height + (newHeight - oldHeight)
+	end
+
 	-- Re-chain visible rows after Show/Hide so hidden options leave no gap.
 	function optionsPage:Relayout()
 		page.lastRow = nil
 		page.height = OPTIONS_PAGE_PADDING
 		for _, entry in ipairs(page.rows) do
 			local row = entry.row
+			if row.tyGearBlock then
+				reflowBlock(row)
+				local anyVisible = false
+				for _, blockEntry in ipairs(row.blockRows) do
+					if blockEntry.row:IsShown() then
+						anyVisible = true
+						break
+					end
+				end
+				row:SetShown(anyVisible)
+			end
 			if row:IsShown() then
 				local appliedSpacing = page.lastRow and entry.spacing or 0
 				placeRow(row, appliedSpacing, entry.offsetX, page.lastRow)
@@ -4965,6 +5147,7 @@ local function newOptionsPage(optionsMenu)
 	end
 
 	function optionsPage:AddHeader(label, isMajor)
+		self:CloseBlock()
 		local header = CreateFrame("Frame", nil, page)
 		header:SetSize(400, isMajor and 26 or OPTIONS_SECTION_HEADER_HEIGHT)
 		local headerText = header:CreateFontString(nil, "ARTWORK", isMajor and "GameFontNormalLarge" or "GameFontNormal")
@@ -4973,16 +5156,27 @@ local function newOptionsPage(optionsMenu)
 		self:AddRow(header, isMajor and OPTIONS_SECTION_SPACING or 6)
 	end
 
-	---Groups options that share a tab onto this page and adds a header when the group changes.
+	---Groups options onto this page. Section labels open a Waypoint-style block underneath.
 	function optionsPage:BeginOption(tabLabel, sectionLabel)
 		if tabLabel ~= page.tab then
+			self:CloseBlock()
 			page.tab = tabLabel
 			page.section = nil
 			self:AddHeader(tabLabel, true)
 		end
 		if sectionLabel and sectionLabel ~= page.section then
+			self:CloseBlock()
 			page.section = sectionLabel
 			self:AddHeader(sectionLabel, false)
+			self:OpenBlock()
+		elseif not sectionLabel then
+			if page.section then
+				self:CloseBlock()
+				page.section = nil
+			end
+			if not page.block then
+				self:OpenBlock()
+			end
 		end
 		return page
 	end
@@ -4990,6 +5184,7 @@ local function newOptionsPage(optionsMenu)
 	function optionsPage:AddScanButton()
 		if self.scanAdded then return end
 		self.scanAdded = true
+		self:CloseBlock()
 		local button = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
 		button:SetHeight(30)
 		button:SetText(L["Scan Bags"])
@@ -5012,11 +5207,32 @@ local function newOptionsPage(optionsMenu)
 	end
 
 	function optionsPage:Finish()
+		self:CloseBlock()
 		local function layout()
 			local width = math.max((scrollFrame:GetWidth() or 0) - OPTIONS_CONTAINER_RIGHT_MARGIN, 1)
 			container:SetWidth(width)
 			page:SetWidth(width)
 			optionsMenu:SetWidth(width + OPTIONS_CONTAINER_LEFT_OFFSET)
+			local innerWidth = math.max(width - OPTIONS_PAGE_PADDING * 2 - OPTIONS_BLOCK_WIDTH_INSET, 1)
+			for _, entry in ipairs(page.rows) do
+				local row = entry.row
+				if row.tyGearBlock then
+					row:SetWidth(innerWidth)
+					reflowBlock(row)
+				end
+			end
+			-- Recompute page height after block widths change wrapped text height.
+			page.lastRow = nil
+			page.height = OPTIONS_PAGE_PADDING
+			for _, entry in ipairs(page.rows) do
+				local row = entry.row
+				if row:IsShown() then
+					local appliedSpacing = page.lastRow and entry.spacing or 0
+					placeRow(row, appliedSpacing, entry.offsetX, page.lastRow)
+					page.height = page.height + appliedSpacing + (row:GetHeight() or 0)
+					page.lastRow = row
+				end
+			end
 			local pageHeight = page.height + OPTIONS_PAGE_PADDING
 			container:SetHeight(pageHeight)
 			page:SetHeight(pageHeight)
@@ -6457,29 +6673,30 @@ local function optionsSetup(optionsMenu)
 
 	local function addOptionsNote(page, text)
 		local holder = CreateFrame("Frame", nil, page)
-		local font = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-		font:SetPoint("TOPLEFT", 8, -2)
-		font:SetWidth(480)
+		local font = holder:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+		font:SetPoint("TOPLEFT", 4, -2)
+		font:SetPoint("TOPRIGHT", holder, "TOPRIGHT", -4, -2)
 		font:SetJustifyH("LEFT")
+		if font.SetMaxLines then font:SetMaxLines(4) end
 		font:SetText(TyGearColorize(text))
 		local height = font:GetStringHeight()
 		local estimate = math.ceil(math.max(#text, 1) / 80) * 14
 		if not height or height < estimate then height = estimate end
-		holder:SetSize(500, height + 8)
-		optionsPage:AddRow(holder)
+		holder:SetHeight(height + 8)
+		optionsPage:AddBlockRow(holder)
 		return holder
 	end
 
 	local function addItemIDEditBox(page, optionName, label, description, editBoxPostHook)
 		local editRow = CreateFrame("Frame", nil, page)
 		editRow:SetSize(500, 24)
-		local labelText = editRow:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-		labelText:SetPoint("LEFT", 8, 0)
+		local labelText = editRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		labelText:SetPoint("LEFT", 4, 0)
 		labelText:SetText(TyGearColorize(label))
 		local editBox = CreateFrame("EditBox", "TyGear"..optionName.."EditBox", editRow, "InputBoxTemplate")
 		editBox:SetAutoFocus(false)
-		editBox:SetSize(320, 20)
-		editBox:SetPoint("LEFT", labelText, "RIGHT", 12, 0)
+		editBox:SetSize(280, 20)
+		editBox:SetPoint("RIGHT", editRow, "RIGHT", -4, 0)
 		local function showSavedText()
 			editBox:SetText(TyGearSettingsTable(optionName)[optionName] or "")
 			editBox:SetCursorPosition(0)
@@ -6522,7 +6739,7 @@ local function optionsSetup(optionsMenu)
 		elseif ChatEdit_InsertLink then
 			hooksecurefunc("ChatEdit_InsertLink", insertItemLink)
 		end
-		optionsPage:AddRow(editRow, 4, 4)
+		optionsPage:AddBlockRow(editRow, 4)
 		return editBox
 	end
 
@@ -6530,8 +6747,8 @@ local function optionsSetup(optionsMenu)
 		local holder = CreateFrame("Frame", nil, page)
 		holder:SetSize(500, 24)
 		local font = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-		font:SetPoint("LEFT", 8, 0)
-		font:SetPoint("RIGHT", -8, 0)
+		font:SetPoint("LEFT", 4, 0)
+		font:SetPoint("RIGHT", -4, 0)
 		font:SetJustifyH("LEFT")
 		font:SetWordWrap(false)
 		font:SetText(TyGearActiveSpecializationLine())
@@ -6546,7 +6763,7 @@ local function optionsSetup(optionsMenu)
 		holder:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		holder:EnableMouse(true)
 		optionsPage:EnableWheel(holder)
-		optionsPage:AddRow(holder, 2)
+		optionsPage:AddBlockRow(holder, 2)
 	end
 
 	local function beginListedOption(v)
@@ -6577,14 +6794,19 @@ local function optionsSetup(optionsMenu)
 		--standalone string dropdown (flat label/value list), e.g. MythicSim vs Pawn
 		if v["dropdown"] and v["options"] then
 			local page = beginListedOption(v)
-			if v["description"] then
-				addOptionsNote(page, v["description"])
-			end
 			local row = CreateFrame("Frame", nil, page)
-			row:SetSize(500, 28)
-			local labelText = row:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-			labelText:SetPoint("LEFT", 8, 0)
+			row:SetSize(500, 40)
+			local labelText = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+			labelText:SetPoint("TOPLEFT", 4, -2)
 			labelText:SetText(TyGearColorize(v["label"]))
+			local descText
+			if v["description"] then
+				descText = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+				descText:SetPoint("TOPLEFT", labelText, "BOTTOMLEFT", 0, -2)
+				descText:SetJustifyH("LEFT")
+				if descText.SetMaxLines then descText:SetMaxLines(3) end
+				descText:SetText(TyGearColorize(v["description"]))
+			end
 			local width = v["dropdownWidth"] or 220
 			local dropDown
 			local function dropdownOptions()
@@ -6606,13 +6828,24 @@ local function optionsSetup(optionsMenu)
 			end
 			if useModernDropdowns then
 				dropDown = CreateFrame("DropdownButton", "TyGear"..v["option"].."Dropdown", row, "WowStyle1DropdownTemplate")
-				dropDown:SetPoint("LEFT", labelText, "RIGHT", 16, 0)
+				dropDown:SetPoint("RIGHT", row, "RIGHT", -2, 0)
 				dropDown:SetWidth(width)
 			else
 				dropDown = CreateFrame("FRAME", "TyGear"..v["option"].."Dropdown", row, "UIDropDownMenuTemplate")
-				dropDown:SetPoint("LEFT", labelText, "RIGHT", 0, 0)
+				dropDown:SetPoint("RIGHT", row, "RIGHT", 16, 0)
 				UIDropDownMenu_SetWidth(dropDown, width)
 			end
+			if descText then
+				descText:SetPoint("RIGHT", dropDown, "LEFT", -12, 0)
+			end
+			labelText:SetPoint("RIGHT", dropDown, "LEFT", -12, 0)
+			local function measureDropdownRow()
+				local titleH = labelText:GetStringHeight() or 14
+				local descH = descText and (descText:GetStringHeight() or 12) or 0
+				row:SetHeight(math.max(titleH + ((descH > 0) and (descH + 2) or 0) + 8, 28))
+			end
+			row.tyGearMeasure = measureDropdownRow
+			measureDropdownRow()
 			setDropdownText(dropDown, labelForValue(TyGearSettingsTable(v["option"])[v["option"]]))
 			dropDown.SetValue = function(self, value)
 				for _, entry in ipairs(dropdownOptions()) do
@@ -6662,7 +6895,7 @@ local function optionsSetup(optionsMenu)
 				end)
 			end
 			frame[i] = row
-			optionsPage:AddRow(frame[i])
+			optionsPage:AddBlockRow(frame[i])
 			--The toggle below speaks StatWeightSystem names. Other dropdowns only use SetValue.
 			if v["option"] ~= "StatWeightSystem" then return end
 			_G["TyGearToggle"..v["option"]] = function(force)
@@ -6803,7 +7036,7 @@ local function optionsSetup(optionsMenu)
 				TyGearColorize(v["description"] or ""),
 				function(widget) optionsPage:EnableWheel(widget) end
 			)
-			optionsPage:AddRow(frame[i], 4, 4)
+			optionsPage:AddBlockRow(frame[i], 4)
 			return
 		end
 
@@ -6839,17 +7072,17 @@ local function optionsSetup(optionsMenu)
 		--set description, and if this option is a cvar shortcut, add explanation of cvars to description
 		local description = v["description"]..(v["cvar"] and "\n\n"..L["This is a shortcut for the \"%s\" CVar provided by Blizzard.  Toggling this will toggle that CVar."]:format(v["cvar"]) or "")
 
-		--make a checkbox for this option on the single scrolling page
+		--make a Waypoint-style block row for this option (title/description left, checkbox right)
 		local page = beginListedOption(v)
-		frame[i] = newCheckbox(v["option"], v["label"], description, _G["TyGearSimpleToggle"..v["option"]], page)
-		optionsPage:AddRow(frame[i])
-		frame[i]:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
-		frame[i]:SetChecked(TyGearSettingsTable(v["option"])[v["option"]]) --set initial checked state based on db
+		frame[i] = newBlockSettingRow(page, v["option"], v["label"], description, _G["TyGearSimpleToggle"..v["option"]])
+		local check = frame[i].check
+		check:SetChecked(TyGearSettingsTable(v["option"])[v["option"]]) --set initial checked state based on db
+		optionsPage:AddBlockRow(frame[i])
 
 		if v["playSound"] then
 			local playButton = CreateFrame("Button", "TyGear"..v["option"].."PlayButton", frame[i])
 			playButton:SetSize(26, 26)
-			playButton:SetPoint("LEFT", frame[i].label, "RIGHT", 10, 0)
+			playButton:SetPoint("RIGHT", check, "LEFT", -6, 0)
 			playButton:SetFrameLevel((frame[i]:GetFrameLevel() or 1) + 5)
 			playButton:RegisterForClicks("LeftButtonUp")
 			playButton:EnableMouse(true)
@@ -6857,15 +7090,15 @@ local function optionsSetup(optionsMenu)
 			playButton:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
 			playButton:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down")
 			playButton:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-			local fileName = frame[i]:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-			fileName:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
+			local fileName = frame[i]:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+			fileName:SetPoint("RIGHT", playButton, "LEFT", -4, 0)
 			fileName:SetText(TyGearGetUpgradeChimeFileName())
-			--Stop the checkbox click area at the label so the play button is not also a toggle.
-			local labelWidth = frame[i].label:GetStringWidth() or 0
-			if labelWidth < 8 then
-				labelWidth = #(v["label"] or "") * 6
+			if frame[i].title then
+				frame[i].title:SetPoint("RIGHT", fileName, "LEFT", -10, 0)
 			end
-			frame[i]:SetHitRectInsets(0, -(labelWidth + 4), 0, 0)
+			if frame[i].description then
+				frame[i].description:SetPoint("RIGHT", fileName, "LEFT", -10, 0)
+			end
 			playButton:SetScript("OnClick", function()
 				TyGearPlayUpgradeEquippedChime(true)
 			end)
@@ -6890,14 +7123,20 @@ local function optionsSetup(optionsMenu)
 
 				local width = 250
 				if useModernDropdowns then
-					frame[i].dropDown = CreateFrame("DropdownButton", "TyGear"..v["child"]["option"].."Dropdown", page, "WowStyle1DropdownTemplate")
-					--this template draws its box at its frame edges, while UIDropDownMenuTemplate pads it by about 16 pixels on the left
-					frame[i].dropDown:SetPoint("LEFT", frame[i], "RIGHT", width + 16, 0) --attach to parent
+					frame[i].dropDown = CreateFrame("DropdownButton", "TyGear"..v["child"]["option"].."Dropdown", frame[i], "WowStyle1DropdownTemplate")
+					-- Sit left of the checkbox inside the block row.
+					frame[i].dropDown:SetPoint("RIGHT", check, "LEFT", -8, 0)
 					frame[i].dropDown:SetWidth(width)
 				else
-					frame[i].dropDown = CreateFrame("FRAME", "TyGear"..v["child"]["option"].."Dropdown", page, "UIDropDownMenuTemplate")
-					frame[i].dropDown:SetPoint("TOPLEFT", frame[i], "TOPRIGHT", width, 0) --attach to parent
+					frame[i].dropDown = CreateFrame("FRAME", "TyGear"..v["child"]["option"].."Dropdown", frame[i], "UIDropDownMenuTemplate")
+					frame[i].dropDown:SetPoint("RIGHT", check, "LEFT", 12, 0)
 					UIDropDownMenu_SetWidth(frame[i].dropDown, width)
+				end
+				if frame[i].title then
+					frame[i].title:SetPoint("RIGHT", frame[i].dropDown, "LEFT", -10, 0)
+				end
+				if frame[i].description then
+					frame[i].description:SetPoint("RIGHT", frame[i].dropDown, "LEFT", -10, 0)
 				end
 				--newDropdown(v["child"]["option"], v["child"]["label"], v["child"]["description"], _G["TyGearSelectFrom"..v["child"]["option"].."Dropdown"], v["child"]["options"], optionsMenu)
 				--frame[i].dropDown:SetHitRectInsets(0, -280, 0, 0) --change click region to not be super wide
