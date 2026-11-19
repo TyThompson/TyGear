@@ -10295,8 +10295,19 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 				else
 					local invSlot = INVSLOT_MAINHAND
 					if (offSwap) then invSlot = INVSLOT_OFFHAND end
-					local equippedInfo = TyGearEquippedItems[invSlot].info
-					local equippedScore = TyGearEquippedItems[invSlot].score
+					-- A worn 2H is parked in the virtual tabard slot with MH/OH cleared to
+					-- empty, so a lone 1H swap must compare against that 2H (not "nothing").
+					local equippedInfo, equippedScore
+					if TyGearIsTwoHandEquipped()
+					and TyGearEquippedItems[INVSLOT_TABARD]
+					and TyGearEquippedItems[INVSLOT_TABARD].info
+					and (not TyGearEquippedItems[INVSLOT_TABARD].info.empty) then
+						equippedInfo = TyGearEquippedItems[INVSLOT_TABARD].info
+						equippedScore = TyGearEquippedItems[INVSLOT_TABARD].score
+					else
+						equippedInfo = TyGearEquippedItems[invSlot].info
+						equippedScore = TyGearEquippedItems[invSlot].score
+					end
 					TyGearPrint("TyGear: "..TyGearFormatItemWithScore(TyGearBestItems[invSlot].info, TyGearBestItems[invSlot].score).." was determined to be better than "..TyGearFormatItemWithScore(equippedInfo, equippedScore)..".  "..((TyGearDB.Enabled == true) and (((invSlot == INVSLOT_MAINHAND and isMainHandSlotLocked) or (invSlot == INVSLOT_OFFHAND and isOffHandSlotLocked)) and "Would equip, but slot "..tostring((isMainHandSlotLocked and INVSLOT_MAINHAND or INVSLOT_OFFHAND) or "nil").." is locked." or "Equipping.") or "Would equip if automatic gear equipping was enabled."), 1)
 					TyGearPrintItem(TyGearBestItems[invSlot].info)
 					TyGearPrintItem(equippedInfo)
