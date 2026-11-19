@@ -9776,25 +9776,9 @@ function TyGearWouldUpgradeEquipped(info)
 	if not TyGearEquippedItems then return false end
 
 	local keepOnly = TyGearIsVendorKeepOnly(info)
-	local lowestSlot
-	local lowestScore
-	for _, gearSlot in pairs(info.validGearSlots) do
-		if not TyGearIsGearSlotProtected(gearSlot) then
-			local equipped = TyGearEquippedItems[gearSlot]
-			local score = 0
-			if equipped and equipped.info and (not equipped.info.empty) then
-				score = equipped.score or 0
-			end
-			if (not lowestSlot) or (score < lowestScore) then
-				lowestSlot = gearSlot
-				lowestScore = score
-			end
-		end
-	end
-	if not lowestSlot then return false end
+	local targetSlot, score, currentScore, equippedInfo = TyGearPickBestTargetGearSlot(info, TyGearEquippedItems, true)
+	if not targetSlot then return false end
 
-	local equipped = TyGearEquippedItems[lowestSlot]
-	local equippedInfo = equipped and equipped.info
 	if TyGearIsReagentBag(info) then
 		local currentDedicated = TyGearIsReagentBag(equippedInfo)
 		local currentProfession = TyGearUsesReagentBagSlot(equippedInfo)
@@ -9807,7 +9791,6 @@ function TyGearWouldUpgradeEquipped(info)
 		end
 	end
 
-	local score = TyGearDetermineItemScore(info, lowestSlot)
 	if (not equippedInfo) or equippedInfo.empty then
 		return true
 	end
@@ -9825,9 +9808,9 @@ function TyGearWouldUpgradeEquipped(info)
 		local equippedValid = rangedInfo and TyGearIsAmmoBagValidForRangedWeapon(equippedInfo, rangedInfo)
 		local candidateValid = (not rangedInfo) or (not rangedInfo.isRangedWeapon)
 			or TyGearIsAmmoBagValidForRangedWeapon(info, rangedInfo)
-		return candidateValid and ((score > lowestScore) or (not equippedValid))
+		return candidateValid and ((score > currentScore) or (not equippedValid))
 	end
-	return score > lowestScore
+	return score > currentScore
 end
 
 function TyGearIsItemLinkUpgrade(itemLink)
@@ -10600,6 +10583,79 @@ end
 
 --companion function to TyGearConsiderAllItems
 -- Keep-list items are skipped for replacing worn gear, but still fill empty slots.
+-- Choose the valid gear slot where `info` improves the current set the most.
+-- MH and OH use different DPS weights (mh_dps vs oh_dps), so picking the lowest absolute
+-- score always targets off-hand and can leave a stronger main-hand upgrade unevaluated
+-- (e.g. Solid Shortblade never challenges Weighted Sap for MH while Blackwater sits in OH).
+-- Returns gearSlot, candidateScore, currentScore, currentInfo (or nils when no open slot).
+function TyGearPickBestTargetGearSlot(info, slotTable, checkPairing)
+	if (not info) or (not info.validGearSlots) or (not slotTable) then return end
+	local bestSlot
+	local bestCandidateScore
+	local bestCurrentScore
+	local bestCurrentInfo
+	local bestDelta
+	local bestIsEmpty
+	for _, gearSlot in ipairs(info.validGearSlots) do
+		if not TyGearIsGearSlotProtected(gearSlot) then
+			if not slotTable[gearSlot] then
+				slotTable[gearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
+			end
+			local skipThisSlot = false
+			if checkPairing then
+				for _, otherGearSlot in pairs(info.validGearSlots) do
+					if gearSlot ~= otherGearSlot then
+						if not slotTable[otherGearSlot] then
+							slotTable[otherGearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
+						end
+						if not TyGearIsGearPairEquippableTogether(info, slotTable[otherGearSlot].info) then
+							skipThisSlot = true
+							break
+						end
+					end
+				end
+			end
+			if not skipThisSlot then
+				local slotBest = slotTable[gearSlot]
+				local currentInfo = slotBest and slotBest.info
+				local empty = (not currentInfo) or currentInfo.empty
+				local currentScore = empty and 0 or (slotBest.score or 0)
+				-- Score for this slot so OH candidates use oh_dps swing EP.
+				local candidateScore = TyGearDetermineItemScore(info, gearSlot)
+				local delta = candidateScore - currentScore
+				local preferBagDisplace = false
+				if (not empty) and bestSlot and info.classID == Enum.ItemClass.Container
+				and delta == bestDelta and currentScore == bestCurrentScore
+				and bestCurrentInfo and (not bestIsEmpty) then
+					preferBagDisplace = TyGearPreferToDisplaceBag(currentInfo, bestCurrentInfo)
+				end
+				local takeSlot = false
+				if not bestSlot then
+					takeSlot = true
+				elseif delta > bestDelta then
+					takeSlot = true
+				elseif delta == bestDelta then
+					if preferBagDisplace then
+						takeSlot = true
+					elseif currentScore < bestCurrentScore then
+						-- Same improvement: displace the weaker of the two current items.
+						takeSlot = true
+					end
+				end
+				if takeSlot then
+					bestSlot = gearSlot
+					bestCandidateScore = candidateScore
+					bestCurrentScore = currentScore
+					bestCurrentInfo = currentInfo or EMPTY_SLOT_INFO
+					bestDelta = delta
+					bestIsEmpty = empty
+				end
+			end
+		end
+	end
+	return bestSlot, bestCandidateScore, bestCurrentScore, bestCurrentInfo
+end
+
 function TyGearConsiderItem(info, bag, slot, rollOn)
 	if info.empty
 	or TyGearIsItemIgnored(info)
@@ -10619,64 +10675,10 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 	end
 	if (info.usable or (rollOn and info.Within5levels)) then
 		if info.isGear and info.validGearSlots then
-			local lowestScoringValidGearSlot
-			local lowestScoringValidGearSlotScore
-			for _, gearSlot in ipairs(info.validGearSlots) do
-				if not TyGearIsGearSlotProtected(gearSlot) then
-					lowestScoringValidGearSlot = gearSlot
-					lowestScoringValidGearSlotScore = TyGearBestItems[gearSlot] and TyGearBestItems[gearSlot].score or 0
-					break
-				end
-			end
-			--every slot this item can use is ignored
-			if not lowestScoringValidGearSlot then return end
-			for _, gearSlot in pairs(info.validGearSlots) do
-				if not TyGearIsGearSlotProtected(gearSlot) then
-				if not TyGearBestItems[gearSlot] then
-					TyGearBestItems[gearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
-				end
-				local skipThisSlot = false
-				for _, otherGearSlot in pairs(info.validGearSlots) do
-					if gearSlot ~= otherGearSlot then
-						if not TyGearBestItems[otherGearSlot] then
-							TyGearBestItems[otherGearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
-						end
-						if not TyGearIsGearPairEquippableTogether(info, TyGearBestItems[otherGearSlot].info) then
-							skipThisSlot = true
-						end
-					end
-				end
-				local slotBest = TyGearBestItems[gearSlot]
-				local slotScore = slotBest.score or 0
-				-- Same slot count: unequip the non-soulbound bag and leave the soulbound one worn.
-				local tiedBagToDisplace = false
-				if info.classID == Enum.ItemClass.Container
-				and (not slotBest.info.empty)
-				and slotScore == lowestScoringValidGearSlotScore
-				and gearSlot ~= lowestScoringValidGearSlot then
-					local kept = TyGearBestItems[lowestScoringValidGearSlot]
-					local keptInfo = kept and kept.info
-					if keptInfo then
-						tiedBagToDisplace = TyGearPreferToDisplaceBag(slotBest.info, keptInfo)
-					end
-				end
-				if not skipThisSlot and
-				((not slotBest.score) or
-				slotBest.info.empty or
-				(slotScore < lowestScoringValidGearSlotScore) or
-				tiedBagToDisplace) then
-					lowestScoringValidGearSlot = gearSlot
-					lowestScoringValidGearSlotScore = slotScore
-				end
-				end
-			end
+			local targetSlot, score, currentScore, currentBestInfo = TyGearPickBestTargetGearSlot(info, TyGearBestItems, true)
+			-- every slot this item can use is ignored / incompatible with the rest of the set
+			if not targetSlot then return end
 
-			if not TyGearBestItems[lowestScoringValidGearSlot] then
-				TyGearBestItems[lowestScoringValidGearSlot] = { info = EMPTY_SLOT_INFO, score = 0, equipped = 1 }
-			end
-			-- Score after choosing the slot so OH weapons use oh_dps swing EP.
-			local score = TyGearDetermineItemScore(info, lowestScoringValidGearSlot)
-			local currentBestInfo = TyGearBestItems[lowestScoringValidGearSlot].info
 			-- Dedicated reagent bags always beat profession/soul bags for the reagent slot.
 			local candidateDedicated = TyGearIsReagentBag(info)
 			local currentDedicated = TyGearIsReagentBag(currentBestInfo)
@@ -10693,25 +10695,25 @@ function TyGearConsiderItem(info, bag, slot, rollOn)
 				currentBestInfo.empty
 				or ((not keepOnly) and (
 					dedicatedBeatsProfession
-					or ((score > lowestScoringValidGearSlotScore) and (not info.isAmmoBag))
-					or ((score == lowestScoringValidGearSlotScore)
+					or ((score > currentScore) and (not info.isAmmoBag))
+					or ((score == currentScore)
 						and (not info.isAmmoBag)
 						and TyGearBagShouldReplaceEqualScore(info, currentBestInfo))
 					or (info.isAmmoBag
 						and TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
-						and ((score > lowestScoringValidGearSlotScore)
+						and ((score > currentScore)
 						or (not TyGearIsAmmoBagValidForBestKnownRangedWeapon(currentBestInfo)))
 					)
 				))
 			) then
 				-- TyGearPrint(info.link.." bag and slot: "..tostring(bag or "nil").." "..tostring(slot or "nil"),0)
 				if info.guid then TyGearBestItemsAlreadyAdded[info.guid] = 1 end
-				TyGearBestItems[lowestScoringValidGearSlot].info = info
-				TyGearBestItems[lowestScoringValidGearSlot].score = score
-				TyGearBestItems[lowestScoringValidGearSlot].equipped = nil
-				TyGearBestItems[lowestScoringValidGearSlot].bag = bag
-				TyGearBestItems[lowestScoringValidGearSlot].slot = slot
-				TyGearBestItems[lowestScoringValidGearSlot].rollOn = rollOn
+				TyGearBestItems[targetSlot].info = info
+				TyGearBestItems[targetSlot].score = score
+				TyGearBestItems[targetSlot].equipped = nil
+				TyGearBestItems[targetSlot].bag = bag
+				TyGearBestItems[targetSlot].slot = slot
+				TyGearBestItems[targetSlot].rollOn = rollOn
 				return true
 			end
 		end
@@ -12738,46 +12740,26 @@ function TyGearGetTooltipScoreComparisonInfo(info, equipped)
 		equippedSetScore = lowestScoringValidGearSlotScore
 	else
 		if info.validGearSlots then
-			local firstOpenSlot
-			for _, gearSlot in ipairs(info.validGearSlots) do
-				if not TyGearIsGearSlotProtected(gearSlot) then
-					firstOpenSlot = gearSlot
-					break
-				end
-			end
-			local firstValidGearSlot = firstOpenSlot or info.validGearSlots[1]
-			lowestScoringValidGearSlot = firstValidGearSlot
-			lowestScoringValidGearSlotScore = TyGearEquippedItems[firstValidGearSlot].score
-			lowestScoringValidGearInfo = TyGearEquippedItems[firstValidGearSlot].info
-			for _, gearSlot in ipairs(info.validGearSlots) do
-				if not TyGearIsGearSlotProtected(gearSlot) then
-				local skipThisSlot = false
-				for _, otherGearSlot in pairs(info.validGearSlots) do
-					if gearSlot ~= otherGearSlot then
-						if not TyGearIsGearPairEquippableTogether(info, TyGearEquippedItems[otherGearSlot].info) then
-							skipThisSlot = true
-						end
+			-- Same delta-based target as equipping: do not assume the lowest absolute
+			-- equipped score is the right hand when MH/OH use different DPS weights.
+			local targetSlot, _, currentScore, currentInfo = TyGearPickBestTargetGearSlot(info, TyGearEquippedItems, true)
+			if targetSlot then
+				lowestScoringValidGearSlot = targetSlot
+				lowestScoringValidGearSlotScore = currentScore
+				lowestScoringValidGearInfo = currentInfo
+			else
+				local firstOpenSlot
+				for _, gearSlot in ipairs(info.validGearSlots) do
+					if not TyGearIsGearSlotProtected(gearSlot) then
+						firstOpenSlot = gearSlot
+						break
 					end
 				end
-				local equippedHere = TyGearEquippedItems[gearSlot]
-				local equippedInfo = equippedHere and equippedHere.info
-				local equippedScore = equippedHere and equippedHere.score
-				local takeThisSlot = false
-				if equippedInfo and (equippedInfo.empty or (not equippedScore) or (equippedScore < lowestScoringValidGearSlotScore)) then
-					takeThisSlot = true
-				elseif equippedInfo and equippedScore == lowestScoringValidGearSlotScore then
-					if info.classID == Enum.ItemClass.Container then
-						takeThisSlot = TyGearPreferToDisplaceBag(equippedInfo, lowestScoringValidGearInfo)
-					else
-						takeThisSlot = true
-					end
-				end
-				if (not skipThisSlot) and takeThisSlot then
-					lowestScoringValidGearInfo = equippedInfo
-					lowestScoringValidGearSlot = gearSlot
-					lowestScoringValidGearSlotScore = equippedScore
-				end
-				end
+				local firstValidGearSlot = firstOpenSlot or info.validGearSlots[1]
+				lowestScoringValidGearSlot = firstValidGearSlot
+				local equippedHere = TyGearEquippedItems[firstValidGearSlot]
+				lowestScoringValidGearSlotScore = equippedHere and equippedHere.score
+				lowestScoringValidGearInfo = equippedHere and equippedHere.info
 			end
 		end
 	end
@@ -12838,31 +12820,39 @@ function TyGearGetBestSetItems(info)
 	if not setSlots then
 		return {}, 0, nil, 0
 	end
-	-- Choose the slot this item would take: prefer empty, else the lowest-scoring valid slot.
-	-- Pairing is everything else in the set — never drop the main-hand when the off-hand is empty.
-	local replaceSlots = info.validGearSlots or setSlots
-	local replaceSlot
-	local replaceScore
+	-- Choose the slot this item would take by max score improvement (same as equipping).
+	-- Pairing is everything else in the set.
+	local replaceSlot, _, replaceScore
 	local thisIsABestItem
-	for _, slot in ipairs(replaceSlots) do
+	if info.validGearSlots then
+		replaceSlot, _, replaceScore = TyGearPickBestTargetGearSlot(info, bestSource, true)
+	end
+	if not replaceSlot then
+		-- Fall back for items without validGearSlots or when every slot is protected.
+		replaceScore = 0
+		for _, slot in ipairs(info.validGearSlots or setSlots) do
+			local slotBest = bestSource[slot]
+			local empty = (not slotBest) or (not slotBest.info) or slotBest.info.empty
+			local score = empty and 0 or (slotBest.score or 0)
+			if empty then
+				replaceSlot = slot
+				replaceScore = 0
+				break
+			elseif (not replaceSlot) or score < replaceScore then
+				replaceSlot = slot
+				replaceScore = score
+			end
+		end
+	end
+	for _, slot in ipairs(setSlots) do
 		local slotBest = bestSource[slot]
-		local empty = (not slotBest) or (not slotBest.info) or slotBest.info.empty
-		local score = empty and 0 or (slotBest.score or 0)
 		local bestInfo = slotBest and slotBest.info
-		local isThis = bestInfo and (
+		if bestInfo and (
 			(bestInfo.link and info.link and bestInfo.link == info.link)
 			or (info.guid and bestInfo.guid and bestInfo.guid == info.guid)
-		)
-		if isThis then
+		) then
 			thisIsABestItem = 1
-		end
-		if empty then
-			replaceSlot = slot
-			replaceScore = 0
 			break
-		elseif (not replaceSlot) or score < replaceScore then
-			replaceSlot = slot
-			replaceScore = score
 		end
 	end
 	local bestSet = {}
