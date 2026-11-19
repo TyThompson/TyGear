@@ -10766,8 +10766,10 @@ function TyGearGetValidGearSlots(info)
 		                                               or (weapons == "2h"))
 		                                               and { INVSLOT_MAINHAND }
 		                                               or nil),
+		-- 2h specs may fill an empty OH with a shield when using a 1H (something > nothing).
 		[Enum.InventoryType.IndexShieldType]         = ((weapons == "any")
-		                                               or (weapons == "weapon and shield"))
+		                                               or (weapons == "weapon and shield")
+		                                               or (weapons == "2h"))
 		                                               and { INVSLOT_OFFHAND }
 		                                               or nil,
 		[Enum.InventoryType.Index2HweaponType]       = ((weapons == "2hDW")
@@ -10876,7 +10878,8 @@ function TyGearGetSetSlots(info)
 		                                               and { INVSLOT_MAINHAND, INVSLOT_OFFHAND }
 		                                               or nil),
 		[Enum.InventoryType.IndexShieldType]         = ((weapons == "any")
-		                                               or (weapons == "weapon and shield"))
+		                                               or (weapons == "weapon and shield")
+		                                               or (weapons == "2h"))
 		                                               and { INVSLOT_MAINHAND, INVSLOT_OFFHAND }
 		                                               or nil,
 		[Enum.InventoryType.Index2HweaponType]       = ((weapons == "2hDW")
@@ -11720,7 +11723,8 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 				info.reason = "("..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass).." needs a two-handed weapon)"
 			end
 		elseif info.invType == Enum.InventoryType.IndexShieldType then
-			if (weapons ~= "weapon and shield") and (weapons ~= "any") then
+			-- 2h specs may still put a shield in an empty OH when using a 1H.
+			if (weapons ~= "weapon and shield") and (weapons ~= "any") and (weapons ~= "2h") then
 				info.unusable = 1
 				info.reason = "("..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass).." should not use a shield)"
 			end
