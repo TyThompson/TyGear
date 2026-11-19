@@ -4555,9 +4555,11 @@ function TyGearEnsureWeaponWeights()
 	-- speed is extra EP per second slower than the normalized swing, before AttackPower scaling.
 	-- Shield specs leave it at 0. Specials use the normalized 2.4s 1H speed, and white-hit
 	-- threat per second is weapon DPS, so a slow low-DPS axe must not beat a faster hammer.
+	-- 2h speed stays modest so a higher-DPS 1H (e.g. Defender Axe) can still beat a junk
+	-- slow 2H (e.g. Driftwood Branch); equal-DPS 2H still win via the remaining speed bump.
 	local scale = ap
 	local defaults = {
-		["2h"] = { mh = 12.5, oh = 0, norm = 3.3, speed = 200 },
+		["2h"] = { mh = 12.5, oh = 0, norm = 3.3, speed = 100 },
 		["2hDW"] = { mh = 12.0, oh = 6.0, norm = 3.3, speed = 150 },
 		["weapon and shield"] = { mh = 11.0, oh = 0, norm = 2.4, speed = 0 },
 		["dual wield"] = { mh = 11.0, oh = 6.0, norm = 2.4, speed = 50 },
@@ -4625,9 +4627,10 @@ function TyGearGetWeaponSwingEP(info, gearSlot)
 	local speed = info.WeaponSpeed
 	local norm = weapon.norm_speed
 	local speedBonus = weapon.speed_bonus or 0
-	-- Only specs that set speed_bonus (2H Slam and similar) gain EP for a slower swing.
-	-- Normalized specials ignore speed. Shield profiles leave speed_bonus at 0.
-	if (not forOffHand) and speed and norm and speedBonus > E then
+	-- Only true two-handers get Slam-style speed EP. A 1H scored under a 2h preference
+	-- must not be crushed for being "too fast" vs the 3.3s 2H norm (Defender Axe vs Driftwood).
+	-- Shield profiles leave speed_bonus at 0; normalized specials ignore speed.
+	if (not forOffHand) and info.is2hWeapon and speed and norm and speedBonus > E then
 		ep = ep + (speed - norm) * speedBonus
 	end
 	if ep < 0 then
@@ -10738,6 +10741,7 @@ function TyGearGetValidGearSlots(info)
 		[Enum.InventoryType.IndexFingerType]         = { INVSLOT_FINGER1, INVSLOT_FINGER2 },
 		[Enum.InventoryType.IndexTrinketType]        = { INVSLOT_TRINKET1, INVSLOT_TRINKET2 },
 		[Enum.InventoryType.IndexCloakType]          = { INVSLOT_BACK },
+		-- 2h specs still accept 1H into MH so a better axe can replace a junk 2H staff.
 		[Enum.InventoryType.IndexWeaponType]         = ((weapons == "any")
 		                                               or (weapons == "dagger and any")
 		                                               or (weapons == "dagger")
@@ -10747,7 +10751,8 @@ function TyGearGetValidGearSlots(info)
 		                                               and (CanDualWield()
 		                                               and { INVSLOT_MAINHAND, INVSLOT_OFFHAND }
 		                                               or { INVSLOT_MAINHAND })
-		                                               or ((weapons == "weapon and shield")
+		                                               or (((weapons == "weapon and shield")
+		                                               or (weapons == "2h"))
 		                                               and { INVSLOT_MAINHAND }
 		                                               or nil),
 		[Enum.InventoryType.IndexShieldType]         = ((weapons == "any")
@@ -10767,6 +10772,7 @@ function TyGearGetValidGearSlots(info)
 		                                               or nil),
 		[Enum.InventoryType.IndexWeaponmainhandType] = ((weapons == "any")
 		                                               or (weapons == "weapon and shield")
+		                                               or (weapons == "2h")
 		                                               or (weapons == "dagger and any")
 		                                               or (weapons == "dagger")
 		                                               or ((weapons == "dual wield") and (not IsPlayerSpell(46917)))
@@ -10854,7 +10860,8 @@ function TyGearGetSetSlots(info)
 		                                               and (CanDualWield()
 		                                               and { INVSLOT_MAINHAND, INVSLOT_OFFHAND }
 		                                               or { INVSLOT_MAINHAND })
-		                                               or ((weapons == "weapon and shield")
+		                                               or (((weapons == "weapon and shield")
+		                                               or (weapons == "2h"))
 		                                               and { INVSLOT_MAINHAND, INVSLOT_OFFHAND }
 		                                               or nil),
 		[Enum.InventoryType.IndexShieldType]         = ((weapons == "any")
@@ -10874,6 +10881,7 @@ function TyGearGetSetSlots(info)
 		                                               or nil),
 		[Enum.InventoryType.IndexWeaponmainhandType] = ((weapons == "any")
 		                                               or (weapons == "weapon and shield")
+		                                               or (weapons == "2h")
 		                                               or (weapons == "dagger and any")
 		                                               or (weapons == "dagger")
 		                                               or ((weapons == "dual wield") and (not IsPlayerSpell(46917)))
@@ -11693,8 +11701,8 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			and info.subclassID ~= Enum.ItemWeaponSubclass.Dagger then
 				info.unusable = 1
 				info.reason = "("..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass).." needs a dagger main hand)"
-			elseif weapons == "2h"
-			or (weapons == "2hDW" and CanDualWield() and IsPlayerSpell(46917)) or
+			-- 2h specs may still equip a better 1H (MH score vs virtual 2H tabard slot).
+			elseif (weapons == "2hDW" and CanDualWield() and IsPlayerSpell(46917)) or
 			((TOC_VERSION_CURRENT >= TOC_VERSION_MOP)
 			and weapons == "ranged") then
 				info.unusable = 1
@@ -11758,8 +11766,8 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 				info.reason = "("..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass).." should dual wield and not use a shield)"
 			end
 		elseif info.invType == Enum.InventoryType.IndexWeaponType then
-			if weapons == "2h"
-			or ((TOC_VERSION_CURRENT >= TOC_VERSION_MOP)
+			-- 2h specs may still equip a better 1H into MH; score vs tabard decides.
+			if ((TOC_VERSION_CURRENT >= TOC_VERSION_MOP)
 			and (weapons == "ranged")) then
 				info.unusable = 1
 				info.reason = "("..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass).." should use a two-handed weapon)"
