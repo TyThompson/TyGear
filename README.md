@@ -10,11 +10,13 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 
 1. Type `/tg` to open options.
 2. Under **Evaluation → Stat weights**, pick **MythicSim** (default), **Pawn**, **Forever Leveling BiS**, or **Personal Stat Weights**. MythicSim uses imported EP weights from mythicsim.com; if a specialization has no MythicSim row, TyGear falls back to Pawn when it is installed. Pawn and Forever Leveling BiS are optional dependencies: when either is not loaded, that choice appears faded as **(not loaded)** and cannot be selected. Override Pawn scale stays hidden unless Pawn is selected and loaded. Forever Leveling BiS supplies weights only through its API; TyGear still scores and equips gear itself. Personal Stat Weights starts from the MythicSim numbers for every spec of your class (built-in profiles where MythicSim has no row). The import/export box at the bottom of that tab uses a short `TG2` string of only the weights you changed. Tooltips label that score **TyGear: Personal score:**.
-3. Under **Evaluation**, TyGear shows the active specialization: the talent tree with the most points. With no points spent, it uses the general profile (None). **Override specialization** is directly under that. **Automatically equip gear** is under **Loot**. The override is saved per character.
+3. Under **Evaluation**, TyGear shows the active specialization: the talent tree with the most points. With no points spent, it uses the general profile (None). **Override specialization** is directly under that (main-spec gear weights). Optional **Secondary specialization (offspec rolling)** lets you NEED bag upgrades for another spec after the rest of the group greeds. **Automatically equip gear** is under **Loot**. Spec choices are saved per character.
 4. Use `/tg toggle` anytime you want to turn automatic gearing off (for example before a loot roll you want to control yourself).
 
 ## What to expect
 
+- Main-spec rolling is unchanged: NEED on main-spec upgrades, GREED otherwise.
+- With **Secondary specialization** enabled, if a drop is not a main-spec upgrade TyGear scores it with the secondary weights against gear in your bags. When the drop beats your bag gear for that slot, it waits until everyone else greeds (or the roll is almost over), then NEEDs; if anyone else NEEDs, it greeds instead.
 - Upgrades found in combat are equipped when combat ends.
 - Bag items TyGear considers upgrades are marked in Baganator when TyGear is chosen as the upgrade source there (same idea as choosing TyGear as the junk source for vendor-sell items).
 - Gear TyGear cannot score, slot and item ignore controls, and the keep list live on the **Ignored List** tab. Ignore-list items are not sold or evaluated. Keep-list items are not sold; they can still fill an empty gear slot, but are not treated as upgrades over gear you already wear.
