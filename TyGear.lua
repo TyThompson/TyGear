@@ -938,12 +938,16 @@ function TyGearInitializeCharacterSettings()
 	end
 	if TyGearCharDB.OverrideSpec == nil or TyGearCharDB.OverrideSpec == "" then
 		TyGearCharDB.OverrideSpec = TyGearGetDefaultOverrideSpec()
+	else
+		TyGearCharDB.OverrideSpec = TyGearEnsurePlayerClassSpecSetting(TyGearCharDB.OverrideSpec, TyGearGetDefaultOverrideSpec())
 	end
 	if TyGearCharDB.SecondarySpec == nil then
 		TyGearCharDB.SecondarySpec = false
 	end
 	if TyGearCharDB.SecondarySpecName == nil or TyGearCharDB.SecondarySpecName == "" then
 		TyGearCharDB.SecondarySpecName = TyGearGetDefaultSecondarySpec()
+	else
+		TyGearCharDB.SecondarySpecName = TyGearEnsurePlayerClassSpecSetting(TyGearCharDB.SecondarySpecName, TyGearGetDefaultSecondarySpec())
 	end
 	--drop any copy that older builds saved in the shared table
 	TyGearDB["Override"] = nil
@@ -3464,13 +3468,17 @@ function TyGearSpecColoredText(classToken, specName)
 	return TyGearClassColoredText(classToken, specName)
 end
 
--- Colors "Mage: Frost" for the closed dropdown. The saved value stays uncolored.
+-- Colors a saved "Class: Spec" value for the closed dropdown. The player's class shows only the spec.
 function TyGearColorizeSpecChoice(value)
 	if type(value) ~= "string" then return value end
 	local localizedClass, spec = string.match(value, "^(.-): (.+)$")
 	if not (localizedClass and spec and TyGearReverseClassList) then return value end
 	local classToken = TyGearReverseClassList[localizedClass]
 	if not classToken then return value end
+	local playerClass = UnitClassBase and UnitClassBase("player")
+	if classToken == playerClass then
+		return TyGearSpecColoredText(classToken, spec)
+	end
 	return TyGearClassColoredText(classToken, localizedClass)..": "..TyGearSpecColoredText(classToken, spec)
 end
 
@@ -3489,51 +3497,64 @@ function TyGearGetWeightSpecNames(className)
 	return specs
 end
 
-function TyGearGetOverrideSpecs()
-	local classNames = {}
-	for className in pairs(TyGearDefaultWeights) do
-		classNames[className] = true
-	end
-	if TyGearMythicSimWeights then
-		for className in pairs(TyGearMythicSimWeights) do
-			classNames[className] = true
+function TyGearSortSpecNames(specOrder)
+	table.sort(specOrder, function(a, b)
+		if a == "None" then
+			return true
+		elseif b == "None" then
+			return false
+		else
+			return a < b
 		end
-	end
-	local classOrder = {}
-	for className in pairs(classNames) do
-		if (not IS_WOW_FOREVER) or (not TyGearClassesHiddenOnForever[className]) then
-			table.insert(classOrder, className)
-		end
-	end
-	table.sort(classOrder)
+	end)
+	return specOrder
+end
 
+-- Keep a saved "Class: Spec" on this character's class; migrate older cross-class picks.
+function TyGearEnsurePlayerClassSpecSetting(specString, fallback)
+	local playerClass = UnitClassBase and UnitClassBase("player")
+	local playerLocalized = playerClass and TyGearClassList and TyGearClassList[playerClass]
+	if not playerLocalized then
+		return fallback or specString
+	end
+	local _, class, spec = TyGearParseClassSpecString and TyGearParseClassSpecString(specString)
+	if not (class and spec) and type(specString) == "string" and not string.find(specString, ":") then
+		spec = string.gsub(specString, "^%s*(.-)%s*$", "%1")
+		class = playerClass
+	end
+	local hiddenSpecs = IS_WOW_FOREVER and TyGearSpecsHiddenOnForever and TyGearSpecsHiddenOnForever[playerClass]
+	local names = TyGearGetWeightSpecNames(playerClass)
+	if class == playerClass and spec and names[spec] and not (hiddenSpecs and hiddenSpecs[spec]) then
+		return playerLocalized..": "..spec
+	end
+	return fallback or TyGearGetDefaultOverrideSpec() or (playerLocalized..": None")
+end
+
+-- Flat list of this character's specs only (None, Assassination, Combat, Subtlety, ...).
+-- Stored values stay "LocalizedClass: Spec" for weighting lookups.
+function TyGearGetOverrideSpecs()
+	local className = UnitClassBase and UnitClassBase("player")
+	local localizedClassName = className and TyGearClassList and TyGearClassList[className]
 	local overrideSpecs = {}
-	for i = 1, #classOrder do
-		local className = classOrder[i]
-		local localizedClassName = TyGearClassList[className]
-		if localizedClassName then
-			local specOrder = {}
-			local hiddenSpecs = IS_WOW_FOREVER and TyGearSpecsHiddenOnForever[className]
-			for specName in pairs(TyGearGetWeightSpecNames(className)) do
-				if not (hiddenSpecs and hiddenSpecs[specName]) then
-					table.insert(specOrder, specName)
-				end
-			end
-			table.sort(specOrder, function(a, b)
-				if a == "None" then
-					return true
-				elseif b == "None" then
-					return false
-				else
-					return a < b
-				end
-			end)
-			table.insert(overrideSpecs, {
-				["label"] = localizedClassName,
-				["class"] = className,
-				["subLabels"] = specOrder,
-			})
+	if not (className and localizedClassName) then
+		TyGearOverrideSpecs = overrideSpecs
+		return overrideSpecs
+	end
+	local specOrder = {}
+	local hiddenSpecs = IS_WOW_FOREVER and TyGearSpecsHiddenOnForever and TyGearSpecsHiddenOnForever[className]
+	for specName in pairs(TyGearGetWeightSpecNames(className)) do
+		if not (hiddenSpecs and hiddenSpecs[specName]) then
+			table.insert(specOrder, specName)
 		end
+	end
+	TyGearSortSpecNames(specOrder)
+	for i = 1, #specOrder do
+		local specName = specOrder[i]
+		table.insert(overrideSpecs, {
+			["label"] = specName,
+			["class"] = className,
+			["value"] = localizedClassName..": "..specName,
+		})
 	end
 	TyGearOverrideSpecs = overrideSpecs
 	return TyGearOverrideSpecs
@@ -4861,11 +4882,15 @@ local function setDropdownText(dropdown, text)
 end
 
 -- Class rows use the class color. Spec rows use a spec color where one is defined, otherwise the class color.
+-- Flat player-spec rows (value = "Class: Spec") color the spec name in label.
 -- Entries that are not a class or spec, such as Pawn scales, keep the general colorizer.
 local function dropdownEntryText(entry, specName)
 	if entry["class"] then
 		if specName then
 			return TyGearSpecColoredText(entry["class"], specName)
+		end
+		if entry["value"] then
+			return TyGearSpecColoredText(entry["class"], entry["label"])
 		end
 		return TyGearClassColoredText(entry["class"], entry["label"])
 	end
@@ -7404,33 +7429,55 @@ local function optionsSetup(optionsMenu)
 					hooksecurefunc(_G["TyGear"..v["child"]["option"].."Dropdown"], "SetValue", v["child"]["dropdownPostHook"])
 				end
 
+				local function childDropdownOptions()
+					if type(v["child"]["options"]) == "function" then
+						return v["child"]["options"]()
+					end
+					return v["child"]["options"]
+				end
+				local function childOptionsAreFlat(options)
+					return options and options[1] and options[1]["value"] and (not options[1]["subLabels"])
+				end
 				if useModernDropdowns then
 					--same menu as the UIDropDownMenu version below, built with the modern menu system
 					frame[i].dropDown:SetupMenu(function(dropdown, rootDescription)
+						local options = childDropdownOptions()
 						if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
-							for _, j in ipairs(v["child"]["options"]) do
-								--the label is selected when the stored value is one of its subLabels; it only opens its submenu, so its responder does nothing
-								local labelDescription = rootDescription:CreateRadio(dropdownEntryText(j), function()
-									return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":")) and true or false
-								end, function() end)
-								for _, z in ipairs(j["subLabels"] or {}) do
-									local value = j["label"]..": "..z
-									labelDescription:CreateRadio(dropdownEntryText(j, z), function()
-										return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == value) or (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == z)
+							if childOptionsAreFlat(options) then
+								for _, j in ipairs(options) do
+									local value = j["value"]
+									rootDescription:CreateRadio(dropdownEntryText(j), function()
+										local current = TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]
+										return (current == value) or (current == j["label"])
 									end, function()
 										dropdown:SetValue(value)
 									end)
 								end
+							else
+								for _, j in ipairs(options) do
+									--the label is selected when the stored value is one of its subLabels; it only opens its submenu, so its responder does nothing
+									local labelDescription = rootDescription:CreateRadio(dropdownEntryText(j), function()
+										return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":")) and true or false
+									end, function() end)
+									for _, z in ipairs(j["subLabels"] or {}) do
+										local value = j["label"]..": "..z
+										labelDescription:CreateRadio(dropdownEntryText(j, z), function()
+											return (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == value) or (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] == z)
+										end, function()
+											dropdown:SetValue(value)
+										end)
+									end
+								end
 							end
 						elseif type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'table' then
-							for _, j in pairs(v["child"]["options"]) do
+							for _, j in pairs(options) do
 								--checkboxes keep the menu open, like keepShownOnClick
 								rootDescription:CreateCheckbox(TyGearColorize(j["label"]), function()
 									return j["enabled"] and true or false
 								end, function()
 									j["enabled"] = not j["enabled"]
 									local label
-									for _, l in pairs(v["child"]["options"]) do
+									for _, l in pairs(options) do
 										if l["enabled"] then
 											if label then
 												label = label..", "..l["label"]
@@ -7447,25 +7494,39 @@ local function optionsSetup(optionsMenu)
 				else
 					UIDropDownMenu_Initialize(_G["TyGear"..v["child"]["option"].."Dropdown"], function(self, level, menuList)
 						local info = UIDropDownMenu_CreateInfo()
+						local options = childDropdownOptions()
 						if (level or 1) == 1 then
 							--display the labels
 							if type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'string' then
-								for _, j in ipairs(v["child"]["options"]) do
-									info.text = dropdownEntryText(j)
-									info.checked = (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and (string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":") and true or false) or false)
-									info.menuList = j
-									info.hasArrow = (j["subLabels"] and true or false)
-									UIDropDownMenu_AddButton(info)
+								if childOptionsAreFlat(options) then
+									info.func = self.SetValue
+									for _, j in ipairs(options) do
+										info.text = dropdownEntryText(j)
+										info.arg1 = j["value"]
+										local current = TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]
+										info.checked = (current == j["value"]) or (current == j["label"])
+										info.hasArrow = false
+										info.menuList = nil
+										UIDropDownMenu_AddButton(info)
+									end
+								else
+									for _, j in ipairs(options) do
+										info.text = dropdownEntryText(j)
+										info.checked = (TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]] and (string.match(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]], "^"..j["label"]..":") and true or false) or false)
+										info.menuList = j
+										info.hasArrow = (j["subLabels"] and true or false)
+										UIDropDownMenu_AddButton(info)
+									end
 								end
 							elseif type(TyGearSettingsTable(v["child"]["option"])[v["child"]["option"]]) == 'table' then
-								for _, j in pairs(v["child"]["options"]) do
+								for _, j in pairs(options) do
 									info.text = TyGearColorize(j["label"])
 									info.keepShownOnClick = true
 									info.isNotRadio = true
 									info.checked = j["enabled"]
 									info.func = function(self) j["enabled"] = self.checked
 										local label
-										for _, l in pairs(v["child"]["options"]) do
+										for _, l in pairs(options) do
 											if l["enabled"] then
 												if label then
 													label = label..", "..l["label"]
@@ -8389,7 +8450,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["togglePostHook"] = function() TyGearUpdateBestItems() end,
 				["child"] = {
 					["option"] = "OverrideSpec",
-					["options"] = TyGearGetOverrideSpecs(),
+					["options"] = TyGearGetOverrideSpecs,
 					["label"] = "Override specialization",
 					["description"] = "Override specialization with the spec chosen in this dropdown.  If this is enabled, TyGear will evaluate gear by multiplying stats by the stat weights for the chosen specialization instead of the specialization detected automatically.  This choice is saved for this character, so alts keep their own spec.",
 					["dropdownPostHook"] = function() TyGearSetStatWeights() end
@@ -8407,7 +8468,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["toggleDescriptionFalse"] = L["Secondary specialization offspec rolling is now disabled.  TyGear only uses main-spec weights for loot rolls."],
 				["child"] = {
 					["option"] = "SecondarySpecName",
-					["options"] = TyGearGetOverrideSpecs(),
+					["options"] = TyGearGetOverrideSpecs,
 					["label"] = "Secondary specialization",
 					["description"] = "Secondary specialization used for offspec NEED when the rest of the group greeds and the drop beats bag gear for that slot.",
 					["dropdownPostHook"] = function() end
@@ -8655,18 +8716,25 @@ SlashCmdList["TyGear"] = function(msg)
 	(param1 == "overridespecialization") or
 	(param1 == "specoverride")) then
 		local params = param2..(string.len(param3)>0 and " "..param3 or "")..(string.len(param4)>0 and " "..param4 or "")..(string.len(param5)>0 and " "..param5 or "")
+		params = string.gsub(params, "^%s*(.-)%s*$", "%1")
+		local playerClass = UnitClassBase("player")
+		local playerLocalized = TyGearClassList[playerClass]
 		local localizedClassName, spec = string.match(params, "^\"?([^:\"]-): ([^:\"]+)\"?$")
+		if not spec then
+			spec = string.match(params, "^\"?([^\"]+)\"?$")
+			localizedClassName = playerLocalized
+		end
 		local class = TyGearReverseClassList[localizedClassName]
-		local hasWeights = class and (TyGearGetInternalWeighting(class, spec) ~= nil)
-		if hasWeights then
-			local overridespec = localizedClassName..": "..spec
+		local hasWeights = class and spec and (TyGearGetInternalWeighting(class, spec) ~= nil or (TyGearGetWeightSpecNames(class)[spec] ~= nil))
+		if hasWeights and class == playerClass then
+			local overridespec = playerLocalized..": "..spec
 			TyGearCharDB.OverrideSpec = overridespec
 			if TyGearOverrideSpecDropdown then
 				TyGearOverrideSpecDropdown:SetValue(overridespec)
 			end
-			TyGearPrint("TyGear: "..(TyGearCharDB.Override and "" or "While \"Override specialization\" is enabled, ").."TyGear will now use "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(overridespec).." weights to evaluate gear.",0)
+			TyGearPrint("TyGear: "..(TyGearCharDB.Override and "" or "While \"Override specialization\" is enabled, ").."TyGear will now use "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec).." weights to evaluate gear.",0)
 		else
-			TyGearPrint("TyGear: Unrecognized command. Usage: \"/tg overridespec [class]: [spec]\" (example: \"/tg overridespec Hunter: Beast Mastery\")",0)
+			TyGearPrint("TyGear: Unrecognized command. Usage: \"/tg overridespec [spec]\" (example: \"/tg overridespec Combat\"). Specs are limited to your class.",0)
 		end
 	elseif ((param1 == "pawnscale") or
 	(param1 == "setpawnscale") or
@@ -8739,7 +8807,7 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg reasons [toggle/show/hide]': toggle showing won't-auto-equip reasons in item tooltips", 0)
 	TyGearPrint("TyGear:    '/tg compare [enable/on/start]/[disable/off/stop]': toggle always comparing gear", 0)
 	TyGearPrint("TyGear:    '/tg override [enable/on/start]/[disable/off/stop]': toggle specialization override", 0)
-	TyGearPrint("TyGear:    '/tg overridespec [class]: [spec]': set override spec to \"[class]: [spec]\"",0)
+	TyGearPrint("TyGear:    '/tg overridespec [spec]': set override spec for your class (example: \"/tg overridespec Combat\")",0)
 	TyGearPrint("TyGear:    '/tg weights [mythicsim/pawn/personal]': choose MythicSim (default), Pawn, or Personal Stat Weights", 0)
 	TyGearPrint("TyGear:    '/tg pawn [enable/on/start]/[disable/off/stop]': same as weights; on selects Pawn, off selects MythicSim", 0)
 	TyGearPrint("TyGear:    '/tg pawnscale [Pawn scale name]': set Pawn scale override to the specifed Pawn scale", 0)
