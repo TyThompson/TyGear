@@ -8401,7 +8401,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliCommands"] = { "secondary", "offspec", "secondaryspec" },
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
-				["label"] = L["Secondary specialization (offspec rolling)"],
+				["label"] = L["Secondary specialization (offspec)"],
 				["description"] = L["Optional secondary specialization for opportunistic offspec NEED rolls.  Main-spec rolling is unchanged: TyGear still NEEDs main-spec upgrades immediately and GREED otherwise.\n\nWhen this is enabled and a drop is not a main-spec upgrade, TyGear scores it with the secondary spec's stat weights against gear in your bags (not equipped gear).  If the drop is better than what you already have in bags for that slot, TyGear waits until the rest of the group greeds (or the roll is almost over), then rolls NEED.  If anyone else NEEDs, TyGear greeds instead.  Pick a different specialization than your main evaluation spec.  Saved per character."],
 				["toggleDescriptionTrue"] = L["Secondary specialization offspec rolling is now enabled.  TyGear may NEED bag upgrades for the selected secondary spec after the rest of the group greeds."],
 				["toggleDescriptionFalse"] = L["Secondary specialization offspec rolling is now disabled.  TyGear only uses main-spec weights for loot rolls."],
@@ -8644,7 +8644,7 @@ SlashCmdList["TyGear"] = function(msg)
 		end
 		if TyGearIsSecondarySpecActive and TyGearIsSecondarySpecActive() then
 			local secLocalized, secClass, secSpec = TyGearGetSecondaryClassAndSpec()
-			TyGearPrint("TyGear: Secondary specialization (offspec rolling) is "..RAID_CLASS_COLORS[secClass]:WrapTextInColorCode(secSpec.." "..secLocalized)..".  TyGear may NEED bag upgrades for that spec after the rest of the group greeds.", 0)
+			TyGearPrint("TyGear: Secondary specialization (offspec) is "..RAID_CLASS_COLORS[secClass]:WrapTextInColorCode(secSpec.." "..secLocalized)..".  TyGear may NEED bag upgrades for that spec after the rest of the group greeds.", 0)
 		elseif TyGearCharDB and TyGearCharDB.SecondarySpec then
 			TyGearPrint("TyGear: Secondary specialization is enabled but matches main-spec weights, so offspec rolling is inactive.  Choose a different secondary specialization.", 0)
 		end
