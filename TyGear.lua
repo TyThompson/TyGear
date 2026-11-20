@@ -9124,22 +9124,37 @@ end
 
 function TyGearGetLootRollDecisionPatterns()
 	if TyGearLootRollDecisionPatterns then return TyGearLootRollDecisionPatterns end
+	-- Parentheses discard gsub's replacement count; as the last arg to table.insert that
+	-- count would become a position and error with "number expected, got string".
 	local function escapePattern(text)
-		return text:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+		return (text:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
 	end
 	local function toPattern(global)
 		if type(global) ~= "string" then return end
-		-- Split on printf "%s" placeholders so Lua's %s whitespace class is never involved.
+		-- Forever LOOT_ROLL_* strings look like:
+		--   "|HlootHistory:%d|h[Loot]|h: %s has selected Need for: %s"
+		-- Convert printf %s → capture and %d → digits so player/item stay the first two captures.
 		local parts = {}
 		local pos = 1
 		while true do
-			local s, e = string.find(global, "%%s", pos, true)
+			local sS, eS = string.find(global, "%%s", pos, true)
+			local sD, eD = string.find(global, "%%d", pos, true)
+			local s, e, kind
+			if sS and ((not sD) or sS <= sD) then
+				s, e, kind = sS, eS, "s"
+			elseif sD then
+				s, e, kind = sD, eD, "d"
+			end
 			if not s then
-				table.insert(parts, escapePattern(string.sub(global, pos)))
+				parts[#parts + 1] = escapePattern(string.sub(global, pos))
 				break
 			end
-			table.insert(parts, escapePattern(string.sub(global, pos, s - 1)))
-			table.insert(parts, "(.+)")
+			parts[#parts + 1] = escapePattern(string.sub(global, pos, s - 1))
+			if kind == "s" then
+				parts[#parts + 1] = "(.+)"
+			else
+				parts[#parts + 1] = "%d+"
+			end
 			pos = e + 1
 		end
 		return "^"..table.concat(parts)
