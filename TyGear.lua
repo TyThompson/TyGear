@@ -924,7 +924,8 @@ if (not TyGearDB) then TyGearDB = {} end
 if (not TyGearCharDB) then TyGearCharDB = {} end
 
 function TyGearSettingsTable(optionName)
-	if optionName == "Override" or optionName == "OverrideSpec" then
+	if optionName == "Override" or optionName == "OverrideSpec"
+	or optionName == "SecondarySpec" or optionName == "SecondarySpecName" then
 		return TyGearCharDB
 	end
 	return TyGearDB
@@ -938,9 +939,17 @@ function TyGearInitializeCharacterSettings()
 	if TyGearCharDB.OverrideSpec == nil or TyGearCharDB.OverrideSpec == "" then
 		TyGearCharDB.OverrideSpec = TyGearGetDefaultOverrideSpec()
 	end
+	if TyGearCharDB.SecondarySpec == nil then
+		TyGearCharDB.SecondarySpec = false
+	end
+	if TyGearCharDB.SecondarySpecName == nil or TyGearCharDB.SecondarySpecName == "" then
+		TyGearCharDB.SecondarySpecName = TyGearGetDefaultSecondarySpec()
+	end
 	--drop any copy that older builds saved in the shared table
 	TyGearDB["Override"] = nil
 	TyGearDB["OverrideSpec"] = nil
+	TyGearDB["SecondarySpec"] = nil
+	TyGearDB["SecondarySpecName"] = nil
 	if not TyGearCharDB.IgnoredGearSlots then
 		TyGearCharDB.IgnoredGearSlots = TyGearGetDefaultIgnoredGearSlots()
 	end
@@ -1437,6 +1446,31 @@ function TyGearGetDefaultOverrideSpec()
 	if spec then
 		return className..": "..spec
 	end
+end
+
+-- Prefer a different talent tree of this class so offspec rolling starts useful (e.g. Holy when detected as Ret).
+function TyGearGetDefaultSecondarySpec()
+	local classToken = UnitClassBase and UnitClassBase("player")
+	local localizedClass = classToken and TyGearClassList and TyGearClassList[classToken]
+	if not (classToken and localizedClass) then
+		return TyGearGetDefaultOverrideSpec()
+	end
+	local mainSpec = TyGearDetectSpec()
+	local hiddenSpecs = IS_WOW_FOREVER and TyGearSpecsHiddenOnForever and TyGearSpecsHiddenOnForever[classToken]
+	local specOrder = {}
+	for specName in pairs(TyGearGetWeightSpecNames(classToken)) do
+		if not (hiddenSpecs and hiddenSpecs[specName]) and specName ~= "None" and specName ~= mainSpec then
+			table.insert(specOrder, specName)
+		end
+	end
+	table.sort(specOrder)
+	if specOrder[1] then
+		return localizedClass..": "..specOrder[1]
+	end
+	if mainSpec then
+		return localizedClass..": "..mainSpec
+	end
+	return TyGearGetDefaultOverrideSpec()
 end
 
 -- Rings and trinkets share one localized name for both slots; append the inventory slot id.
@@ -3505,7 +3539,23 @@ function TyGearGetOverrideSpecs()
 	return TyGearOverrideSpecs
 end
 
+-- Temporary class/spec while scoring an offspec loot roll (does not change saved Override).
+TyGearTemporarySpecOverride = nil
+
+function TyGearParseClassSpecString(specString)
+	if type(specString) ~= "string" or specString == "" then return end
+	local localizedClass, spec = string.match(specString, "(.+): ?(.+)")
+	if not (localizedClass and spec) then return end
+	local classToken = TyGearReverseClassList and TyGearReverseClassList[localizedClass]
+	if not (classToken and TyGearReverseClassIDList and TyGearReverseClassIDList[classToken]) then return end
+	return localizedClass, classToken, spec, TyGearReverseClassIDList[classToken].id
+end
+
 function TyGearGetClassAndSpec()
+	if TyGearTemporarySpecOverride then
+		local t = TyGearTemporarySpecOverride
+		return t.localizedClass, t.class, t.spec, t.classID
+	end
 	local cacheKey = (TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "1")) or "0"
 	if TyGearClassSpecCacheKey == cacheKey and TyGearCachedClass then
 		return TyGearCachedClassLocalized, TyGearCachedClass, TyGearCachedSpec, TyGearCachedClassID
@@ -3515,17 +3565,7 @@ function TyGearGetClassAndSpec()
 	-- Override가 켜져 있고 저장된 OverrideSpec 이 있으면 거기서 먼저 시도
 	if TyGearCharDB.Override and TyGearCharDB.OverrideSpec then
 		-- "죽음의 기사: Blood" / "악마사냥꾼: Havoc" 같은 형식 가정
-		local overrideLocalizedClass, overrideSpec = string.match(TyGearCharDB.OverrideSpec, "(.+): ?(.+)")
-		if overrideLocalizedClass and overrideSpec then
-			-- 로컬 직업명 -> 영문 직업 토큰 (예: "악마사냥꾼" -> "DEMONHUNTER")
-			local overrideClassToken = TyGearReverseClassList[overrideLocalizedClass]
-			if overrideClassToken and TyGearReverseClassIDList[overrideClassToken] then
-				localizedClass = overrideLocalizedClass
-				class        = overrideClassToken
-				spec         = overrideSpec
-				classID      = TyGearReverseClassIDList[overrideClassToken].id
-			end
-		end
+		localizedClass, class, spec, classID = TyGearParseClassSpecString(TyGearCharDB.OverrideSpec)
 	end
 
 	-- 위에서 제대로 못 구했으면 실제 캐릭 정보로 fallback
@@ -4641,7 +4681,13 @@ end
 
 function TyGearSetStatWeights()
 	local localizedClass, class, spec, classID = TyGearGetClassAndSpec()
-	local weightingKey = ((TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)).."|"..tostring(TyGearGetStatWeightSystem()).."|"..tostring(TyGearDB and TyGearDB.OverridePawnScale and TyGearDB.PawnScale or "")
+	local weightingKey
+	if TyGearTemporarySpecOverride then
+		weightingKey = "temp|"..class.."|"..spec
+	else
+		weightingKey = ((TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec))
+	end
+	weightingKey = weightingKey.."|"..tostring(TyGearGetStatWeightSystem()).."|"..tostring(TyGearDB and TyGearDB.OverridePawnScale and TyGearDB.PawnScale or "")
 	if TyGearWeightingCacheKey == weightingKey then
 		-- CanDualWield can change after learning the skill; refresh weapons even on a cache hit.
 		TyGearApplyWeaponsPreference()
@@ -4649,7 +4695,11 @@ function TyGearSetStatWeights()
 	end
 	TyGearInvalidatePerformanceCaches()
 	TyGearCachedClassLocalized, TyGearCachedClass, TyGearCachedSpec, TyGearCachedClassID = localizedClass, class, spec, classID
-	TyGearClassSpecCacheKey = (TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)
+	if TyGearTemporarySpecOverride then
+		TyGearClassSpecCacheKey = "temp|"..class.."|"..spec
+	else
+		TyGearClassSpecCacheKey = (TyGearCharDB and TyGearCharDB.Override and (TyGearCharDB.OverrideSpec or "")) or (class.."|"..spec)
+	end
 	local baseWeighting, weightSource
 	if TyGearGetStatWeightSystem() == TyGearStatWeightSystemPersonal then
 		baseWeighting = TyGearGetPersonalWeighting(class, spec)
@@ -8346,6 +8396,24 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				}
 			},
 			{
+				["option"] = "SecondarySpec",
+				["tab"] = L["Evaluation"],
+				["cliCommands"] = { "secondary", "offspec", "secondaryspec" },
+				["cliTrue"] = { "enable", "on", "start" },
+				["cliFalse"] = { "disable", "off", "stop" },
+				["label"] = L["Secondary specialization (offspec rolling)"],
+				["description"] = L["Optional secondary specialization for opportunistic offspec NEED rolls.  Main-spec rolling is unchanged: TyGear still NEEDs main-spec upgrades immediately and GREED otherwise.\n\nWhen this is enabled and a drop is not a main-spec upgrade, TyGear scores it with the secondary spec's stat weights against gear in your bags (not equipped gear).  If the drop is better than what you already have in bags for that slot, TyGear waits until the rest of the group greeds (or the roll is almost over), then rolls NEED.  If anyone else NEEDs, TyGear greeds instead.  Pick a different specialization than your main evaluation spec.  Saved per character."],
+				["toggleDescriptionTrue"] = L["Secondary specialization offspec rolling is now enabled.  TyGear may NEED bag upgrades for the selected secondary spec after the rest of the group greeds."],
+				["toggleDescriptionFalse"] = L["Secondary specialization offspec rolling is now disabled.  TyGear only uses main-spec weights for loot rolls."],
+				["child"] = {
+					["option"] = "SecondarySpecName",
+					["options"] = TyGearGetOverrideSpecs(),
+					["label"] = "Secondary specialization",
+					["description"] = "Secondary specialization used for offspec NEED when the rest of the group greeds and the drop beats bag gear for that slot.",
+					["dropdownPostHook"] = function() end
+				}
+			},
+			{
 				["option"] = "StatWeightSystem",
 				["tab"] = L["Evaluation"],
 				["section"] = L["Stat weights"],
@@ -8574,6 +8642,12 @@ SlashCmdList["TyGear"] = function(msg)
 		if IS_WOW_FOREVER and (not TyGearCharDB.Override) and realSpec == "None" then
 			TyGearPrint("TyGear: No talent points spent, so TyGear uses the general class profile.  Spend points in a talent tree, or enable \"Override specialization\", to use a healer, tank, or focused damage profile.", 0)
 		end
+		if TyGearIsSecondarySpecActive and TyGearIsSecondarySpecActive() then
+			local secLocalized, secClass, secSpec = TyGearGetSecondaryClassAndSpec()
+			TyGearPrint("TyGear: Secondary specialization (offspec rolling) is "..RAID_CLASS_COLORS[secClass]:WrapTextInColorCode(secSpec.." "..secLocalized)..".  TyGear may NEED bag upgrades for that spec after the rest of the group greeds.", 0)
+		elseif TyGearCharDB and TyGearCharDB.SecondarySpec then
+			TyGearPrint("TyGear: Secondary specialization is enabled but matches main-spec weights, so offspec rolling is inactive.  Choose a different secondary specialization.", 0)
+		end
 	elseif (param1 == "verbosity") or (param1 == "allowedverbosity") then
 		TyGearSetAllowedVerbosity(param2)
 	elseif ((param1 == "setspec") or
@@ -8783,6 +8857,10 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 		ConfirmLootRoll(arg1, arg2)
 	elseif event == "CHAT_MSG_LOOT" then --when receiving a new item
 		local message = arg1
+		-- Track greed/need/pass from others while waiting on an offspec NEED opportunity.
+		if TyGearHandleLootRollDecisionMessage then
+			TyGearHandleLootRollDecisionMessage(message)
+		end
 		--loot messages are secret values in dungeons, raids and encounters under the Midnight addon restrictions
 		--(Retail 12, WoW Forever); they can't be matched then, so just scan the bags for the new item
 		if issecretvalue and issecretvalue(message) then
@@ -8859,10 +8937,303 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 	end
 end)
 
+-- Pending offspec NEED rolls: wait until the rest of the group greeds (or the timer is almost up).
+TyGearPendingOffspecRolls = TyGearPendingOffspecRolls or {}
+
+function TyGearIsSecondarySpecEnabled()
+	return TyGearCharDB and TyGearCharDB.SecondarySpec and TyGearCharDB.SecondarySpecName and TyGearCharDB.SecondarySpecName ~= ""
+end
+
+function TyGearGetSecondaryClassAndSpec()
+	if not TyGearIsSecondarySpecEnabled() then return end
+	return TyGearParseClassSpecString(TyGearCharDB.SecondarySpecName)
+end
+
+-- Active when secondary is enabled and resolves to a different class/spec than main evaluation.
+function TyGearIsSecondarySpecActive()
+	local localizedClass, class, spec, classID = TyGearGetSecondaryClassAndSpec()
+	if not class then return end
+	local _, mainClass, mainSpec = TyGearGetClassAndSpec()
+	if class == mainClass and spec == mainSpec then return end
+	return localizedClass, class, spec, classID
+end
+
+function TyGearEmptyGearSlotInfo()
+	return { empty = 1, name = "nothing" }
+end
+
+-- Seed BestItems as empty slots so offspec compares the drop only against bags, not equipped main-spec gear.
+function TyGearResetBestItemsEmpty()
+	if not TyGearBestItems then
+		TyGearBestItems = {}
+	else
+		TyGearWipeTable(TyGearBestItems)
+	end
+	for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+		if TyGearIsManagedGearSlot(invSlot) then
+			TyGearBestItems[invSlot] = {
+				info = TyGearEmptyGearSlotInfo(),
+				score = 0,
+			}
+		end
+	end
+	if not TyGearBestItemsAlreadyAdded then
+		TyGearBestItemsAlreadyAdded = {}
+	else
+		TyGearWipeTable(TyGearBestItemsAlreadyAdded)
+	end
+end
+
+function TyGearWouldNeedFromBestItems()
+	if not TyGearBestItems then return end
+	for invSlot = INVSLOT_FIRST_EQUIPPED, TyGearLastManagedGearSlot do
+		if TyGearIsManagedGearSlot(invSlot) and TyGearBestItems[invSlot] then
+			if (TyGearBestItems[invSlot].rollOn and
+			((invSlot ~= INVSLOT_MAINHAND and invSlot ~= INVSLOT_OFFHAND) or TyGearIs1hWorthwhile(invSlot)) and
+			(invSlot ~= INVSLOT_TABARD or TyGearIsBest2hBetterThanBestMainAndOff())) then
+				return 1
+			end
+		end
+	end
+end
+
+-- Score the roll item with secondary weights against bag gear only. Restores main weights afterward.
+function TyGearIsSecondaryBagUpgrade(rollItemInfo)
+	local localizedClass, class, spec, classID = TyGearIsSecondarySpecActive()
+	if not (class and rollItemInfo and rollItemInfo.isGear) then return end
+
+	local savedWeighting = TyGearCurrentWeighting
+	local savedWeightSource = TyGearCurrentWeightSource
+	local savedWeightingKey = TyGearWeightingCacheKey
+	local savedWeapons = weapons
+	local savedBestItems = TyGearBestItems
+	local savedBestAlready = TyGearBestItemsAlreadyAdded
+	local savedTemp = TyGearTemporarySpecOverride
+	local savedClassKey = TyGearClassSpecCacheKey
+	local savedCachedLocalized = TyGearCachedClassLocalized
+	local savedCachedClass = TyGearCachedClass
+	local savedCachedSpec = TyGearCachedSpec
+	local savedCachedClassID = TyGearCachedClassID
+
+	local ok, isUpgrade = pcall(function()
+		TyGearTemporarySpecOverride = {
+			localizedClass = localizedClass,
+			class = class,
+			spec = spec,
+			classID = classID,
+		}
+		TyGearWeightingCacheKey = nil
+		TyGearSetStatWeights()
+		if not TyGearCurrentWeighting then return end
+		TyGearWipeTable(TyGearScoreCache)
+		TyGearResetBestItemsEmpty()
+		TyGearScanBagsForBestItems()
+		TyGearConsiderItem(rollItemInfo, nil, nil, 1)
+		return TyGearWouldNeedFromBestItems()
+	end)
+
+	TyGearTemporarySpecOverride = savedTemp
+	TyGearCurrentWeighting = savedWeighting
+	TyGearCurrentWeightSource = savedWeightSource
+	TyGearWeightingCacheKey = savedWeightingKey
+	weapons = savedWeapons
+	TyGearBestItems = savedBestItems
+	TyGearBestItemsAlreadyAdded = savedBestAlready
+	TyGearClassSpecCacheKey = savedClassKey
+	TyGearCachedClassLocalized = savedCachedLocalized
+	TyGearCachedClass = savedCachedClass
+	TyGearCachedSpec = savedCachedSpec
+	TyGearCachedClassID = savedCachedClassID
+	TyGearWipeTable(TyGearScoreCache)
+	TyGearApplyWeaponsPreference()
+
+	if not ok then
+		TyGearPrint("TyGear: Secondary spec bag check failed: "..tostring(isUpgrade), 0)
+		return
+	end
+	return isUpgrade and true or nil
+end
+
+function TyGearGetLootRollDecisionPatterns()
+	if TyGearLootRollDecisionPatterns then return TyGearLootRollDecisionPatterns end
+	local function escapePattern(text)
+		return text:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+	end
+	local function toPattern(global)
+		if type(global) ~= "string" then return end
+		-- Split on printf "%s" placeholders so Lua's %s whitespace class is never involved.
+		local parts = {}
+		local pos = 1
+		while true do
+			local s, e = string.find(global, "%%s", pos, true)
+			if not s then
+				table.insert(parts, escapePattern(string.sub(global, pos)))
+				break
+			end
+			table.insert(parts, escapePattern(string.sub(global, pos, s - 1)))
+			table.insert(parts, "(.+)")
+			pos = e + 1
+		end
+		return "^"..table.concat(parts)
+	end
+	TyGearLootRollDecisionPatterns = {
+		need = toPattern(_G.LOOT_ROLL_NEED),
+		greed = toPattern(_G.LOOT_ROLL_GREED),
+		pass = toPattern(_G.LOOT_ROLL_PASSED),
+		disenchant = toPattern(_G.LOOT_ROLL_DISENCHANT),
+	}
+	return TyGearLootRollDecisionPatterns
+end
+
+function TyGearExpectedOtherLootRollers()
+	local members = (GetNumGroupMembers and GetNumGroupMembers()) or (GetNumPartyMembers and (GetNumPartyMembers() + 1)) or 1
+	if members < 1 then members = 1 end
+	return math.max(members - 1, 0)
+end
+
+function TyGearPlayerNameMatches(name)
+	if type(name) ~= "string" or name == "" then return end
+	local playerName = UnitName("player")
+	if not playerName then return end
+	if Ambiguate then
+		name = Ambiguate(name, "none")
+		playerName = Ambiguate(playerName, "none")
+	else
+		name = string.match(name, "^([^-]+)") or name
+	end
+	return string.lower(name) == string.lower(playerName)
+end
+
+function TyGearFindPendingOffspecRollByLink(itemText)
+	if not itemText then return end
+	for rollID, pending in pairs(TyGearPendingOffspecRolls) do
+		local link = pending.link or (pending.info and pending.info.link)
+		if link and (itemText == link or string.find(itemText, link, 1, true) or string.find(link, itemText, 1, true)) then
+			return rollID, pending
+		end
+		local name = pending.info and pending.info.name
+		if name and string.find(itemText, name, 1, true) then
+			return rollID, pending
+		end
+	end
+end
+
+function TyGearHandleLootRollDecisionMessage(message)
+	if type(message) ~= "string" or message == "" then return end
+	if issecretvalue and issecretvalue(message) then return end
+	local patterns = TyGearGetLootRollDecisionPatterns()
+	local decision, playerName, itemText
+	for key, pattern in pairs(patterns) do
+		if pattern then
+			playerName, itemText = string.match(message, pattern)
+			if playerName and itemText then
+				decision = key
+				break
+			end
+		end
+	end
+	if not decision then return end
+	if TyGearPlayerNameMatches(playerName) then return end
+	local rollID, pending = TyGearFindPendingOffspecRollByLink(itemText)
+	if not pending then return end
+	if pending.rolledNames[string.lower(playerName)] then return end
+	pending.rolledNames[string.lower(playerName)] = true
+	pending.othersRolled = (pending.othersRolled or 0) + 1
+	if decision == "need" then
+		pending.othersNeeded = true
+	end
+	if pending.othersNeeded or pending.othersRolled >= (pending.expectOthers or 0) then
+		pending.ready = true
+	end
+end
+
+function TyGearWouldAutoRollNeedForItem(rollItemInfo)
+	if not rollItemInfo or TyGearDB.NeverAutoNeed == true then return end
+	local rarity = rollItemInfo.rarity
+	if rarity == nil then return end
+	if (((rarity < 3) or (rarity == 3 and not rollItemInfo.boe)) and (TyGearDB.AutoLootRoll == true))
+	or ((rarity == 3) and rollItemInfo.boe and (TyGearDB.AutoRollOnBoEBlues == true))
+	or ((rarity == 4) and (TyGearDB.AutoRollOnEpics == true)) then
+		return true
+	end
+end
+
+function TyGearQueueOffspecRollWait(link, lootRollID, rollItemInfo)
+	TyGearPendingOffspecRolls[lootRollID] = {
+		link = link,
+		info = rollItemInfo,
+		othersNeeded = false,
+		othersRolled = 0,
+		rolledNames = {},
+		expectOthers = TyGearExpectedOtherLootRollers(),
+		ready = TyGearExpectedOtherLootRollers() <= 0,
+	}
+	local localizedClass, class, spec = TyGearGetSecondaryClassAndSpec()
+	local specLabel = (class and RAID_CLASS_COLORS[class] and RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)) or (spec or "offspec")
+	if TyGearPendingOffspecRolls[lootRollID].ready then
+		TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is a "..specLabel.." bag upgrade and nobody else is rolling, so rolling "..GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE.." for offspec.", 1)
+	else
+		TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is a "..specLabel.." bag upgrade. Waiting to see if the rest of the group greeds before rolling "..GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE.." for offspec.", 1)
+	end
+	TyGearQueueAction({
+		action = "offspecroll",
+		t = GetTime(),
+		rollID = lootRollID,
+		info = rollItemInfo,
+		link = link,
+	})
+end
+
+function TyGearResolveOffspecRoll(curAction)
+	local rollID = curAction.rollID
+	local pending = TyGearPendingOffspecRolls[rollID]
+	if not pending then
+		curAction.t = nil
+		return
+	end
+	-- GetLootRollItemInfo returns texture as first value when the roll still exists.
+	local stillOpen = select(1, GetLootRollItemInfo(rollID))
+	if not stillOpen then
+		TyGearPendingOffspecRolls[rollID] = nil
+		curAction.t = nil
+		return
+	end
+
+	local timeLeft = GetLootRollTimeLeft and GetLootRollTimeLeft(rollID)
+	if type(timeLeft) == "number" and timeLeft > 0 then
+		-- Classic/Forever may report milliseconds; treat large values as ms.
+		local secondsLeft = (timeLeft > 1000) and (timeLeft / 1000) or timeLeft
+		if secondsLeft <= 2 then
+			pending.ready = true
+		end
+	end
+
+	if not pending.ready then
+		curAction.t = GetTime() + 0.25
+		return
+	end
+
+	local rollType = pending.othersNeeded and 2 or 1
+	if pending.othersNeeded then
+		TyGearPrint("TyGear: Someone rolled NEED on "..(pending.info and pending.info.link or curAction.link or "loot")..", so rolling "..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE.." instead of offspec NEED.", 1)
+	end
+	TyGearPendingOffspecRolls[rollID] = nil
+	curAction.t = nil
+	TyGearQueueAction({
+		action = "roll",
+		t = GetTime(),
+		rollID = rollID,
+		rollType = rollType,
+		info = pending.info or curAction.info,
+		offspec = (rollType == 1) and true or nil,
+	})
+end
+
 function TyGearDecideRoll(link, lootRollID)
 	if not TyGearCurrentWeighting then TyGearSetStatWeights() end
 	if TyGearCurrentWeighting then
 		local rollDecision = nil
+		local waitForOffspec = nil
 		local canNeed = lootRollID and select(6,GetLootRollItemInfo(lootRollID)) or 1
 		local lootRollItemID = GetItemInfoInstant(link)
 		local rollItemInfo = TyGearReadItemInfo(nil, nil, nil, nil, link)
@@ -8905,12 +9276,20 @@ function TyGearDecideRoll(link, lootRollID)
 				rollDecision = 1 --need
 			end
 		else
-			rollDecision = 2 --greed
-			if (wouldNeed and not canNeed) then
-				TyGearPrint("TyGear: Would roll NEED, but NEED is not an option for "..rollItemInfo.link..".", 1)
+			-- Main spec would greed. Optionally wait and NEED for secondary if bags lack a better piece.
+			if (not wouldNeed) and canNeed and rollItemInfo.isGear
+			and TyGearWouldAutoRollNeedForItem(rollItemInfo)
+			and TyGearIsSecondarySpecActive()
+			and TyGearIsSecondaryBagUpgrade(rollItemInfo) then
+				waitForOffspec = true
+			else
+				rollDecision = 2 --greed
+				if (wouldNeed and not canNeed) then
+					TyGearPrint("TyGear: Would roll NEED, but NEED is not an option for "..rollItemInfo.link..".", 1)
+				end
 			end
 		end
-		return rollDecision, rollItemInfo, reason
+		return rollDecision, rollItemInfo, reason, waitForOffspec
 	else
 		local localizedClass, class, spec = TyGearGetClassAndSpec()
 		TyGearPrint("TyGear: No weighting set for "..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass)..".", 0)
@@ -8925,13 +9304,15 @@ function TyGearHandleLootRoll(link, lootRollID)
 end
 
 function TyGearHandleLootRollCallback(link, lootRollID)
-		local rollDecision, rollItemInfo, reason = TyGearDecideRoll(link, lootRollID)
+		local rollDecision, rollItemInfo, reason, waitForOffspec = TyGearDecideRoll(link, lootRollID)
 		if not rollItemInfo then
 			TyGearPrint("TyGear: Error: Could not read item info for "..(link and link or "the rollable loot")..".", 0)
 		elseif rollItemInfo.unusable then
 			TyGearPrint("TyGear: "..link.." will not be equipped.  "..reason, 1)
 		end
-		if rollDecision then
+		if waitForOffspec then
+			TyGearQueueOffspecRollWait(link, lootRollID, rollItemInfo)
+		elseif rollDecision then
 			local newAction = {}
 			newAction.action = "roll"
 			newAction.t = GetTime() --roll right away
@@ -13267,12 +13648,20 @@ function TyGearMain()
 				end
 			end
 			if (not TyGearSomeItemDataIsMissing) then
-				if curAction.t and curAction.action == "roll" then
+				if curAction.t and curAction.action == "offspecroll" then
+					if GetTime() > curAction.t then
+						TyGearResolveOffspecRoll(curAction)
+						if not curAction.t then
+							queueQueueRebuild = 1
+						end
+					end
+				elseif curAction.t and curAction.action == "roll" then
 					if GetTime() > curAction.t then
 						local forceNeedFromList = (curAction.rollType == 1) and curAction.info and TyGearIsOnNeedList(curAction.info.id)
 						local mayAutoNeed = (TyGearDB.NeverAutoNeed ~= true) or forceNeedFromList
+						local offspecNote = curAction.offspec and (" ("..L["offspec"]..")") or ""
 						if curAction.rollType == 1 then
-							TyGearPrint("TyGear: "..(((TyGearDB.AutoLootRoll == true) and mayAutoNeed) and "Rolling " or "If automatically rolling "..(mayAutoNeed and "" or (GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE.." ")).."on loot was enabled, would roll ")..GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE.." on "..curAction.info.link..".", 1)
+							TyGearPrint("TyGear: "..(((TyGearDB.AutoLootRoll == true) and mayAutoNeed) and "Rolling " or "If automatically rolling "..(mayAutoNeed and "" or (GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE.." ")).."on loot was enabled, would roll ")..GREEN_FONT_COLOR_CODE.."NEED"..FONT_COLOR_CODE_CLOSE..offspecNote.." on "..curAction.info.link..".", 1)
 						elseif curAction.rollType == 2 then
 							TyGearPrint("TyGear: "..((TyGearDB.AutoLootRoll == true) and "Rolling " or "If automatically rolling on loot was enabled, would roll ")..RED_FONT_COLOR_CODE.."GREED"..FONT_COLOR_CODE_CLOSE.." on "..curAction.info.link..".", 1)
 						end
