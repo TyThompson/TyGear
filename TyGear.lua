@@ -6086,7 +6086,7 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 		if TyGearUpdateBestItems then TyGearUpdateBestItems() end
 	end
 
-	builder:AddSection(L["Add items"], addItemsHelp)
+	builder:AddSection(L["Add ignored items"], addItemsHelp)
 	local editRow = CreateFrame("Frame", nil, listMenu)
 	editRow:SetHeight(24)
 	local editBox = CreateFrame("EditBox", "TyGearIgnoredItemIDsEditBox", editRow, "InputBoxTemplate")
@@ -6115,7 +6115,7 @@ local function buildIgnoreSectionOntoListMenu(listMenu, anchorBelow)
 	editBox:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-		GameTooltip:AddLine(L["Add items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+		GameTooltip:AddLine(L["Add ignored items"], NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
 		GameTooltip:AddLine(addItemsHelp, HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b, true)
 		GameTooltip:Show()
 	end)
@@ -6152,17 +6152,16 @@ end
 --the keep list is built below and hosted on this same tab
 local buildKeepListSection
 
---Forever Ignored List tab: ignore controls, the keep list, then ignored items
+--Forever Ignored List tab: ignore controls, ignored items (after the add box), then the keep list
 local function buildIgnoredGearListPage(listMenu)
 	local title = listMenu:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 8, -8)
 	title:SetText(L["Ignored List"])
 
 	local ignoreBottom = buildIgnoreSectionOntoListMenu(listMenu, title)
-	local keepBottom = buildKeepListSection(listMenu, ignoreBottom)
 
-	local ignoredHelp = L["Disclaimer: items TyGear cannot score (for example a 4% chance for Fear to miss) are listed below without checkboxes and stay ignored automatically. Gear that also has a scored stat stays in normal evaluation. Use Add items above for anything else you want ignored; those appear at the top with checkboxes."]
-	local listBuilder = tyGearNewListSectionBuilder(listMenu, keepBottom)
+	local ignoredHelp = L["Disclaimer: items TyGear cannot score (for example a 4% chance for Fear to miss) are listed below without checkboxes and stay ignored automatically. Gear that also has a scored stat stays in normal evaluation. Use Add ignored items above for anything else you want ignored; those appear at the top with checkboxes."]
+	local listBuilder = tyGearNewListSectionBuilder(listMenu, ignoreBottom)
 	local ignoredBlock = listBuilder:AddSection(L["Ignored items"], ignoredHelp)
 
 	local listContainer = CreateFrame("Frame", "TyGearIgnoredGearListContainer", listMenu)
@@ -6331,7 +6330,8 @@ local function buildIgnoredGearListPage(listMenu)
 
 	layoutIgnoredGearPage = function()
 		local top = listMenu:GetTop()
-		local bottom = ignoredBlock:GetBottom()
+		local bottomFrame = listMenu.keepListBottom or ignoredBlock
+		local bottom = bottomFrame:GetBottom()
 		local height
 		if top and bottom and (top > bottom) then
 			height = (top - bottom) + 24
@@ -6340,7 +6340,7 @@ local function buildIgnoredGearListPage(listMenu)
 			local keepHeight = (keepCount == 0) and 20 or (keepCount * 28)
 			local ignoredCount = #collectEntries()
 			local ignoredHeight = (ignoredCount == 0) and 20 or (ignoredCount * 28)
-			--title, ignore controls, keep options, and both lists before the frames are sized
+			--title, ignore controls, ignored list, keep options, and keep list before the frames are sized
 			height = 900 + keepHeight + ignoredHeight
 		end
 		listMenu:SetHeight(height)
@@ -6350,6 +6350,9 @@ local function buildIgnoredGearListPage(listMenu)
 		end
 	end
 	listMenu.layoutIgnoredGearPage = layoutIgnoredGearPage
+
+	--keep list sits below the ignored items list (which follows the add-ignored-items box)
+	listMenu.keepListBottom = buildKeepListSection(listMenu, listBuilder:Bottom())
 
 	listMenu:HookScript("OnShow", function()
 		if TyGearRefreshKeepList then TyGearRefreshKeepList() end
