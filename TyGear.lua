@@ -3864,7 +3864,9 @@ function TyGearConvertForeverLevelingBISWeights(weights, setup, flbSpec)
 	)
 	if out.SpellPower == 0 then out.SpellPower = E end
 
-	out.weapons = (setup and TyGearFLBWeaponsBySetup[setup]) or "any"
+	-- Prefer FLB's hand setup (twohand/held/…). Do not let wand/bow rangedDps redefine it.
+	local setupWeapons = setup and TyGearFLBWeaponsBySetup[setup]
+	out.weapons = setupWeapons or "any"
 	local dps = num(weights.dps)
 	local ohDps = num(weights.ohDps)
 	local rangedDps = num(weights.rangedDps)
@@ -3881,14 +3883,21 @@ function TyGearConvertForeverLevelingBISWeights(weights, setup, flbSpec)
 			oh_dps = 0,
 		}
 	elseif rangedDps > E and dps <= E then
-		out.weapons = "ranged"
-		out.weapon = {
-			ranged = true,
-			mh_dps = rangedDps,
-			oh_dps = 0,
-			norm_speed = rangedSpeedRef,
-			speed_bonus = rangedSpeedBonus,
-		}
+		-- Casters publish rangedDps for wands while still using 2H or 1H+frill.
+		-- Forever/pre-MoP keeps ranged in its own slot, so wand EP must not set weapons="ranged"
+		-- (that rejected holdables as "invalid item" for Shadow Priest under FLB).
+		if setupWeapons or IS_WOW_FOREVER or TOC_VERSION_CURRENT < TOC_VERSION_MOP then
+			out.weapon = { mh_dps = 0, oh_dps = 0 }
+		else
+			out.weapons = "ranged"
+			out.weapon = {
+				ranged = true,
+				mh_dps = rangedDps,
+				oh_dps = 0,
+				norm_speed = rangedSpeedRef,
+				speed_bonus = rangedSpeedBonus,
+			}
+		end
 	elseif dps > E or ohDps > E or speedBonus > E then
 		local pref = out.weapons
 		out.weapon = {
@@ -11208,23 +11217,19 @@ function TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
 end
 
 -- Caster frills (orbs/tomes): Held In Off-hand. Some clients report these as
--- IndexWeaponoffhandType; equipLoc INVTYPE_HOLDABLE and Armor/Miscellaneous are authoritative.
--- These do not need Dual Wield (unlike true weapon off-hands).
+-- IndexWeaponoffhandType; equipLoc INVTYPE_HOLDABLE is authoritative.
+-- Armor in an off-hand slot that is not a shield is a frill (orb/tome), not a DW weapon.
 function TyGearIsHoldableOffHand(info)
 	if not info then return false end
 	if info.equipLoc == "INVTYPE_HOLDABLE" then return true end
 	local inv = Enum and Enum.InventoryType
 	if inv and info.invType == inv.IndexHoldableType then return true end
-	if info.classID == Enum.ItemClass.Armor then
-		local misc = Enum.ItemArmorSubclass and Enum.ItemArmorSubclass.Miscellaneous
-		if misc and info.subclassID == misc then
-			if (inv and info.invType == inv.IndexWeaponoffhandType)
-			or info.equipLoc == "INVTYPE_WEAPONOFFHAND" then
-				return true
-			end
-		end
-	end
-	return false
+	if info.classID ~= Enum.ItemClass.Armor then return false end
+	local shield = Enum.ItemArmorSubclass and Enum.ItemArmorSubclass.Shield
+	if shield and info.subclassID == shield then return false end
+	return (inv and info.invType == inv.IndexWeaponoffhandType)
+		or info.equipLoc == "INVTYPE_WEAPONOFFHAND"
+		or false
 end
 
 -- Prefer staff (weapons=2h) still allows 1H + frill, same idea as 1H + shield for Arms.
