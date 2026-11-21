@@ -24,7 +24,7 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 - Items you always want to **NEED** (for example a crafting green in a dungeon) go on the **Need List** tab; add them near the top of that tab or with a key binding.
 - Items you always want to **GREED** (for example a BoE you want for the auction house instead of needing) go on the **Greed List** tab. The Need List wins if an item is on both.
 - Weapons your class can never learn are skipped. Untrained weapons still show a score with "(won't equip)".
-- Mounts are never rolled on automatically.
+- Mounts and crafting patterns are never rolled on automatically.
 - **Roll on non-gear loot** is off by default. If you turn it on, TyGear greeds non-upgrade loot (including crafting reagents). Need-list and greed-list items still roll even when that option is off.
 
 ## Commands

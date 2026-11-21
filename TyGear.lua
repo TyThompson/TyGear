@@ -6738,7 +6738,7 @@ end
 
 --Forever Need List tab: add box near the top, then items TyGear should always NEED on
 local function buildNeedListPage(listMenu)
-	local needHelp = L["Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon. Mounts and ignored items are still skipped."]
+	local needHelp = L["Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon. Mounts, crafting patterns, and ignored items are still skipped."]
 	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 
 	local titleRow = CreateFrame("Frame", nil, listMenu)
@@ -6978,7 +6978,7 @@ end
 
 --Forever Greed List tab: add box near the top, then items TyGear should always GREED on
 local function buildGreedListPage(listMenu)
-	local greedHelp = L["Items listed here are always rolled GREED when they appear as group loot, even if TyGear would otherwise NEED them as upgrades. Useful when you want a drop for the auction house or an alt instead of needing it. Mounts and ignored items are still skipped. The Need List wins if an item is on both lists."]
+	local greedHelp = L["Items listed here are always rolled GREED when they appear as group loot, even if TyGear would otherwise NEED them as upgrades. Useful when you want a drop for the auction house or an alt instead of needing it. Mounts, crafting patterns, and ignored items are still skipped. The Need List wins if an item is on both lists."]
 	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, or assign \"Toggle hovered item on greed list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 
 	local titleRow = CreateFrame("Frame", nil, listMenu)
@@ -8635,8 +8635,8 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["cliTrue"] = { "enable", "on", "start" },
 				["cliFalse"] = { "disable", "off", "stop" },
 				["label"] = L["Roll on non-gear loot"],
-				["description"] = L["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."],
-				["toggleDescriptionTrue"] = L["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear loot.  Mounts are never rolled on automatically."],
+				["description"] = L["Roll on all group loot, including loot that is not gear.  If this is enabled, TyGear will roll GREED on non-gear loot.  Mounts and crafting patterns are never rolled on automatically."],
+				["toggleDescriptionTrue"] = L["Rolling on non-gear loot is now enabled.  TyGear will roll GREED on non-gear loot.  Mounts and crafting patterns are never rolled on automatically."],
 				["toggleDescriptionFalse"] = L["Rolling on non-gear loot is now disabled."]
 			},
 			{
@@ -9749,6 +9749,10 @@ function TyGearDecideRoll(link, lootRollID)
 		end
 		if rollItemInfo.isMount then
 			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is a mount, so not rolling.", 1)
+			return nil, rollItemInfo, reason
+		end
+		if rollItemInfo.isPattern then
+			TyGearPrint("TyGear: "..(rollItemInfo.link or link).." is a crafting pattern, so not rolling.", 1)
 			return nil, rollItemInfo, reason
 		end
 		local wouldNeed = onNeedList or ((not onGreedList) and TyGearConsiderAllItems(lootRollItemID, rollItemInfo, true))
@@ -12253,6 +12257,12 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			info.link = info.item:GetItemLink()
 		end
 		return info -- mounts are never auto-rolled; leave them for the player
+	elseif info.classID == ((Enum.ItemClass and Enum.ItemClass.Recipe) or 9) then
+		info.isPattern = 1
+		if not info.link then
+			info.link = info.item:GetItemLink()
+		end
+		return info -- crafting patterns are never auto-rolled; leave them for the player
 	elseif not info.isGear then
 		-- Skip tooltip work for non-gear; bag scans hit this path often
 		if not info.link then
