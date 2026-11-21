@@ -11207,10 +11207,36 @@ function TyGearIsAmmoBagValidForBestKnownRangedWeapon(info)
 	)
 end
 
+-- Caster frills (orbs/tomes): Held In Off-hand. Some clients report these as
+-- IndexWeaponoffhandType; equipLoc INVTYPE_HOLDABLE and Armor/Miscellaneous are authoritative.
+-- These do not need Dual Wield (unlike true weapon off-hands).
+function TyGearIsHoldableOffHand(info)
+	if not info then return false end
+	if info.equipLoc == "INVTYPE_HOLDABLE" then return true end
+	local inv = Enum and Enum.InventoryType
+	if inv and info.invType == inv.IndexHoldableType then return true end
+	if info.classID == Enum.ItemClass.Armor then
+		local misc = Enum.ItemArmorSubclass and Enum.ItemArmorSubclass.Miscellaneous
+		if misc and info.subclassID == misc then
+			if (inv and info.invType == inv.IndexWeaponoffhandType)
+			or info.equipLoc == "INVTYPE_WEAPONOFFHAND" then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- Prefer staff (weapons=2h) still allows 1H + frill, same idea as 1H + shield for Arms.
+function TyGearWeaponsAllowHoldableOffHand()
+	return weapons == "any" or weapons == "2h"
+end
+
 function TyGearGetValidGearSlots(info)
 	local dualWield = CanDualWield() and 1 or 0
 	local titanGrip = IsPlayerSpell(46917) and 1 or 0
-	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..(TyGearIsReagentBag(info) and "R" or "0").."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0").."|"..tostring(TyGearReagentBagSlot or 0)
+	local holdable = TyGearIsHoldableOffHand(info) and 1 or 0
+	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..holdable.."|"..(TyGearIsReagentBag(info) and "R" or "0").."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0").."|"..tostring(TyGearReagentBagSlot or 0)
 	local cached = TyGearValidGearSlotsCache[cacheKey]
 	if cached ~= nil then
 		return cached ~= false and cached or nil
@@ -11273,7 +11299,10 @@ function TyGearGetValidGearSlots(info)
 		                                               and (weapons == "ranged")))
 		                                               and { INVSLOT_MAINHAND }
 		                                               or nil,
-		[Enum.InventoryType.IndexWeaponoffhandType]  = (CanDualWield()
+		-- True weapon off-hands need Dual Wield; Armor/Miscellaneous frills (orbs) do not.
+		[Enum.InventoryType.IndexWeaponoffhandType]  = (TyGearIsHoldableOffHand(info) and TyGearWeaponsAllowHoldableOffHand()
+		                                               and { INVSLOT_OFFHAND })
+		                                               or ((CanDualWield()
 		                                               and ((weapons == "any")
 		                                               or (weapons == "dagger and any")
 		                                               or (weapons == "dagger")
@@ -11281,8 +11310,9 @@ function TyGearGetValidGearSlots(info)
 		                                               or ((TOC_VERSION_CURRENT < TOC_VERSION_MOP)
 		                                               and (weapons == "ranged"))))
 		                                               and { INVSLOT_OFFHAND }
-		                                               or nil,
-		[Enum.InventoryType.IndexHoldableType]       = (weapons == "any")
+		                                               or nil),
+		-- 2h caster prefs may still fill OH with a frill when using a 1H (something > nothing).
+		[Enum.InventoryType.IndexHoldableType]       = TyGearWeaponsAllowHoldableOffHand()
 		                                               and { INVSLOT_OFFHAND }
 		                                               or nil,
 		[Enum.InventoryType.IndexRangedType]         = (TOC_VERSION_CURRENT < TOC_VERSION_MOP)
@@ -11312,6 +11342,10 @@ function TyGearGetValidGearSlots(info)
 	}
 
 	local result = gearSlotTable[info.invType]
+	-- equipLoc INVTYPE_HOLDABLE wins when invType was missing or mismatched on the client.
+	if (not result) and TyGearIsHoldableOffHand(info) and TyGearWeaponsAllowHoldableOffHand() then
+		result = { INVSLOT_OFFHAND }
+	end
 	TyGearValidGearSlotsCache[cacheKey] = result or false
 	return result
 end
@@ -11322,7 +11356,8 @@ end
 function TyGearGetSetSlots(info)
 	local dualWield = CanDualWield() and 1 or 0
 	local titanGrip = IsPlayerSpell(46917) and 1 or 0
-	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..(TyGearIsReagentBag(info) and "R" or "0").."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0").."|"..tostring(TyGearReagentBagSlot or 0)
+	local holdable = TyGearIsHoldableOffHand(info) and 1 or 0
+	local cacheKey = (weapons or "any").."|"..dualWield.."|"..titanGrip.."|"..tostring(info.invType).."|"..tostring(info.subclassID or 0).."|"..holdable.."|"..(TyGearIsReagentBag(info) and "R" or "0").."|"..(TyGearUsesReagentBagSlot(info) and "1" or "0").."|"..tostring(TyGearReagentBagSlot or 0)
 	local cached = TyGearSetSlotsCache[cacheKey]
 	if cached ~= nil then
 		return cached ~= false and cached or nil
@@ -11383,7 +11418,9 @@ function TyGearGetSetSlots(info)
 		                                               and (weapons == "ranged")))
 		                                               and { INVSLOT_MAINHAND, INVSLOT_OFFHAND }
 		                                               or nil,
-		[Enum.InventoryType.IndexWeaponoffhandType]  = (CanDualWield()
+		[Enum.InventoryType.IndexWeaponoffhandType]  = (TyGearIsHoldableOffHand(info) and TyGearWeaponsAllowHoldableOffHand()
+		                                               and { INVSLOT_MAINHAND, INVSLOT_OFFHAND })
+		                                               or ((CanDualWield()
 		                                               and ((weapons == "any")
 		                                               or (weapons == "dagger and any")
 		                                               or (weapons == "dagger")
@@ -11391,8 +11428,8 @@ function TyGearGetSetSlots(info)
 		                                               or ((TOC_VERSION_CURRENT < TOC_VERSION_MOP)
 		                                               and (weapons == "ranged"))))
 		                                               and { INVSLOT_MAINHAND, INVSLOT_OFFHAND }
-		                                               or nil,
-		[Enum.InventoryType.IndexHoldableType]       = (weapons == "any")
+		                                               or nil),
+		[Enum.InventoryType.IndexHoldableType]       = TyGearWeaponsAllowHoldableOffHand()
 		                                               and { INVSLOT_MAINHAND, INVSLOT_OFFHAND }
 		                                               or nil,
 		[Enum.InventoryType.IndexRangedType]         = (TOC_VERSION_CURRENT < TOC_VERSION_MOP)
@@ -11423,6 +11460,9 @@ function TyGearGetSetSlots(info)
 	}
 
 	local result = setSlotTable[info.invType]
+	if (not result) and TyGearIsHoldableOffHand(info) and TyGearWeaponsAllowHoldableOffHand() then
+		result = { INVSLOT_MAINHAND, INVSLOT_OFFHAND }
+	end
 	TyGearSetSlotsCache[cacheKey] = result or false
 	return result
 end
@@ -11755,6 +11795,12 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	info.rarity = info.item:GetItemQuality()
 	info.rarityColor = info.item:GetItemQualityColor()
 	info.invType = C_Item.GetItemInventoryTypeByID(info.id) or 0
+	-- Held In Off-hand frills (orbs/tomes): prefer IndexHoldableType when the client
+	-- reports a weapon-offhand inventory type for Armor/Miscellaneous items.
+	if TyGearIsHoldableOffHand(info)
+	and Enum and Enum.InventoryType and Enum.InventoryType.IndexHoldableType then
+		info.invType = Enum.InventoryType.IndexHoldableType
+	end
 	info.isGear = info.invType > 0
 	-- Ammo, shirts, and tabards have an inventory type but are not scored or equipped as gear.
 	-- (Ammo especially: matching it to weapon type is unreliable, and tooltips would crash comparing to a nil equipped score.)
@@ -12228,9 +12274,10 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 				info.unusable = 1
 				info.reason = "("..RAID_CLASS_COLORS[class]:WrapTextInColorCode(spec.." "..localizedClass).." should use a ranged weapon)"
 			end
-		elseif info.invType == Enum.InventoryType.IndexHoldableType then
-			if weapons == "2h"
-			or (weapons == "dual wield" and CanDualWield())
+		elseif info.invType == Enum.InventoryType.IndexHoldableType
+		or TyGearIsHoldableOffHand(info) then
+			-- 2h caster prefs may still use a frill with a 1H (same as shields for Arms).
+			if (weapons == "dual wield" and CanDualWield())
 			or weapons == "weapon and shield"
 			or ((TOC_VERSION_CURRENT >= TOC_VERSION_MOP)
 			and weapons == "ranged") then
