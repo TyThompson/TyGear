@@ -1982,6 +1982,7 @@ function TyGearBindingToggleIgnore()
 end
 
 function TyGearAddListBindingHintsToTooltip(tooltip)
+	if TyGearDB and TyGearDB.ShowBindingHintsInTooltips == false then return end
 	if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
 	local needKey = GetBindingKey and GetBindingKey("TYGEAR_TOGGLE_NEED")
 	local ignoreKey = GetBindingKey and GetBindingKey("TYGEAR_TOGGLE_IGNORE")
@@ -8156,6 +8157,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 			PlayUpgradeChime = true,
 			ScoreInTooltips = true,
 			ReasonsInTooltips = false,
+			ShowBindingHintsInTooltips = true,
 			AlwaysCompareGear = GetCVarBool("alwaysCompareItems"),
 			AlwaysShowScoreComparisons = false,
 			AutoSellGreys = false,
@@ -8356,6 +8358,17 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["description"] = L["Always show score comparisons in the item tooltip, even when also showing the comparison tooltip.  If this is enabled, only the score for the current item will be shown in the tooltip."],
 				["toggleDescriptionTrue"] = L["Always show score comparisons in gear tooltips is now enabled."],
 				["toggleDescriptionFalse"] = L["Always show score comparisons in gear tooltips is now disabled."]
+			},
+			{
+				["option"] = "ShowBindingHintsInTooltips",
+				["tab"] = L["Tooltips"],
+				["cliCommands"] = { "bindinghints", "hints", "keyhints" },
+				["cliTrue"] = { "show", "enable", "on", "start" },
+				["cliFalse"] = { "hide", "disable", "off", "stop" },
+				["label"] = L["Show key binding hints in item tooltips"],
+				["description"] = L["When TyGear key bindings are assigned, show a short hint line on item tooltips for keep/ignore and need list. Turn this off to hide those lines; the key bindings still work."],
+				["toggleDescriptionTrue"] = L["Showing key binding hints in item tooltips is now enabled."],
+				["toggleDescriptionFalse"] = L["Showing key binding hints in item tooltips is now disabled."]
 			},
 			{
 				["option"] = "AutoSellGreys",
@@ -8805,6 +8818,7 @@ function TyGearPrintHelp()
 	TyGearPrint("TyGear:    '/tg neverneed [enable/on/start]/[disable/off/stop]': toggle preventing automatically rolling NEED", 0)
 	TyGearPrint("TyGear:    '/tg tooltip [toggle/show/hide]': toggle showing score in item tooltips", 0)
 	TyGearPrint("TyGear:    '/tg reasons [toggle/show/hide]': toggle showing won't-auto-equip reasons in item tooltips", 0)
+	TyGearPrint("TyGear:    '/tg bindinghints [toggle/show/hide]': toggle key binding hints in item tooltips", 0)
 	TyGearPrint("TyGear:    '/tg compare [enable/on/start]/[disable/off/stop]': toggle always comparing gear", 0)
 	TyGearPrint("TyGear:    '/tg override [enable/on/start]/[disable/off/stop]': toggle specialization override", 0)
 	TyGearPrint("TyGear:    '/tg overridespec [spec]': set override spec for your class (example: \"/tg overridespec Combat\")",0)
