@@ -11,4 +11,7 @@
 	<Binding name="TYGEAR_TOGGLE_NEED">
 		TyGearBindingToggleNeed();
 	</Binding>
+	<Binding name="TYGEAR_TOGGLE_GREED">
+		TyGearBindingToggleGreed();
+	</Binding>
 </Bindings>

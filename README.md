@@ -19,12 +19,13 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 - With **Secondary specialization** enabled, if a drop is not a main-spec upgrade TyGear scores it with the secondary weights against gear in your bags. When the drop beats your bag gear for that slot, it waits until everyone else greeds (or the roll is almost over), then NEEDs; if anyone else NEEDs, it greeds instead.
 - Upgrades found in combat are equipped when combat ends.
 - Bag items TyGear considers upgrades are marked in Baganator when TyGear is chosen as the upgrade source there (same idea as choosing TyGear as the junk source for vendor-sell items).
-- Gear TyGear cannot score, slot and item ignore controls, and the keep list live on the **Ignored List** tab. Ignore-list items are not sold or evaluated. Keep-list items are not sold; they can still fill an empty gear slot, but are not treated as upgrades over gear you already wear.
+- Gear TyGear cannot score, plus slot and item ignore controls, live on the **Ignored List** tab. Ignore-list items are not sold or evaluated.
+- Keep-list items live on the **Keep List** tab. They are not sold; they can still fill an empty gear slot, but are not treated as upgrades over gear you already wear. **Keep unbound grey gear** is on that tab. The list starts with Forever crafting tools; add more near the top. Every fishing pole is kept when selling even if its item ID is removed.
 - Items you always want to **NEED** (for example a crafting green in a dungeon) go on the **Need List** tab; add them near the top of that tab or with a key binding.
-- **Keep unbound grey gear** is on the Ignored List tab with the keep list. That list starts with Forever crafting tools; add more near the top of that tab. Every fishing pole is kept when selling even if its item ID is removed.
+- Items you always want to **GREED** (for example a BoE you want for the auction house instead of needing) go on the **Greed List** tab. The Need List wins if an item is on both.
 - Weapons your class can never learn are skipped. Untrained weapons still show a score with "(won't equip)".
 - Mounts are never rolled on automatically.
-- **Roll on non-gear loot** is off by default. If you turn it on, TyGear greeds non-upgrade loot (including crafting reagents). Need-list items still roll NEED even when that option is off.
+- **Roll on non-gear loot** is off by default. If you turn it on, TyGear greeds non-upgrade loot (including crafting reagents). Need-list and greed-list items still roll even when that option is off.
 
 ## Commands
 
@@ -40,7 +41,7 @@ Install as `Interface/AddOns/TyGear`. Disable AutoGear while using TyGear — bo
 
 ## Key bindings
 
-Esc → Key Bindings → TyGear: the **ignore list** key keeps the hovered item and skips evaluation. The **need list** key forces NEED.
+Esc → Key Bindings → TyGear: the **ignore list** key keeps the hovered item and skips evaluation. The **need list** key forces NEED. The **greed list** key forces GREED.
 
 ## Note
 
