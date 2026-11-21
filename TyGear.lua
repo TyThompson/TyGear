@@ -5708,7 +5708,7 @@ local function buildIgnoreSection(optionsPage)
 
 	--keep list and its options live on the ignore list; items here are not sold (empty slots may still be filled)
 	addSubheader(L["Keep List"])
-	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
+	local keepListDescription = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 	addNote(keepListDescription)
 
 	local unboundRow = newBlockSettingRow(
@@ -6356,7 +6356,7 @@ end
 --Keep list and keep options, hosted on the ignore list. Items here are not sold; they may still fill empty slots.
 buildKeepListSection = function(listMenu, anchorBelow)
 	local keepHelp = L["Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear. White selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons that exist on WoW Forever, such as Skinning Knife, Mining Pick, Blacksmith Hammer, and Arclight Spanner, are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here."]
-	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item from being sold; it can still fill an empty gear slot. New items are added near the top of the list."]
+	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. That keeps the item from being sold; it can still fill an empty gear slot. New items are added near the top of the list."]
 
 	local builder = tyGearNewListSectionBuilder(listMenu, anchorBelow)
 	builder:AddSection(L["Keep List"], keepHelp)
@@ -6639,7 +6639,7 @@ end
 --Forever Need List tab: add box near the top, then items TyGear should always NEED on
 local function buildNeedListPage(listMenu)
 	local needHelp = L["Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon. Mounts and ignored items are still skipped."]
-	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
+	local addItemsHelp = L["Item names or IDs separated by commas. Shift-click an item while this box has focus to add it, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 
 	local titleRow = CreateFrame("Frame", nil, listMenu)
 	titleRow:SetPoint("TOPLEFT", 8, -8)
@@ -8416,7 +8416,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["shouldUse"] = false, --the keep list lives on the ignore list
 				["editBox"] = true,
 				["label"] = L["Keep List"],
-				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."],
+				["description"] = L["Item names or IDs separated by commas.  Greys and common (white) items listed here are not sold. They can still fill an empty gear slot, but they are not treated as upgrades over gear you already wear.\n\nWhite selling only covers weapons and armor, so non-gear whites do not need to be listed. Profession weapons such as Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, and Herbalist's Spade are always kept and do not need to be listed. Every fishing pole is kept even if it is not listed here.\n\nShift-click an item while this box has focus to add it, or assign \"Toggle hovered item on ignore list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."],
 				["editBoxPostHook"] = function() TyGearQueueVendorJunkRefresh() end
 			},
 			{
@@ -8448,7 +8448,7 @@ optionsMenu:SetScript("OnEvent", function (self, event, arg1, arg2, ...)
 				["shouldUse"] = not IS_WOW_FOREVER, --Forever uses the Need List Settings tab instead
 				["editBox"] = true,
 				["label"] = L["Need List"],
-				["description"] = L["Item names or IDs separated by commas. Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon.\n\nShift-click an item while this box has focus to add it, look up item IDs in item tooltips while the TyGear options are open, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
+				["description"] = L["Item names or IDs separated by commas. Items listed here are always rolled NEED when they appear as group loot, even if they are not gear upgrades. Useful for crafting greens you keep needing in a dungeon.\n\nShift-click an item while this box has focus to add it, or assign \"Toggle hovered item on need list\" in Key Bindings and press it while hovering an item. New items are added near the top of the list."]
 			},
 			{
 				["option"] = "Override",
@@ -13651,32 +13651,11 @@ function TyGearTooltipHook(tooltip, tooltipData)
 	-- TyGearPrint("name: "..tostring(name).."; link: "..tostring(link).."; guid: "..tostring(guid).."; equipped: "..tostring(TyGearSlotNames and TyGearSlotNames[equipped] or equipped))
 end
 
---idTip adds its own "ItemID" line to item tooltips unless it's turned off overall or for items in its settings; versions without settings don't define idTipConfig and always add it
-function TyGearIsIdTipShowingItemIDs()
-	local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
-	if not isAddOnLoaded("idTip") then return false end
-	if type(idTipConfig) ~= "table" then return true end
-	return (idTipConfig.enabled ~= false) and (idTipConfig.itemEnabled ~= false)
-end
-
---show item IDs in item tooltips while the TyGear options are open, for filling in the grey selling exclusions
-function TyGearAddItemIDToTooltip(tooltip)
-	if (tooltip ~= GameTooltip) or (not optionsMenuParent:IsVisible()) or TyGearIsIdTipShowingItemIDs() then return end
-	local _, link = tooltip:GetItem()
-	if (not link) or (issecretvalue and issecretvalue(link)) then return end
-	local itemID = string.match(link, "item:(%d+)")
-	if itemID then
-		tooltip:AddDoubleLine(L["Item ID"], itemID)
-	end
-end
-
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and C_TooltipInfo then
 	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, TyGearTooltipHook)
-	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, TyGearAddItemIDToTooltip)
 	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, TyGearAddListBindingHintsToTooltip)
 else
 	GameTooltip:HookScript("OnTooltipSetItem", TyGearTooltipHook)
-	GameTooltip:HookScript("OnTooltipSetItem", TyGearAddItemIDToTooltip)
 	GameTooltip:HookScript("OnTooltipSetItem", TyGearAddListBindingHintsToTooltip)
 	ShoppingTooltip1:HookScript("OnTooltipSetItem", TyGearTooltipHook)
 	ShoppingTooltip2:HookScript("OnTooltipSetItem", TyGearTooltipHook)
