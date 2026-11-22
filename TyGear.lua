@@ -9375,14 +9375,11 @@ TyGearFrame:SetScript("OnEvent", function (this, event, arg1, arg2, arg3, arg4, 
 			linkInvType = C_Item.GetItemInventoryTypeByID(link)
 			if linkInvType then
 				-- if it's not gear, return early to avoid scanning for upgrades
+				-- fishing gear stays worn: the scan may still run, and equip actions skip those slots
 				if (linkInvType == Enum.InventoryType.IndexNonEquipType) then
 					TyGearPrint("TyGear: Skipping scan because looted item "..link.." is not equippable gear.", 3)
 					TyGearQueueVendorJunkRefresh()
 					TyGearQueueUpgradeRefresh()
-					return
-				--make sure a fishing pole isn't replaced while fishing
-				elseif (TyGearIsInvTypeWeapon(linkInvType) and TyGearIsMainHandAFishingPole()) then
-					TyGearPrint("TyGear: Skipping scan because "..link.." is a weapon and a fishing pole is equipped. This is intentional to prevent replacing fishing poles while fishing.", 3)
 					return
 				end
 			else
@@ -10920,6 +10917,18 @@ function TyGearHandleEquipmentChanged(invSlot)
 		TyGearQueueLocalUpdate()
 		return
 	end
+	local weaponChange = (invSlot == INVSLOT_MAINHAND) or (invSlot == INVSLOT_OFFHAND) or (invSlot == INVSLOT_TABARD)
+	local function fishingHeld()
+		if TyGearSlotHeldForFishing(invSlot) then return true end
+		if weaponChange and (
+			TyGearSlotHeldForFishing(INVSLOT_MAINHAND)
+			or TyGearSlotHeldForFishing(INVSLOT_OFFHAND)
+			or TyGearSlotHeldForFishing(INVSLOT_TABARD)
+		) then
+			return true
+		end
+	end
+	local wasFishing = fishingHeld()
 	TyGearUpdateEquippedItem(invSlot)
 	if invSlot == INVSLOT_MAINHAND or invSlot == INVSLOT_OFFHAND then
 		-- MH/OH changes can move the pretended 2H tabard slot
@@ -10932,6 +10941,15 @@ function TyGearHandleEquipmentChanged(invSlot)
 		TyGearSyncBestItemWithEquipped(INVSLOT_TABARD)
 	else
 		TyGearSyncBestItemWithEquipped(invSlot)
+	end
+	local nowFishing = fishingHeld()
+	-- a pole or fishing hat just went on: drop weapon/slot swaps that were already queued
+	if nowFishing then
+		TyGearDropQueuedEquipsHeldForFishing()
+	end
+	-- fishing gear came off: pick up the upgrades that were left in the bags
+	if wasFishing and not nowFishing then
+		TyGearQueueScan()
 	end
 end
 
@@ -11062,6 +11080,16 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 
 	--create all future equip actions required (only if not rolling currently)
 	if (not lootRollItemID and not noActions) then
+		local notedFishingHold
+		-- Worn fishing poles and +fishing pieces stay on. Other slots can still upgrade.
+		local function holdForFishing(slot)
+			if not TyGearSlotHeldForFishing(slot) then return false end
+			if not notedFishingHold then
+				notedFishingHold = true
+				TyGearPrint("TyGear: Fishing equipment is equipped, so better gear for that slot stays in your bags.", 1)
+			end
+			return true
+		end
 		TyGearRedirectReagentBagsToReagentSlot()
 		-- One scan should unequip the less preferred equal bag (non-soulbound before soulbound).
 		TyGearRetargetBagUpgradesAwayFromPreferredBags()
@@ -11075,6 +11103,9 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					local bestSlot = TyGearBestItems[invSlot]
 					if equippedSlot and bestSlot
 					and (not TyGearIsGearSlotProtected(invSlot)) and (not bestSlot.equipped) then
+					if holdForFishing(invSlot) then
+						anythingBetter = 1
+					else
 					local isSlotLocked = TyGearIsGearSlotLocked(invSlot)
 					local equippedInfo = equippedSlot.info
 					local equippedScore = equippedSlot.score
@@ -11101,6 +11132,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 							TyGearQueueAction(newAction)
 						end
 					end
+					end
 				end
 			end
 		end
@@ -11116,6 +11148,9 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 			local mainSwap, offSwap
 			--main hand
 			if (not TyGearBestItems[INVSLOT_MAINHAND].equipped) and (not TyGearBestItems[INVSLOT_MAINHAND].info.empty) and (not TyGearIsGearSlotProtected(INVSLOT_MAINHAND)) then
+				if holdForFishing(INVSLOT_MAINHAND) then
+					anythingBetter = 1
+				else
 				mainSwap = 1
 				if not isMainHandSlotLocked then
 					local newAction = {}
@@ -11129,9 +11164,13 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					TyGearQueueAction(newAction)
 					extraDelay = 0.5
 				end
+				end
 			end
 			--off-hand
 			if (not TyGearBestItems[INVSLOT_OFFHAND].equipped) and (not TyGearBestItems[INVSLOT_OFFHAND].info.empty) and (not TyGearIsGearSlotProtected(INVSLOT_OFFHAND)) then
+				if holdForFishing(INVSLOT_OFFHAND) then
+					anythingBetter = 1
+				else
 				offSwap = 1
 				if not isOffHandSlotLocked then
 					local newAction = {}
@@ -11143,6 +11182,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					newAction.info = TyGearBestItems[INVSLOT_OFFHAND].info
 					newAction.score = TyGearBestItems[INVSLOT_OFFHAND].score
 					TyGearQueueAction(newAction)
+				end
 				end
 			end
 			if (mainSwap or offSwap) then
@@ -11192,6 +11232,9 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 		and ((TyGearBestItems[INVSLOT_MAINHAND].info.empty)
 		and (TyGearBestItems[INVSLOT_OFFHAND].info.empty))) then
 			if (not TyGearBestItems[INVSLOT_TABARD].equipped) and (not TyGearBestItems[INVSLOT_TABARD].info.empty) and (not TyGearIsGearSlotProtected(INVSLOT_TABARD)) then
+				if holdForFishing(INVSLOT_TABARD) then
+					anythingBetter = 1
+				else
 				anythingBetter = 1
 				local showBothSlots = TyGearIsTwoHandEquipped()
 				local mainSlot = showBothSlots and INVSLOT_TABARD or INVSLOT_MAINHAND
@@ -11213,6 +11256,7 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 					newAction.info = TyGearBestItems[INVSLOT_TABARD].info
 					newAction.score = TyGearBestItems[INVSLOT_TABARD].score
 					TyGearQueueAction(newAction)
+				end
 				end
 			end
 		end
@@ -11968,11 +12012,106 @@ function TyGearIsTwoHandEquipped()
 	return TyGearIsItemTwoHanded(GetInventoryItemID("player", INVSLOT_MAINHAND))
 end
 
-function TyGearIsMainHandAFishingPole()
-	local mainHandID = GetInventoryItemID("player", INVSLOT_MAINHAND)
-	if mainHandID then
-		local itemClassID, itemSubClassID = select(6, GetItemInfoInstant(GetInventoryItemID("player", INVSLOT_MAINHAND)))
-		return ((itemClassID == Enum.ItemClass.Weapon) and (itemSubClassID == Enum.ItemWeaponSubclass.Fishingpole))
+function TyGearIsFishingPole(classID, subclassID)
+	local fishing = Enum and Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Fishingpole
+	local weapon = Enum and Enum.ItemClass and Enum.ItemClass.Weapon
+	if not fishing or not weapon or not classID or not subclassID then return false end
+	return (classID == weapon) and (subclassID == fishing)
+end
+
+-- Localized fishing skill name (spell 7620). Nil until the client can answer, so a
+-- later tooltip read can try again instead of caching an English guess.
+function TyGearFishingSkillName()
+	if TyGearCachedFishingSkillName then return TyGearCachedFishingSkillName end
+	local name
+	if C_Spell and C_Spell.GetSpellInfo then
+		local info = C_Spell.GetSpellInfo(7620)
+		if type(info) == "table" then
+			name = info.name
+		elseif type(info) == "string" then
+			name = info
+		end
+	end
+	if (type(name) ~= "string" or name == "") and GetSpellInfo then
+		local spellName = GetSpellInfo(7620)
+		if type(spellName) == "string" then name = spellName end
+	end
+	if type(name) ~= "string" or name == "" or (issecretvalue and issecretvalue(name)) then
+		return nil
+	end
+	TyGearCachedFishingSkillName = name:lower()
+	return TyGearCachedFishingSkillName
+end
+
+-- Tooltip lines are already lowercased. A number keeps item names such as
+-- "Lucky Fishing Hat" from counting; "Increases Fishing skill by 5" does.
+function TyGearLineGrantsFishing(lowerText)
+	if type(lowerText) ~= "string" or lowerText == "" then return false end
+	if not string.find(lowerText, "%d") then return false end
+	local skill = TyGearFishingSkillName()
+	if skill and string.find(lowerText, skill, 1, true) then return true end
+	if (not skill) and string.find(lowerText, "fishing", 1, true) then return true end
+	return false
+end
+
+function TyGearItemStatsGrantFishing(info)
+	if not info or not info.id or not TyGearGetItemStatsTable then return false end
+	local stats = TyGearGetItemStatsTable(info.link, info.id)
+	if type(stats) ~= "table" then return false end
+	for key, value in pairs(stats) do
+		if type(key) == "string" and string.find(key, "FISHING", 1, true) then
+			local number = tonumber(value)
+			if number and number > 0 then return true end
+		end
+	end
+	return false
+end
+
+function TyGearEquippedSlotInfo(invSlot)
+	local equipped = TyGearEquippedItems and invSlot and TyGearEquippedItems[invSlot]
+	if equipped and equipped.info and not equipped.info.empty then
+		return equipped.info
+	end
+end
+
+-- True when this slot is wearing fishing gear. A fishing pole is a two-hander parked
+-- in the virtual tabard slot, and it holds both hands so a better weapon is not equipped over it.
+function TyGearSlotHeldForFishing(invSlot)
+	if not invSlot then return false end
+	local info = TyGearEquippedSlotInfo(invSlot)
+	if info and info.isFishingEquipment then return true end
+	if (invSlot == INVSLOT_MAINHAND) or (invSlot == INVSLOT_OFFHAND) or (invSlot == INVSLOT_TABARD) then
+		local parked = TyGearEquippedSlotInfo(INVSLOT_TABARD)
+		if parked and parked.isFishingEquipment then return true end
+		local main = TyGearEquippedSlotInfo(INVSLOT_MAINHAND)
+		if main and main.isFishingEquipment then return true end
+		local off = TyGearEquippedSlotInfo(INVSLOT_OFFHAND)
+		if off and off.isFishingEquipment then return true end
+	end
+	return false
+end
+
+function TyGearDropQueuedEquipsHeldForFishing()
+	if not TyGearActionQueue then return end
+	local dropped
+	local writeIndex = 1
+	for readIndex = 1, #TyGearActionQueue do
+		local action = TyGearActionQueue[readIndex]
+		local started = action and (action.messageAlready or action.ensuringEquipped or action.waitingOnEmptyMainHand)
+		local drop = action and (action.action == "equip") and (not started)
+			and action.replaceSlot and TyGearSlotHeldForFishing(action.replaceSlot)
+		if drop then
+			dropped = true
+		else
+			TyGearActionQueue[writeIndex] = action
+			writeIndex = writeIndex + 1
+		end
+	end
+	for index = writeIndex, #TyGearActionQueue do
+		TyGearActionQueue[index] = nil
+	end
+	if dropped then
+		TyGearPrint("TyGear: Fishing equipment is equipped, so better gear for that slot stays in your bags.", 1)
 	end
 end
 
@@ -12188,6 +12327,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	end
 	local itemName, itemSubType, classID, subclassID, equipLoc = TyGearItemIdentity(info.id)
 	info.classID, info.subclassID = classID, subclassID
+	if TyGearIsFishingPole(info.classID, info.subclassID) then
+		info.isFishingEquipment = 1
+	end
 	info.subclassName = itemSubType
 	info.equipLoc = equipLoc
 	if type(itemName) ~= "string" and type(info.link) == "string" then
@@ -12437,6 +12579,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 			if TyGearLineIsItemEffect(text) then
 				info.sawEquipEffect = 1
 			end
+			if (not info.isFishingEquipment) and TyGearLineGrantsFishing(text) then
+				info.isFishingEquipment = 1
+			end
 			if (i > 1) and string.match(textLeftText, ITEM_SET_NAME_PATTERN) then
 				isInItemSetSection = true
 			end
@@ -12625,6 +12770,9 @@ function TyGearReadItemInfo(inventoryID, lootRollID, container, slot, link, tool
 	-- Weapon DPS may appear here; min/max damage and swing speed still require the tooltip.
 	TyGearApplyItemStatsFromAPI(info)
 	TyGearNormalizeWeaponDamageStats(info)
+	if (not info.isFishingEquipment) and TyGearItemStatsGrantFishing(info) then
+		info.isFishingEquipment = 1
+	end
 	-- Tooltip may be empty while GetItemStats already has armor/block (common for shields on Forever).
 	if info.unusable and (
 		info.reason == "(this item's tooltip is not yet available)"
@@ -14217,7 +14365,15 @@ function TyGearMain()
 					end
 				elseif curAction.t and (curAction.action == "equip" and not UnitAffectingCombat("player") and not UnitIsDeadOrGhost("player")) then
 					if (GetTime() > curAction.t) then
-						if ((TyGearDB.Enabled ~= nil) and (TyGearDB.Enabled == true)) then
+						-- Do not start a swap onto a slot that is wearing fishing gear.
+						-- An equip already in progress is left alone so the cursor is not abandoned.
+						if (not curAction.messageAlready) and (not curAction.ensuringEquipped) and (not curAction.waitingOnEmptyMainHand)
+						and TyGearSlotHeldForFishing(curAction.replaceSlot) then
+							TyGearPrint("TyGear: Fishing equipment is equipped, so better gear for that slot stays in your bags.", 1)
+							curAction.t = nil
+							queueQueueRebuild = 1
+						end
+						if curAction.t and ((TyGearDB.Enabled ~= nil) and (TyGearDB.Enabled == true)) then
 							if (not curAction.messageAlready) then
 								TyGearPrint("TyGear: Equipping "..(curAction.info.link or curAction.info.name)..".", 2)
 								curAction.messageAlready = 1
