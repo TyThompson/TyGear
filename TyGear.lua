@@ -11147,47 +11147,49 @@ function TyGearConsiderAllItems(lootRollItemID, arbitraryItemInfo, noActions)
 		or (((not TyGearBestItems[INVSLOT_MAINHAND].info.empty)
 		or (not TyGearBestItems[INVSLOT_OFFHAND].info.empty))
 		and TyGearBestItems[INVSLOT_TABARD].info.empty) then
-			local extraDelay = 0
 			local mainSwap, offSwap
-			--main hand
-			if (not TyGearBestItems[INVSLOT_MAINHAND].equipped) and (not TyGearBestItems[INVSLOT_MAINHAND].info.empty) and (not TyGearIsGearSlotProtected(INVSLOT_MAINHAND)) then
-				if holdForFishing(INVSLOT_MAINHAND) then
-					anythingBetter = 1
-				else
-				mainSwap = 1
-				if not isMainHandSlotLocked then
-					local newAction = {}
-					newAction.action = "equip"
-					newAction.t = GetTime()
-					newAction.container = TyGearBestItems[INVSLOT_MAINHAND].bag
-					newAction.slot = TyGearBestItems[INVSLOT_MAINHAND].slot
-					newAction.replaceSlot = INVSLOT_MAINHAND
-					newAction.fromEquippedSlot = TyGearBestItems[INVSLOT_MAINHAND].fromEquippedSlot
-					newAction.info = TyGearBestItems[INVSLOT_MAINHAND].info
-					newAction.score = TyGearBestItems[INVSLOT_MAINHAND].score
-					TyGearQueueAction(newAction)
-					extraDelay = 0.5
-				end
-				end
+			local mainBest = TyGearBestItems[INVSLOT_MAINHAND]
+			local offBest = TyGearBestItems[INVSLOT_OFFHAND]
+			local mainNeeds = (not mainBest.equipped) and (not mainBest.info.empty) and (not TyGearIsGearSlotProtected(INVSLOT_MAINHAND))
+			local offNeeds = (not offBest.equipped) and (not offBest.info.empty) and (not TyGearIsGearSlotProtected(INVSLOT_OFFHAND))
+			local function weaponEquipAction(best, replaceSlot)
+				return {
+					action = "equip",
+					t = GetTime(),
+					container = best.bag,
+					slot = best.slot,
+					replaceSlot = replaceSlot,
+					fromEquippedSlot = best.fromEquippedSlot,
+					info = best.info,
+					score = best.score,
+				}
 			end
-			--off-hand
-			if (not TyGearBestItems[INVSLOT_OFFHAND].equipped) and (not TyGearBestItems[INVSLOT_OFFHAND].info.empty) and (not TyGearIsGearSlotProtected(INVSLOT_OFFHAND)) then
-				if holdForFishing(INVSLOT_OFFHAND) then
-					anythingBetter = 1
-				else
-				offSwap = 1
-				if not isOffHandSlotLocked then
-					local newAction = {}
-					newAction.action = "equip"
-					newAction.t = GetTime() + extraDelay --do it after a longer delay
-					newAction.container = TyGearBestItems[INVSLOT_OFFHAND].bag
-					newAction.slot = TyGearBestItems[INVSLOT_OFFHAND].slot
-					newAction.replaceSlot = INVSLOT_OFFHAND
-					newAction.fromEquippedSlot = TyGearBestItems[INVSLOT_OFFHAND].fromEquippedSlot
-					newAction.info = TyGearBestItems[INVSLOT_OFFHAND].info
-					newAction.score = TyGearBestItems[INVSLOT_OFFHAND].score
-					TyGearQueueAction(newAction)
+			if mainNeeds and holdForFishing(INVSLOT_MAINHAND) then
+				anythingBetter = 1
+				mainNeeds = false
+			end
+			if offNeeds and holdForFishing(INVSLOT_OFFHAND) then
+				anythingBetter = 1
+				offNeeds = false
+			end
+			-- Both hands can be set in one cursor sequence; do not stagger MH then OH.
+			if mainNeeds and offNeeds and (not isMainHandSlotLocked) and (not isOffHandSlotLocked) then
+				mainSwap, offSwap = 1, 1
+				local newAction = weaponEquipAction(mainBest, INVSLOT_MAINHAND)
+				newAction.pairOffHand = weaponEquipAction(offBest, INVSLOT_OFFHAND)
+				TyGearQueueAction(newAction)
+			else
+				if mainNeeds then
+					mainSwap = 1
+					if not isMainHandSlotLocked then
+						TyGearQueueAction(weaponEquipAction(mainBest, INVSLOT_MAINHAND))
+					end
 				end
+				if offNeeds then
+					offSwap = 1
+					if not isOffHandSlotLocked then
+						TyGearQueueAction(weaponEquipAction(offBest, INVSLOT_OFFHAND))
+					end
 				end
 			end
 			if (mainSwap or offSwap) then
@@ -11379,9 +11381,10 @@ local function TyGearInfoFitsGearSlot(info, gearSlot)
 end
 
 -- Best items seed from the worn MH/OH pair, and bag scan only considers bag items.
--- When the better main-hand weapon is already worn in the off-hand (or the only
--- 1H sits in OH with MH empty), that never becomes a MH upgrade. Re-score both
--- arrangements and reassign when swapping improves total EP.
+-- A bag OH upgrade can displace a worn weapon from best items entirely, so that
+-- weapon never contends for MH until a later scan. Build the MH/OH pair from the
+-- pool of current best slots plus currently worn hand weapons, then assign the
+-- highest-scoring valid arrangement in one pass.
 function TyGearOptimizeWeaponHandAssignments()
 	if not TyGearBestItems then return end
 	if TyGearIsGearSlotProtected(INVSLOT_MAINHAND) or TyGearIsGearSlotProtected(INVSLOT_OFFHAND) then
@@ -11389,19 +11392,85 @@ function TyGearOptimizeWeaponHandAssignments()
 	end
 	local mh = TyGearBestItems[INVSLOT_MAINHAND]
 	local oh = TyGearBestItems[INVSLOT_OFFHAND]
-	if not mh or not oh or not mh.info or not oh.info then return end
+	if not mh or not oh then return end
 
-	local function capture(best, assumedEquippedSlot)
-		return {
-			info = best.info,
+	local function infoKey(info)
+		if not info or info.empty then return end
+		return info.guid or info.link or (info.id and ("id:"..tostring(info.id)))
+	end
+
+	local candidates = {}
+	local seen = {}
+	local function addCandidate(info, meta)
+		if not info or info.empty then return end
+		local fitsMh = TyGearInfoFitsGearSlot(info, INVSLOT_MAINHAND)
+		local fitsOh = TyGearInfoFitsGearSlot(info, INVSLOT_OFFHAND)
+		if not fitsMh and not fitsOh then return end
+		local key = infoKey(info)
+		if not key then return end
+		local existing = seen[key]
+		if existing then
+			-- Prefer a known bag/equipped location over a location-less row.
+			if (not existing.bag) and meta.bag then
+				existing.bag = meta.bag
+				existing.slot = meta.slot
+			end
+			if (not existing.equippedIn) and meta.equippedIn then
+				existing.equippedIn = meta.equippedIn
+			end
+			if meta.rollOn then existing.rollOn = meta.rollOn end
+			return
+		end
+		local cand = {
+			info = info,
+			bag = meta.bag,
+			slot = meta.slot,
+			rollOn = meta.rollOn,
+			equippedIn = meta.equippedIn,
+			fitsMh = fitsMh,
+			fitsOh = fitsOh,
+		}
+		seen[key] = cand
+		table.insert(candidates, cand)
+	end
+
+	local function addBest(best, assumedEquippedSlot)
+		if not best or not best.info or best.info.empty then return end
+		addCandidate(best.info, {
 			bag = best.bag,
 			slot = best.slot,
 			rollOn = best.rollOn,
 			equippedIn = best.equipped and assumedEquippedSlot or best.fromEquippedSlot,
-		}
+		})
+	end
+
+	local function addEquipped(invSlot)
+		local eq = TyGearEquippedItems and TyGearEquippedItems[invSlot]
+		if not eq or not eq.info or eq.info.empty then return end
+		addCandidate(eq.info, { equippedIn = invSlot })
+	end
+
+	addBest(mh, INVSLOT_MAINHAND)
+	addBest(oh, INVSLOT_OFFHAND)
+	addEquipped(INVSLOT_MAINHAND)
+	addEquipped(INVSLOT_OFFHAND)
+
+	local function sameCand(a, b)
+		if not a or not b then return false end
+		if a == b then return true end
+		local ka, kb = infoKey(a.info), infoKey(b.info)
+		return ka and kb and ka == kb
 	end
 
 	local function assign(targetSlot, cand, score)
+		if not cand then
+			TyGearBestItems[targetSlot] = {
+				info = EMPTY_SLOT_INFO,
+				score = 0,
+				equipped = 1,
+			}
+			return
+		end
 		local row = {
 			info = cand.info,
 			score = score,
@@ -11417,55 +11486,98 @@ function TyGearOptimizeWeaponHandAssignments()
 		TyGearBestItems[targetSlot] = row
 	end
 
-	-- Empty MH + a dual-wieldable (or MH-capable) weapon parked in OH.
-	if mh.info.empty and (not oh.info.empty) then
-		if TyGearInfoFitsGearSlot(oh.info, INVSLOT_MAINHAND) then
-			local asMh = TyGearDetermineItemScore(oh.info, INVSLOT_MAINHAND)
-			if asMh > (oh.score or 0) then
-				local cand = capture(oh, INVSLOT_OFFHAND)
-				assign(INVSLOT_MAINHAND, cand, asMh)
-				TyGearBestItems[INVSLOT_OFFHAND] = {
-					info = EMPTY_SLOT_INFO,
-					score = 0,
-					equipped = 1,
-				}
+	local bestMh, bestOh, bestMhScore, bestOhScore, bestTotal
+	local function considerPair(mhCand, ohCand)
+		if mhCand and ohCand and sameCand(mhCand, ohCand)
+		and not TyGearIsGearPairEquippableTogether(mhCand.info, ohCand.info) then
+			return
+		end
+		if mhCand and ohCand and not TyGearIsGearPairEquippableTogether(mhCand.info, ohCand.info) then
+			return
+		end
+		local mhScore = mhCand and TyGearDetermineItemScore(mhCand.info, INVSLOT_MAINHAND) or 0
+		local ohScore = ohCand and TyGearDetermineItemScore(ohCand.info, INVSLOT_OFFHAND) or 0
+		local total = mhScore + ohScore
+		if (not bestTotal) or total > bestTotal then
+			bestTotal = total
+			bestMh, bestOh = mhCand, ohCand
+			bestMhScore, bestOhScore = mhScore, ohScore
+		end
+	end
+
+	considerPair(nil, nil)
+	for _, cand in ipairs(candidates) do
+		if cand.fitsMh then considerPair(cand, nil) end
+		if cand.fitsOh then considerPair(nil, cand) end
+	end
+	for i, mhCand in ipairs(candidates) do
+		if mhCand.fitsMh then
+			for j, ohCand in ipairs(candidates) do
+				if i ~= j and ohCand.fitsOh then
+					considerPair(mhCand, ohCand)
+				elseif i == j and ohCand.fitsOh then
+					-- Two copies of the same 1H (or unique-allowed) can fill both hands.
+					considerPair(mhCand, ohCand)
+				end
 			end
 		end
+	end
+
+	if not bestTotal then return end
+	local currentTotal = (mh.score or 0) + (oh.score or 0)
+	local function needsMove(bestRow, cand, targetSlot)
+		if not cand then
+			return bestRow.info and not bestRow.info.empty
+		end
+		if not bestRow.info or bestRow.info.empty or infoKey(bestRow.info) ~= infoKey(cand.info) then
+			return true
+		end
+		if cand.equippedIn == targetSlot then
+			return not bestRow.equipped
+		end
+		if cand.bag then
+			return bestRow.equipped
+				or bestRow.bag ~= cand.bag
+				or bestRow.slot ~= cand.slot
+				or bestRow.fromEquippedSlot ~= nil
+		end
+		if cand.equippedIn then
+			return bestRow.equipped or bestRow.fromEquippedSlot ~= cand.equippedIn
+		end
+		return not bestRow.equipped
+	end
+	if bestTotal < currentTotal then return end
+	if bestTotal == currentTotal
+	and not needsMove(mh, bestMh, INVSLOT_MAINHAND)
+	and not needsMove(oh, bestOh, INVSLOT_OFFHAND) then
 		return
 	end
 
-	if mh.info.empty or oh.info.empty then return end
-	if not TyGearInfoFitsGearSlot(mh.info, INVSLOT_OFFHAND) then return end
-	if not TyGearInfoFitsGearSlot(oh.info, INVSLOT_MAINHAND) then return end
-	if not TyGearIsGearPairEquippableTogether(mh.info, oh.info) then return end
+	local currentMhKey = mh.info and not mh.info.empty and infoKey(mh.info)
+	local currentOhKey = oh.info and not oh.info.empty and infoKey(oh.info)
+	local newMhKey = bestMh and infoKey(bestMh.info)
+	local newOhKey = bestOh and infoKey(bestOh.info)
 
-	local currentTotal = (mh.score or 0) + (oh.score or 0)
-	local swappedMhScore = TyGearDetermineItemScore(oh.info, INVSLOT_MAINHAND)
-	local swappedOhScore = TyGearDetermineItemScore(mh.info, INVSLOT_OFFHAND)
-	if swappedMhScore + swappedOhScore <= currentTotal then return end
-
-	local a = capture(mh, INVSLOT_MAINHAND)
-	local b = capture(oh, INVSLOT_OFFHAND)
-
-	-- Both weapons are already worn, just in the wrong hands: one EquipCursorItem
-	-- swaps them, so only mark MH as needing a move from OH.
-	if a.equippedIn == INVSLOT_MAINHAND and b.equippedIn == INVSLOT_OFFHAND
-	and (not a.bag) and (not b.bag) then
+	-- Pure inventory swap: one EquipCursorItem moves both hands.
+	if bestMh and bestOh
+	and bestMh.equippedIn == INVSLOT_OFFHAND and bestOh.equippedIn == INVSLOT_MAINHAND
+	and (not bestMh.bag) and (not bestOh.bag)
+	and currentMhKey == newOhKey and currentOhKey == newMhKey then
 		TyGearBestItems[INVSLOT_MAINHAND] = {
-			info = b.info,
-			score = swappedMhScore,
+			info = bestMh.info,
+			score = bestMhScore,
 			fromEquippedSlot = INVSLOT_OFFHAND,
 		}
 		TyGearBestItems[INVSLOT_OFFHAND] = {
-			info = a.info,
-			score = swappedOhScore,
+			info = bestOh.info,
+			score = bestOhScore,
 			equipped = 1,
 		}
 		return
 	end
 
-	assign(INVSLOT_MAINHAND, b, swappedMhScore)
-	assign(INVSLOT_OFFHAND, a, swappedOhScore)
+	assign(INVSLOT_MAINHAND, bestMh, bestMhScore or 0)
+	assign(INVSLOT_OFFHAND, bestOh, bestOhScore or 0)
 end
 
 -- A larger bag aimed at a soulbound bag leaves that soulbound in inventory, and the
@@ -13719,6 +13831,56 @@ function TyGearPlaceCursorItem(slot, info)
 	end
 end
 
+-- Resolve where a weapon hand piece currently is (worn hand or bag).
+function TyGearResolveWeaponEquipSource(spec)
+	if not spec or not spec.info then return end
+	local wantedID = spec.info.id
+	if spec.fromEquippedSlot then
+		local sourceSlot = spec.fromEquippedSlot
+		if wantedID and GetInventoryItemID and GetInventoryItemID("player", sourceSlot) ~= wantedID then
+			local opposite = TyGearGetOppositeHandSlot(sourceSlot)
+				or TyGearGetOppositeHandSlot(spec.replaceSlot)
+			if opposite and GetInventoryItemID("player", opposite) == wantedID then
+				sourceSlot = opposite
+			else
+				for _, slot in ipairs({ INVSLOT_MAINHAND, INVSLOT_OFFHAND }) do
+					if GetInventoryItemID("player", slot) == wantedID then
+						sourceSlot = slot
+						break
+					end
+				end
+			end
+		end
+		return "inventory", sourceSlot
+	end
+	if ((not spec.container) or (not spec.slot))
+	and spec.info
+	and (spec.info.itemLocation or (spec.info.item and spec.info.item.GetItemLocation and spec.info.item:HasItemLocation())) then
+		local itemLocation = spec.info.itemLocation or spec.info.item:GetItemLocation()
+		spec.container, spec.slot = itemLocation:GetBagAndSlot()
+	end
+	TyGearRefreshActionBagLocation(spec)
+	if spec.container and spec.slot then
+		return "bag", spec.container, spec.slot
+	end
+end
+
+-- Pick up one MH/OH piece and place it on replaceSlot. Used for single-hand and paired equips.
+function TyGearEquipWeaponHandSpec(spec)
+	if not spec or not spec.info or not spec.replaceSlot then return false end
+	local kind, a, b = TyGearResolveWeaponEquipSource(spec)
+	if kind == "inventory" then
+		PickupInventoryItem(a)
+		TyGearPlaceCursorItem(spec.replaceSlot, spec.info)
+		return true
+	elseif kind == "bag" then
+		PickupContainerItem(a, b)
+		TyGearPlaceCursorItem(spec.replaceSlot, spec.info)
+		return true
+	end
+	return false
+end
+
 function TyGearEquipActionBag(curAction, putBack)
 	local info = curAction and curAction.info
 	--Only the reagent slot uses the reagent button id. A reagent bag aimed at a normal slot uses that slot.
@@ -14470,7 +14632,11 @@ function TyGearMain()
 						end
 						if curAction.t and ((TyGearDB.Enabled ~= nil) and (TyGearDB.Enabled == true)) then
 							if (not curAction.messageAlready) then
-								TyGearPrint("TyGear: Equipping "..(curAction.info.link or curAction.info.name)..".", 2)
+								if curAction.pairOffHand and curAction.pairOffHand.info then
+									TyGearPrint("TyGear: Equipping "..(curAction.info.link or curAction.info.name).." and "..(curAction.pairOffHand.info.link or curAction.pairOffHand.info.name)..".", 2)
+								else
+									TyGearPrint("TyGear: Equipping "..(curAction.info.link or curAction.info.name)..".", 2)
+								end
 								curAction.messageAlready = 1
 							end
 							if (curAction.removeMainHandFirst) then
@@ -14494,16 +14660,51 @@ function TyGearMain()
 								-- TyGearPrint("checking whether equipped: "..curAction.info.link,3)
 								local function finishEquipped()
 									curAction.ensuringEquipped = nil
-									if (not TyGearActionQueue[i+1]) or (not TyGearActionQueue[i+1].ensuringEquipped) then
+									-- Wait until every remaining equip action is done so MH+OH
+									-- (and multi-slot swaps) do not refresh mid-sequence.
+									local moreEquipsPending
+									for j = 1, #TyGearActionQueue do
+										if j ~= i then
+											local other = TyGearActionQueue[j]
+											if other.t and other.action == "equip" then
+												moreEquipsPending = 1
+												break
+											end
+										end
+									end
+									if not moreEquipsPending then
 										TyGearUpdateEquippedItems()
 										TyGearPlayUpgradeEquippedChime()
 									end
 									curAction.t = nil
 									queueQueueRebuild = 1
 								end
-								if (GetInventoryItemID("player", curAction.replaceSlot) == curAction.info.id)
-								and not (curAction.reagentEquip and TyGearSlotIsKnownNormalBag(curAction.replaceSlot)) then
+								local function handMatches(spec)
+									return spec and spec.info and GetInventoryItemID("player", spec.replaceSlot) == spec.info.id
+								end
+								local mainReady = (GetInventoryItemID("player", curAction.replaceSlot) == curAction.info.id)
+									and not (curAction.reagentEquip and TyGearSlotIsKnownNormalBag(curAction.replaceSlot))
+								local pairReady = (not curAction.pairOffHand) or handMatches(curAction.pairOffHand)
+								if mainReady and pairReady then
 									finishEquipped()
+								elseif mainReady and curAction.pairOffHand and not pairReady then
+									-- MH landed; retry OH in the same action without a delayed second scan.
+									curAction.ensureTicks = (curAction.ensureTicks or 0) + 1
+									if (curAction.ensureTicks % 2) == 1 then
+										TyGearEquipWeaponHandSpec(curAction.pairOffHand)
+									end
+									if curAction.ensureTicks >= 40 then
+										TyGearPrint("TyGear: Could not equip "..(curAction.pairOffHand.info.link or curAction.pairOffHand.info.name or "that weapon").." into the off-hand.", 0)
+										curAction.t = nil
+										queueQueueRebuild = 1
+									end
+								elseif curAction.pairOffHand then
+									curAction.ensureTicks = (curAction.ensureTicks or 0) + 1
+									if curAction.ensureTicks >= 40 then
+										TyGearPrint("TyGear: Could not equip the main-hand/off-hand weapon pair.", 0)
+										curAction.t = nil
+										queueQueueRebuild = 1
+									end
 								elseif curAction.reagentEquip or (curAction.replaceSlot == TyGearReagentBagSlot and curAction.info and (TyGearIsReagentBag(curAction.info) or TyGearUsesReagentBagSlot(curAction.info))) then
 									curAction.reagentEquip = true
 									local foundSlot
@@ -14562,6 +14763,43 @@ function TyGearMain()
 										TyGearPrint("TyGear: Could not equip "..(curAction.info.link or curAction.info.name or "that bag").." into the "..TyGearBagEquipSlotName(curAction.replaceSlot).."."..TyGearReagentTriedSuffix(curAction.reagentTried), 0)
 										curAction.t = nil
 										queueQueueRebuild = 1
+									end
+								end
+							elseif curAction.pairOffHand then
+								-- Equip MH and OH back-to-back in one action (no staggered refresh).
+								local mhSpec = curAction
+								local ohSpec = curAction.pairOffHand
+								local mhFromOh = mhSpec.fromEquippedSlot == INVSLOT_OFFHAND
+								local ohFromMh = ohSpec.fromEquippedSlot == INVSLOT_MAINHAND
+								local landed
+								if mhFromOh and not ohFromMh then
+									landed = TyGearEquipWeaponHandSpec(mhSpec)
+									if landed then landed = TyGearEquipWeaponHandSpec(ohSpec) end
+								elseif ohFromMh and not mhFromOh then
+									landed = TyGearEquipWeaponHandSpec(ohSpec)
+									if landed then landed = TyGearEquipWeaponHandSpec(mhSpec) end
+								else
+									landed = TyGearEquipWeaponHandSpec(mhSpec)
+									if landed then
+										if ohFromMh and CursorHasItem and CursorHasItem() then
+											TyGearPlaceCursorItem(INVSLOT_OFFHAND, ohSpec.info)
+										else
+											landed = TyGearEquipWeaponHandSpec(ohSpec)
+										end
+									end
+								end
+								if landed then
+									curAction.ensuringEquipped = 1
+									curAction.fromEquippedSlot = nil
+									ohSpec.fromEquippedSlot = nil
+								else
+									curAction.attempts = (curAction.attempts or 0) + 1
+									if curAction.attempts >= 3 then
+										TyGearPrint("TyGear: Could not equip the main-hand/off-hand weapon pair.", 0)
+										curAction.t = nil
+										queueQueueRebuild = 1
+									else
+										curAction.t = GetTime() + 0.05
 									end
 								end
 							elseif curAction.fromEquippedSlot then
@@ -14628,7 +14866,7 @@ function TyGearMain()
 										curAction.t = nil
 										queueQueueRebuild = 1
 									else
-										curAction.t = GetTime() + 0.5
+										curAction.t = GetTime() + 0.05
 									end
 								end
 							else
